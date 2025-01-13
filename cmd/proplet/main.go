@@ -52,10 +52,10 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	// Load TOML configuration
 	conf, err := config.LoadConfig(cfg.ConfigPath)
 	if err != nil {
 		logger.Error("failed to load TOML configuration", slog.String("error", err.Error()))
+
 		return
 	}
 
