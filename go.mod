@@ -63,7 +63,6 @@ require (
 require (
 	github.com/absmach/senml v1.0.6 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
-	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/x448/float16 v0.8.4 // indirect

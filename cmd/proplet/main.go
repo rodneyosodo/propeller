@@ -9,17 +9,17 @@ import (
 	"time"
 
 	"github.com/absmach/magistrala/pkg/server"
+	"github.com/absmach/propeller/pkg/config"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proplet"
 	"github.com/caarlos0/env/v11"
 	"github.com/google/uuid"
-	"github.com/joho/godotenv"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
-	svcName = "proplet"
-	pathEnv = ".env"
+	svcName    = "proplet"
+	configPath = "config.toml"
 )
 
 type envConfig struct {
@@ -29,17 +29,19 @@ type envConfig struct {
 	MQTTTimeout        time.Duration `env:"PROPLET_MQTT_TIMEOUT"        envDefault:"30s"`
 	MQTTQoS            byte          `env:"PROPLET_MQTT_QOS"            envDefault:"2"`
 	LivelinessInterval time.Duration `env:"PROPLET_LIVELINESS_INTERVAL" envDefault:"10s"`
-	ThingID            string        `env:"PROPLET_THING_ID"`
-	ThingKey           string        `env:"PROPLET_THING_KEY"`
-	ChannelID          string        `env:"PROPLET_CHANNEL_ID"`
 }
 
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	g, ctx := errgroup.WithContext(ctx)
 
-	if _, err := os.Stat(pathEnv); err == nil {
-		_ = godotenv.Load(pathEnv)
+	var conf *config.Config
+	if _, err := os.Stat(configPath); err == nil {
+		var err error
+		conf, err = config.LoadConfig(configPath)
+		if err != nil {
+			log.Fatalf("failed to load TOML configuration: %s", err.Error())
+		}
 	}
 
 	cfg := envConfig{}
@@ -61,15 +63,22 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.InstanceID, cfg.ThingID, cfg.ThingKey, cfg.ChannelID, cfg.MQTTTimeout, logger)
+	var thingID, thingKey, channelID string
+	if conf != nil {
+		thingID = conf.Proplet.ThingID
+		thingKey = conf.Proplet.ThingKey
+		channelID = conf.Proplet.ChannelID
+	}
+
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.InstanceID, thingID, thingKey, channelID, cfg.MQTTTimeout, logger)
 	if err != nil {
 		logger.Error("failed to initialize mqtt client", slog.Any("error", err))
 
 		return
 	}
-	wazero := proplet.NewWazeroRuntime(logger, mqttPubSub, cfg.ChannelID)
+	wazero := proplet.NewWazeroRuntime(logger, mqttPubSub, channelID)
 
-	service, err := proplet.NewService(ctx, cfg.ChannelID, cfg.ThingID, cfg.ThingKey, cfg.LivelinessInterval, mqttPubSub, logger, wazero)
+	service, err := proplet.NewService(ctx, channelID, thingID, thingKey, cfg.LivelinessInterval, mqttPubSub, logger, wazero)
 	if err != nil {
 		logger.Error("failed to initialize service", slog.Any("error", err))
 
