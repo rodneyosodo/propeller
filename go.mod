@@ -1,10 +1,11 @@
 module github.com/absmach/propeller
 
-go 1.23.0
+go 1.23.4
 
 require (
 	github.com/0x6flab/namegenerator v1.4.0
 	github.com/absmach/magistrala v0.15.1
+	github.com/absmach/supermq v0.16.1-0.20250113091433-3a11b54394b2
 	github.com/caarlos0/env/v11 v11.3.1
 	github.com/eclipse/paho.mqtt.golang v1.5.0
 	github.com/fatih/color v1.18.0
@@ -33,7 +34,7 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/grpc-ecosystem/grpc-gateway/v2 v2.24.0 // indirect
+	github.com/grpc-ecosystem/grpc-gateway/v2 v2.25.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/klauspost/compress v1.17.11 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
@@ -49,14 +50,21 @@ require (
 	go.opentelemetry.io/otel/metric v1.33.0 // indirect
 	go.opentelemetry.io/otel/sdk v1.33.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.4.0 // indirect
-	golang.org/x/net v0.32.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.33.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20241216192217-9240e9c98484 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241216192217-9240e9c98484 // indirect
-	google.golang.org/grpc v1.69.0 // indirect
-	google.golang.org/protobuf v1.36.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20241219192143-6b3ec007d9bb // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241219192143-6b3ec007d9bb // indirect
+	google.golang.org/grpc v1.69.4 // indirect
+	google.golang.org/protobuf v1.36.2 // indirect
 	oras.land/oras-go/v2 v2.5.0
 )
 
-require github.com/opencontainers/go-digest v1.0.0 // indirect
+require (
+	github.com/absmach/senml v1.0.6 // indirect
+	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/smartystreets/goconvey v1.8.1 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
+	moul.io/http2curl v1.0.0 // indirect
+)
