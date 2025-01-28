@@ -24,6 +24,7 @@
 4. **Monitor & Scale**: Leverage real-time monitoring and dynamic scaling to optimize your system's performance.
 
 ![Propeller Orchestration Diagram](docs/architecture.svg)
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Frodneyosodo%2Fpropeller.svg?type=shield)](https://app.fossa.com/projects/git%2Bgithub.com%2Frodneyosodo%2Fpropeller?ref=badge_shield)
 
 ---
 
@@ -52,3 +53,6 @@ Contributions are welcome! Please check the [CONTRIBUTING.md](#) for details on 
 ## 📜 License
 
 Propeller is licensed under the **Apache-2.0 License**. See the [LICENSE](LICENSE) file for more details.
+
+
+[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2Frodneyosodo%2Fpropeller.svg?type=large)](https://app.fossa.com/projects/git%2Bgithub.com%2Frodneyosodo%2Fpropeller?ref=badge_large)
