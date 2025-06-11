@@ -31,7 +31,7 @@ LOG_MODULE_REGISTER(mqtt_client);
 #define RESULTS_TOPIC_TEMPLATE "channels/%s/messages/control/proplet/results"
 
 #define WILL_MESSAGE_TEMPLATE                                                  \
-  "{\"status\":\"offline\",\"proplet_id\":\"%s\",\"mg_channel_id\":\"%s\"}"
+  "{\"status\":\"offline\",\"proplet_id\":\"%s\",\"smq_channel_id\":\"%s\"}"
 #define WILL_QOS MQTT_QOS_1_AT_LEAST_ONCE
 #define WILL_RETAIN 1
 
@@ -590,7 +590,7 @@ void publish_alive_message(const char *channel_id) {
   char payload[128];
   snprintf(
       payload, sizeof(payload),
-      "{\"status\":\"alive\",\"proplet_id\":\"%s\",\"mg_channel_id\":\"%s\"}",
+      "{\"status\":\"alive\",\"proplet_id\":\"%s\",\"smq_channel_id\":\"%s\"}",
       CLIENT_ID, channel_id);
   publish(channel_id, ALIVE_TOPIC_TEMPLATE, payload);
 }
@@ -601,7 +601,7 @@ int publish_discovery(const char *proplet_id, const char *channel_id) {
 
   snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, channel_id);
   snprintf(payload, sizeof(payload),
-           "{\"proplet_id\":\"%s\",\"mg_channel_id\":\"%s\"}", proplet_id,
+           "{\"proplet_id\":\"%s\",\"smq_channel_id\":\"%s\"}", proplet_id,
            channel_id);
 
   if (!mqtt_connected) {

@@ -19,7 +19,7 @@ var (
 	errEmptyID            = errors.New("empty ID")
 
 	aliveTopicTemplate = "channels/%s/messages/control/proplet/alive"
-	lwtPayloadTemplate = `{"status":"offline","proplet_id":"%s","mg_channel_id":"%s"}`
+	lwtPayloadTemplate = `{"status":"offline","proplet_id":"%s","smq_channel_id":"%s"}`
 )
 
 type pubsub struct {

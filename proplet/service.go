@@ -52,8 +52,8 @@ type ChunkPayload struct {
 func NewService(ctx context.Context, channelID, clientID, clientKey string, livelinessInterval time.Duration, pubsub pkgmqtt.PubSub, logger *slog.Logger, runtime Runtime) (*PropletService, error) {
 	topic := fmt.Sprintf(discoveryTopicTemplate, channelID)
 	payload := map[string]interface{}{
-		"proplet_id":    clientID,
-		"mg_channel_id": channelID,
+		"proplet_id":     clientID,
+		"smq_channel_id": channelID,
 	}
 	if err := pubsub.Publish(ctx, topic, payload); err != nil {
 		return nil, errors.Join(errors.New("failed to publish discovery"), err)
@@ -89,9 +89,9 @@ func (p *PropletService) startLivelinessUpdates(ctx context.Context) {
 		case <-ticker.C:
 			topic := fmt.Sprintf(aliveTopicTemplate, p.channelID)
 			payload := map[string]interface{}{
-				"status":        "alive",
-				"proplet_id":    p.clientID,
-				"mg_channel_id": p.channelID,
+				"status":         "alive",
+				"proplet_id":     p.clientID,
+				"smq_channel_id": p.channelID,
 			}
 
 			if err := p.pubsub.Publish(ctx, topic, payload); err != nil {
