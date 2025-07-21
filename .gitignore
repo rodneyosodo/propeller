@@ -9,3 +9,7 @@ embed-proplet/bootloader
 embed-proplet/modules
 embed-proplet/tools
 embed-proplet/zephyr
+
+# Docker Registry
+docker/registry/registry.password
+docker/registry/data

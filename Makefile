@@ -40,6 +40,17 @@ start-supermq:
 stop-supermq:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
+setup-registry-user:
+	@echo "Please enter the username for the registry"; \
+	read -p "Username: " username; \
+	echo "Please enter the password for the registry"; \
+	read -s -p "Password: " password; echo ""; \
+	if [ ! -f ./docker/registry/registry.password ]; then \
+		htpasswd -Bbc ./docker/registry/registry.password "$$username" "$$password"; \
+	else \
+		htpasswd -Bb ./docker/registry/registry.password "$$username" "$$password"; \
+	fi
+
 $(EXAMPLES):
 	GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasip1 examples/$@/$@.go
 
