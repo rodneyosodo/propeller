@@ -1580,6 +1580,8 @@ services:
     expose:
       - ${MANAGER_HTTP_PORT}
     restart: on-failure
+    depends_on:
+      - mqtt-adapter
     environment:
       MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL}
       MANAGER_INSTANCE_ID: ${MANAGER_INSTANCE_ID}
@@ -1609,6 +1611,8 @@ services:
     image: docker.io/absmach/propeller/proplet:${PROP_RELEASE_TAG}
     container_name: propeller-proplet
     restart: on-failure
+    depends_on:
+      - mqtt-adapter
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL}
       PROPLET_INSTANCE_ID: ${PROPLET_INSTANCE_ID}
@@ -1632,6 +1636,8 @@ services:
     image: docker.io/absmach/propeller/proxy:${PROP_RELEASE_TAG}
     container_name: propeller-proxy
     restart: on-failure
+    depends_on:
+      - mqtt-adapter
     environment:
       PROXY_LOG_LEVEL: ${PROXY_LOG_LEVEL}
       PROXY_INSTANCE_ID: ${PROXY_INSTANCE_ID}
