@@ -45,6 +45,12 @@ define make_docker_dev
 		-f docker/Dockerfile.dev ./build
 endef
 
+define docker_push
+		for svc in $(SERVICES); do \
+			docker push $(DOCKER_IMAGE_NAME_PREFIX)/$$svc:$(1); \
+		done
+endef
+
 $(SERVICES):
 	$(call compile_service,$(@))
 
@@ -56,6 +62,9 @@ $(DOCKERS_DEV):
 
 dockers: $(DOCKERS)
 dockers_dev: $(DOCKERS_DEV)
+
+latest: dockers
+		$(call docker_push,latest)
 
 # Install all non-WASM executables from the build directory to GOBIN with 'propeller-' prefix
 install:
