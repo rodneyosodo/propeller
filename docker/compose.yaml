@@ -1600,8 +1600,10 @@ services:
       - ${MANAGER_HTTP_PORT}:${MANAGER_HTTP_PORT}
     networks:
       - supermq-base-net
-    volumes:
-      - ./config.toml:/config.toml # This is optional is can be omitted if you are using env vars
+    # To use a custom config.toml, uncomment the following line and ensure ./config.toml exists.
+    # If you are using environment variables for configuration, leave this commented out.
+    # volumes:
+    #   - ./config.toml:/config.toml
 
   proplet:
     image: docker.io/absmach/propeller/proplet:${PROP_RELEASE_TAG}
@@ -1621,8 +1623,10 @@ services:
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME}
     networks:
       - supermq-base-net
-    volumes:
-      - ./config.toml:/config.toml # This is optional is can be omitted if you are using env vars
+    # To use a custom config.toml, uncomment the following line and ensure ./config.toml exists.
+    # If you are using environment variables for configuration, leave this commented out.
+    # volumes:
+    #   - ./config.toml:/config.toml
 
   proxy:
     image: docker.io/absmach/propeller/proxy:${PROP_RELEASE_TAG}
@@ -1646,5 +1650,7 @@ services:
       PROXY_REGISTRY_URL: ${PROXY_REGISTRY_URL}
     networks:
       - supermq-base-net
-    volumes:
-      - ./config.toml:/config.toml # This is optional is can be omitted if you are using env vars
+    # To use a custom config.toml, uncomment the following line and ensure ./config.toml exists.
+    # If you are using environment variables for configuration, leave this commented out.
+    # volumes:
+    #   - ./config.toml:/config.toml
