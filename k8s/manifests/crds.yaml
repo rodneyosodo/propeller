@@ -1,0 +1,334 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: proplets.propeller.absmach.fr
+  labels:
+    app.kubernetes.io/name: propeller
+    app.kubernetes.io/component: crd
+spec:
+  group: propeller.absmach.fr
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - type
+            - connectionConfig
+            properties:
+              type:
+                type: string
+                enum:
+                - k8s
+                - external
+                description: Type of proplet (k8s or external)
+              external:
+                type: object
+                properties:
+                  endpoint:
+                    type: string
+                    description: Address of the external proplet
+                  deviceType:
+                    type: string
+                    description: Type of external device
+                  capabilities:
+                    type: array
+                    items:
+                      type: string
+                    description: Capabilities of this proplet
+              k8s:
+                type: object
+                required:
+                - image
+                properties:
+                  image:
+                    type: string
+                    description: Container image for the proplet
+                  replicas:
+                    type: integer
+                    minimum: 1
+                    description: Number of proplet instances
+              resources:
+                type: object
+                properties:
+                  cpu:
+                    type: string
+                    description: CPU capacity
+                  memory:
+                    type: string
+                    description: Memory capacity
+                  custom:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    description: Custom resource constraints
+              connectionConfig:
+                type: object
+                required:
+                - domainId
+                - channelId
+                properties:
+                  domainId:
+                    type: string
+                    description: Domain ID for MQTT communication
+                  channelId:
+                    type: string
+                    description: Channel ID for MQTT communication
+                  broker:
+                    type: string
+                    description: MQTT broker address
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum:
+                - Initializing
+                - Running
+                - Offline
+                - Failed
+                description: Current phase of the proplet
+              taskCount:
+                type: integer
+                minimum: 0
+                description: Number of tasks currently running
+              lastSeen:
+                type: string
+                format: date-time
+                description: Last time we received heartbeat
+              conditions:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - type
+                  - status
+                  - lastTransitionTime
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                      - Ready
+                      - Connected
+                      - Healthy
+                    status:
+                      type: string
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+              availableResources:
+                type: object
+                properties:
+                  cpu:
+                    type: string
+                  memory:
+                    type: string
+                  custom:
+                    type: object
+                    additionalProperties:
+                      type: string
+              k8sStatus:
+                type: object
+                properties:
+                  readyReplicas:
+                    type: integer
+                    minimum: 0
+                  availableReplicas:
+                    type: integer
+                    minimum: 0
+    additionalPrinterColumns:
+    - name: Type
+      type: string
+      jsonPath: .spec.type
+    - name: Phase
+      type: string
+      jsonPath: .status.phase
+    - name: Tasks
+      type: integer
+      jsonPath: .status.taskCount
+    - name: Last Seen
+      type: date
+      jsonPath: .status.lastSeen
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    subresources:
+      status: {}
+  scope: Namespaced
+  names:
+    plural: proplets
+    singular: proplet
+    kind: Proplet
+    categories:
+    - propeller
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: tasks.propeller.absmach.fr
+  labels:
+    app.kubernetes.io/name: propeller
+    app.kubernetes.io/component: crd
+spec:
+  group: propeller.absmach.fr
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - name
+            - imageUrl
+            properties:
+              name:
+                type: string
+                description: Name of the task
+              imageUrl:
+                type: string
+                description: OCI registry URL for the WebAssembly workload
+              file:
+                type: string
+                format: byte
+                description: WebAssembly binary (alternative to imageUrl)
+              cliArgs:
+                type: array
+                items:
+                  type: string
+                description: Command line arguments
+              inputs:
+                type: object
+                additionalProperties: true
+                description: Input parameters
+              propletSelector:
+                type: object
+                properties:
+                  matchLabels:
+                    type: object
+                    additionalProperties:
+                      type: string
+                    description: Match proplets by labels
+                  matchDeviceTypes:
+                    type: array
+                    items:
+                      type: string
+                    description: Match external proplets by device type
+                  matchCapabilities:
+                    type: array
+                    items:
+                      type: string
+                    description: Match proplets with specific capabilities
+              preferredPropletType:
+                type: string
+                enum:
+                - k8s
+                - external
+                - any
+                description: Preferred proplet type
+              resourceRequirements:
+                type: object
+                properties:
+                  cpu:
+                    type: string
+                  memory:
+                    type: string
+                  custom:
+                    type: object
+                    additionalProperties:
+                      type: string
+          status:
+            type: object
+            properties:
+              phase:
+                type: string
+                enum:
+                - Pending
+                - Running
+                - Completed
+                - Failed
+                description: Current phase of the task
+              assignedProplet:
+                type: string
+                description: Proplet running this task
+              startTime:
+                type: string
+                format: date-time
+                description: Task start time
+              finishTime:
+                type: string
+                format: date-time
+                description: Task completion time
+              results:
+                type: object
+                additionalProperties: true
+                description: Task execution results
+              error:
+                type: string
+                description: Error message if task failed
+              conditions:
+                type: array
+                items:
+                  type: object
+                  required:
+                  - type
+                  - status
+                  - lastTransitionTime
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                      - Scheduled
+                      - Started
+                      - Completed
+                    status:
+                      type: string
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                    lastTransitionTime:
+                      type: string
+                      format: date-time
+                    reason:
+                      type: string
+                    message:
+                      type: string
+    additionalPrinterColumns:
+    - name: Phase
+      type: string
+      jsonPath: .status.phase
+    - name: Proplet
+      type: string
+      jsonPath: .status.assignedProplet
+    - name: Start Time
+      type: date
+      jsonPath: .status.startTime
+    - name: Age
+      type: date
+      jsonPath: .metadata.creationTimestamp
+    subresources:
+      status: {}
+  scope: Namespaced
+  names:
+    plural: tasks
+    singular: task
+    kind: Task
+    categories:
+    - propeller

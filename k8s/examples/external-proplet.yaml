@@ -1,0 +1,99 @@
+# Example: External Proplet running on ESP32 device
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: esp32-sensor-01
+  namespace: default
+  labels:
+    device-type: esp32
+    location: factory-floor
+    capability: sensor
+spec:
+  type: external
+  external:
+    endpoint: "192.168.1.100:8080"
+    deviceType: esp32
+    capabilities:
+      - wasm
+      - sensor
+      - temperature
+      - humidity
+      - wifi
+  connectionConfig:
+    domainId: propeller
+    channelId: control
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "100m"      # ESP32 equivalent processing power
+    memory: "512KB"  # Available RAM for WASM execution
+    custom:
+      flash: "4MB"
+      gpio_pins: "30"
+---
+# Example: External Proplet running on Raspberry Pi
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: raspberrypi-edge-01
+  namespace: default
+  labels:
+    device-type: raspberry-pi
+    location: remote-site
+    capability: edge-computing
+spec:
+  type: external
+  external:
+    endpoint: "10.0.1.50:8080"
+    deviceType: raspberry-pi
+    capabilities:
+      - wasm
+      - python
+      - camera
+      - ai-inference
+      - edge-ml
+      - storage
+  connectionConfig:
+    domainId: propeller
+    channelId: control
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "1000m"     # Quad-core ARM Cortex-A72
+    memory: "4Gi"    # 4GB RAM
+    custom:
+      storage: "64GB"
+      gpu: "VideoCore VI"
+---
+# Example: Industrial IoT Gateway
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: iot-gateway-01
+  namespace: industrial
+  labels:
+    device-type: industrial-gateway
+    location: production-line-a
+    capability: protocol-bridge
+spec:
+  type: external
+  external:
+    endpoint: "172.16.10.100:8080"
+    deviceType: industrial-gateway
+    capabilities:
+      - wasm
+      - modbus
+      - opcua
+      - mqtt
+      - can-bus
+      - ethernet
+      - protocol-conversion
+  connectionConfig:
+    domainId: propeller
+    channelId: industrial
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "2000m"     # Industrial-grade ARM processor
+    memory: "8Gi"    # 8GB RAM for buffering
+    custom:
+      storage: "256GB"
+      interfaces: "RS485,Ethernet,CAN,Digital I/O"
+      operating_temp: "-40C to +70C"

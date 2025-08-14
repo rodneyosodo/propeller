@@ -1,0 +1,173 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: propeller-system
+  labels:
+    app.kubernetes.io/name: propeller
+    app.kubernetes.io/component: system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: propeller-operator
+  namespace: propeller-system
+  labels:
+    app.kubernetes.io/name: propeller-operator
+    app.kubernetes.io/component: controller
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: propeller-operator-manager
+  labels:
+    app.kubernetes.io/name: propeller-operator
+    app.kubernetes.io/component: rbac
+rules:
+- apiGroups:
+  - propeller.absmach.fr
+  resources:
+  - proplets
+  - proplets/status
+  - proplets/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - propeller.absmach.fr
+  resources:
+  - tasks
+  - tasks/status
+  - tasks/finalizers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - replicasets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - services
+  - configmaps
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - create
+  - get
+  - list
+  - update
+  - patch
+  - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: propeller-operator-manager
+  labels:
+    app.kubernetes.io/name: propeller-operator
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: propeller-operator-manager
+subjects:
+- kind: ServiceAccount
+  name: propeller-operator
+  namespace: propeller-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: propeller-operator-leader-election
+  namespace: propeller-system
+  labels:
+    app.kubernetes.io/name: propeller-operator
+    app.kubernetes.io/component: rbac
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: propeller-operator-leader-election
+  namespace: propeller-system
+  labels:
+    app.kubernetes.io/name: propeller-operator
+    app.kubernetes.io/component: rbac
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: propeller-operator-leader-election
+subjects:
+- kind: ServiceAccount
+  name: propeller-operator
+  namespace: propeller-system

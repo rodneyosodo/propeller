@@ -1,0 +1,192 @@
+# Example: Edge sensor data processing task
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Task
+metadata:
+  name: sensor-data-processing
+  namespace: default
+  labels:
+    task-type: edge-processing
+    data-source: sensors
+spec:
+  name: sensor-processing
+  imageUrl: registry.example.com/sensor-processor:v1.0.0
+  cliArgs:
+    - "--sampling-rate=1000"
+    - "--filter=low-pass"
+  inputs:
+    sensor_types: ["temperature", "humidity", "pressure"]
+    reporting_interval: 60
+    alert_thresholds:
+      temperature: 75.0
+      humidity: 80.0
+  preferredPropletType: external  # Prefer external proplets for edge processing
+  propletSelector:
+    matchDeviceTypes:
+      - esp32
+      - raspberry-pi
+      - industrial-gateway
+    matchCapabilities:
+      - sensor
+      - wasm
+    matchLabels:
+      location: factory-floor
+  resourceRequirements:
+    cpu: "100m"
+    memory: "64Mi"
+    custom:
+      flash: "1MB"
+---
+# Example: Machine Learning inference task
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Task
+metadata:
+  name: ml-image-classification
+  namespace: compute
+  labels:
+    task-type: ml-inference
+    model-type: image-classification
+spec:
+  name: image-classifier
+  imageUrl: registry.example.com/ml-inference:v2.1.0
+  cliArgs:
+    - "--model=resnet50"
+    - "--batch-size=32"
+    - "--precision=fp16"
+  inputs:
+    model_path: "/models/resnet50.onnx"
+    input_format: "RGB"
+    output_classes: 1000
+  preferredPropletType: k8s  # Prefer K8s proplets for ML workloads
+  propletSelector:
+    matchLabels:
+      gpu-enabled: "true"
+      workload-type: compute-intensive
+  resourceRequirements:
+    cpu: "2000m"
+    memory: "4Gi"
+    custom:
+      gpu: "nvidia.com/gpu=1"
+---
+# Example: IoT data aggregation task
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Task
+metadata:
+  name: iot-data-aggregation
+  namespace: industrial
+  labels:
+    task-type: data-aggregation
+    protocol: modbus
+spec:
+  name: modbus-aggregator
+  imageUrl: registry.example.com/protocol-bridge:v1.5.0
+  cliArgs:
+    - "--protocol=modbus-tcp"
+    - "--scan-interval=5000"
+    - "--devices-config=/config/devices.json"
+  inputs:
+    devices:
+      - address: "192.168.1.10"
+        registers: [1, 2, 3, 4, 5]
+      - address: "192.168.1.11"
+        registers: [10, 11, 12]
+    output_format: "mqtt"
+    mqtt_topic: "factory/data/aggregated"
+  preferredPropletType: external
+  propletSelector:
+    matchDeviceTypes:
+      - industrial-gateway
+    matchCapabilities:
+      - modbus
+      - protocol-conversion
+    matchLabels:
+      location: production-line-a
+  resourceRequirements:
+    cpu: "200m"
+    memory: "128Mi"
+---
+# Example: Batch data processing task (any proplet type)
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Task
+metadata:
+  name: batch-data-transform
+  namespace: default
+  labels:
+    task-type: batch-processing
+    schedule: nightly
+spec:
+  name: data-transformer
+  imageUrl: registry.example.com/data-processor:v3.0.0
+  cliArgs:
+    - "--input-format=csv"
+    - "--output-format=parquet"
+    - "--compression=snappy"
+  inputs:
+    input_path: "/data/raw/daily-export.csv"
+    output_path: "/data/processed/"
+    transformations:
+      - "normalize_timestamps"
+      - "filter_nulls"
+      - "aggregate_by_hour"
+  preferredPropletType: any  # Can run on either K8s or external proplets
+  resourceRequirements:
+    cpu: "500m"
+    memory: "1Gi"
+    custom:
+      storage: "10Gi"
+---
+# Example: Real-time monitoring task
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Task
+metadata:
+  name: realtime-monitor
+  namespace: monitoring
+  labels:
+    task-type: monitoring
+    priority: high
+spec:
+  name: system-monitor
+  imageUrl: registry.example.com/monitor:v1.2.0
+  cliArgs:
+    - "--metrics=cpu,memory,disk,network"
+    - "--interval=1000"
+    - "--alert-enabled=true"
+  inputs:
+    alert_webhooks:
+      - "https://alerts.example.com/webhook"
+    thresholds:
+      cpu_percent: 90.0
+      memory_percent: 85.0
+      disk_percent: 95.0
+  preferredPropletType: any
+  propletSelector:
+    matchCapabilities:
+      - wasm
+  resourceRequirements:
+    cpu: "50m"
+    memory: "32Mi"
+---
+# Example: Development/testing task
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Task
+metadata:
+  name: hello-world-test
+  namespace: development
+  labels:
+    task-type: test
+    environment: dev
+spec:
+  name: hello-world
+  imageUrl: registry.example.com/hello-world:latest
+  cliArgs:
+    - "--message=Hello from Hybrid Propeller!"
+    - "--repeat=5"
+  inputs:
+    output_format: "json"
+    log_level: "debug"
+  preferredPropletType: k8s  # Use K8s proplets for dev/test
+  propletSelector:
+    matchLabels:
+      environment: dev
+  resourceRequirements:
+    cpu: "10m"
+    memory: "16Mi"

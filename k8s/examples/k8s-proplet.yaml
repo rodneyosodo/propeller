@@ -1,0 +1,120 @@
+# Example: K8s-managed Proplet for general workloads
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: k8s-worker-pool
+  namespace: default
+  labels:
+    proplet-type: k8s
+    workload-type: general
+spec:
+  type: k8s
+  k8s:
+    image: propeller/proplet:latest
+    replicas: 3
+  connectionConfig:
+    domainId: propeller
+    channelId: control
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "500m"
+    memory: "512Mi"
+---
+# Example: High-performance K8s Proplet for compute-intensive workloads
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: k8s-compute-pool
+  namespace: compute
+  labels:
+    proplet-type: k8s
+    workload-type: compute-intensive
+    gpu-enabled: "true"
+spec:
+  type: k8s
+  k8s:
+    image: propeller/proplet:gpu-latest
+    replicas: 2
+  connectionConfig:
+    domainId: propeller
+    channelId: compute
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "4000m"      # 4 CPU cores
+    memory: "16Gi"    # 16GB RAM
+    custom:
+      gpu: "nvidia.com/gpu=1"
+      storage: "100Gi"
+---
+# Example: Development/Testing K8s Proplet
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: k8s-dev-pool
+  namespace: development
+  labels:
+    proplet-type: k8s
+    workload-type: development
+    environment: dev
+spec:
+  type: k8s
+  k8s:
+    image: propeller/proplet:dev-latest
+    replicas: 1
+  connectionConfig:
+    domainId: propeller-dev
+    channelId: control
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "100m"       # Minimal resources for dev
+    memory: "256Mi"
+---
+# Example: Auto-scaling K8s Proplet with HPA
+apiVersion: propeller.absmach.fr/v1alpha1
+kind: Proplet
+metadata:
+  name: k8s-autoscale-pool
+  namespace: production
+  labels:
+    proplet-type: k8s
+    workload-type: variable-load
+    autoscaling: enabled
+spec:
+  type: k8s
+  k8s:
+    image: propeller/proplet:stable
+    replicas: 2  # Minimum replicas
+  connectionConfig:
+    domainId: propeller
+    channelId: production
+    broker: mqtt://mqtt-broker.propeller-system.svc.cluster.local:1883
+  resources:
+    cpu: "1000m"
+    memory: "1Gi"
+---
+# HPA for auto-scaling proplet
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: k8s-autoscale-pool-hpa
+  namespace: production
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: k8s-autoscale-pool-proplet
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
