@@ -16,4 +16,5 @@ RUN apk update \
 
 FROM scratch
 COPY --from=builder /exe /
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENTRYPOINT ["/exe"]
