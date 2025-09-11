@@ -29,14 +29,14 @@ jobs:
       - name: Run linters
         uses: golangci/golangci-lint-action@v8
         with:
-          version: v2.3.0
+          version: v2.4.0
           args: --config ./.golangci.yaml
 
       - name: Install TinyGo
         run: |
-          wget wget https://github.com/tinygo-org/tinygo/releases/download/v0.39.0/tinygo_0.39.0_amd64.deb
+          wget https://github.com/tinygo-org/tinygo/releases/download/v0.39.0/tinygo_0.39.0_amd64.deb
           sudo dpkg -i tinygo_0.39.0_amd64.deb
 
-      - name: Build proxy
+      - name: Build Artifacts
         run: |
           make all -j $(nproc)
