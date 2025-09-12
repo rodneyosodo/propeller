@@ -31,7 +31,7 @@ define make_docker
 		--build-arg VERSION=$(VERSION) \
 		--build-arg COMMIT=$(COMMIT) \
 		--build-arg TIME=$(TIME) \
-		--tag=$(DOCKER_IMAGE_NAME_PREFIX)-$(svc) \
+		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc) \
 		-f docker/Dockerfile .
 endef
 
@@ -41,13 +41,13 @@ define make_docker_dev
 	docker build \
 		--no-cache \
 		--build-arg SVC=$(svc) \
-		--tag=$(DOCKER_IMAGE_NAME_PREFIX)-$(svc) \
+		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc) \
 		-f docker/Dockerfile.dev ./build
 endef
 
 define docker_push
 		for svc in $(SERVICES); do \
-			docker push $(DOCKER_IMAGE_NAME_PREFIX)-$$svc:$(1); \
+			docker push $(DOCKER_IMAGE_NAME_PREFIX)/$$svc:$(1); \
 		done
 endef
 
