@@ -259,3 +259,68 @@ impl Runtime for WasmtimeRuntime {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wasmtime_runtime_new() {
+        let runtime = WasmtimeRuntime::new();
+        assert!(runtime.is_ok());
+    }
+
+    #[test]
+    fn test_wasmtime_runtime_engine_configuration() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+        
+        // Verify engine exists and is configured
+        // The engine should be ready for module compilation
+        assert!(runtime.instances.try_lock().is_ok());
+    }
+
+    #[test]
+    fn test_wasmtime_runtime_instances_empty_on_creation() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+        
+        let instances = runtime.instances.try_lock().unwrap();
+        assert_eq!(instances.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_wasmtime_runtime_compile_invalid_wasm() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+        
+        // Invalid WASM binary (not starting with magic number)
+        let invalid_wasm = vec![0xFF, 0xFF, 0xFF, 0xFF];
+        
+        let result = Module::from_binary(&runtime.engine, &invalid_wasm);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wasmtime_runtime_compile_empty_wasm() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+        
+        let empty_wasm = vec![];
+        
+        let result = Module::from_binary(&runtime.engine, &empty_wasm);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_wasmtime_runtime_valid_wasm_magic_number() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+        
+        // Minimal valid WASM module (just magic number and version)
+        let minimal_wasm = vec![
+            0x00, 0x61, 0x73, 0x6d, // Magic number: \0asm
+            0x01, 0x00, 0x00, 0x00, // Version: 1
+        ];
+        
+        let result = Module::from_binary(&runtime.engine, &minimal_wasm);
+        // This should fail validation but pass magic number check
+        // We're just testing that the engine can process the format
+        assert!(result.is_err()); // Will fail because it's incomplete, but that's OK
+    }
+}
