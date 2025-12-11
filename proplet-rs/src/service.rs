@@ -247,9 +247,6 @@ impl PropletService {
                 .await;
 
             // Publish result
-            let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");
-
-            // Build payload based on result
             let payload = match result {
                 Ok(data) => {
                     let result_str = String::from_utf8_lossy(&data).to_string();
@@ -270,6 +267,8 @@ impl PropletService {
                     })
                 }
             };
+
+            let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");
 
             info!("Publishing result for task {}: {:?}", task_id, payload);
 

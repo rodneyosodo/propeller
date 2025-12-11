@@ -72,7 +72,7 @@ async fn main() -> Result<()> {
         Arc::new(HostRuntime::new(external_runtime.clone()))
     } else {
         info!("Using Wasmtime runtime");
-        Arc::new(WasmtimeRuntime::new())
+        Arc::new(WasmtimeRuntime::new()?)
     };
 
     // Create and run service

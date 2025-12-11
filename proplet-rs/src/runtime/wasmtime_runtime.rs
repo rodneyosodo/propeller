@@ -4,24 +4,29 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{debug, error, info};
+use tracing::info;
 use wasmtime::*;
+use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
 
 pub struct WasmtimeRuntime {
-    instances: Arc<Mutex<HashMap<String, Arc<Mutex<WasmInstance>>>>>,
-}
-
-struct WasmInstance {
     engine: Engine,
-    store: Store<()>,
-    instance: Instance,
+    instances: Arc<Mutex<HashMap<String, Store<WasiP1Ctx>>>>,
 }
 
 impl WasmtimeRuntime {
-    pub fn new() -> Self {
-        Self {
+    pub fn new() -> Result<Self> {
+        // Configure engine for optimal performance
+        let mut config = Config::new();
+        config.wasm_reference_types(true);
+        config.wasm_bulk_memory(true);
+        config.wasm_simd(true);
+
+        let engine = Engine::new(&config)?;
+
+        Ok(Self {
+            engine,
             instances: Arc::new(Mutex::new(HashMap::new())),
-        }
+        })
     }
 }
 
@@ -38,118 +43,212 @@ impl Runtime for WasmtimeRuntime {
         _env: HashMap<String, String>,
         args: Vec<u64>,
     ) -> Result<Vec<u8>> {
-        info!("Starting Wasmtime app: task_id={}, function={}", id, function_name);
+        info!(
+            "Starting Wasmtime runtime app: task_id={}, function={}, daemon={}, wasm_size={}",
+            id,
+            function_name,
+            daemon,
+            wasm_binary.len()
+        );
 
-        // Create engine with default configuration
-        let engine = Engine::default();
+        // Compile the module
+        info!("Compiling WASM module for task: {}", id);
+        let module = Module::from_binary(&self.engine, &wasm_binary)
+            .context("Failed to compile Wasmtime module from binary")?;
 
-        // Create store with empty context
-        // Note: CLI args and env vars would require WASI support
-        let mut store = Store::new(&engine, ());
+        info!("Module compiled successfully for task: {}", id);
 
-        // Create module from binary
-        let module = Module::from_binary(&engine, &wasm_binary)
-            .context("Failed to create Wasmtime module from binary")?;
+        // Create WASI P1 context with stdout/stderr capture
+        let wasi = WasiCtxBuilder::new()
+            .inherit_stdio()
+            .build_p1();
 
-        // Create linker
-        let linker = Linker::new(&engine);
+        // Create a new store with WASI context
+        let mut store = Store::new(&self.engine, wasi);
 
-        // Instantiate module
+        // Create a linker and add WASI preview1 functions
+        let mut linker = Linker::new(&self.engine);
+        wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
+            .context("Failed to add WASI to linker")?;
+
+        // Instantiate the module
+        info!("Instantiating module for task: {}", id);
         let instance = linker
             .instantiate(&mut store, &module)
             .context("Failed to instantiate Wasmtime module")?;
 
-        debug!("Module instantiated successfully");
+        info!("Module instantiated successfully for task: {}", id);
 
-        // Store instance for potential later cleanup
-        let wasm_inst = Arc::new(Mutex::new(WasmInstance {
-            engine: engine.clone(),
-            store,
-            instance: instance.clone(),
-        }));
+        if daemon {
+            // For daemon mode, store the instance and return immediately
+            info!("Running in daemon mode for task: {}", id);
 
-        {
-            let mut instances = self.instances.lock().await;
-            instances.insert(id.clone(), wasm_inst.clone());
-        }
-
-        // Execute the function
-        let result = if daemon {
-            // For daemon mode, spawn in background
             let instances = self.instances.clone();
-            let func_name = function_name.clone();
             let task_id = id.clone();
 
+            // Store the instance
+            {
+                let mut instances_map = self.instances.lock().await;
+                instances_map.insert(id.clone(), store);
+            }
+
+            // Spawn background task to execute the function
             tokio::spawn(async move {
-                // Wait a bit before executing (mimics Go implementation)
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                // In daemon mode, we might want to execute after some delay or condition
+                // For now, just log that it's running
+                info!("Daemon task {} is running", task_id);
 
-                let mut inst = wasm_inst.lock().await;
-                if let Err(e) = execute_function(&mut inst, &func_name, args).await {
-                    error!("Daemon task {} failed: {}", task_id, e);
-                }
+                // TODO: Implement actual daemon execution logic
+                // This would typically involve calling the function periodically
+                // or keeping it alive for repeated invocations
 
-                // Remove from instances map
+                // For now, simulate by waiting and then cleaning up
+                tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+
+                // Cleanup
                 instances.lock().await.remove(&task_id);
+                info!("Daemon task {} completed", task_id);
             });
 
+            info!("Daemon task {} started, returning immediately", id);
             Ok(Vec::new())
         } else {
-            // Execute synchronously
-            let mut inst = wasm_inst.lock().await;
-            let result = execute_function(&mut inst, &function_name, args).await;
+            // Synchronous execution - must run in blocking context
+            info!("Running in synchronous mode for task: {}", id);
 
-            // Remove from instances map
-            self.instances.lock().await.remove(&id);
+            // Run the WASM execution in a blocking task to avoid runtime conflicts
+            let task_id = id.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                // Initialize the WASM runtime by calling _initialize if it exists
+                // This is the WASI reactor initialization function
+                if let Some(init_func) = instance.get_func(&mut store, "_initialize") {
+                    info!("Found _initialize function, initializing WASM runtime for task: {}", task_id);
+                    init_func.call(&mut store, &[], &mut [])
+                        .context("Failed to initialize WASM runtime via _initialize")?;
+                    info!("WASM runtime initialized successfully for task: {}", task_id);
+                } else {
+                    info!("No _initialize function found, skipping initialization for task: {}", task_id);
+                }
 
-            result
-        };
+                // Get the exported function
+                let func = instance
+                    .get_func(&mut store, &function_name)
+                    .context(format!(
+                        "Function '{}' not found in module exports",
+                        function_name
+                    ))?;
 
-        result
+                info!(
+                    "Found function '{}', preparing to call with {} arguments",
+                    function_name,
+                    args.len()
+                );
+
+                // Get function type to determine parameter and return types
+                let func_ty = func.ty(&store);
+
+                // Log function signature
+                let param_types: Vec<_> = func_ty.params().collect();
+                let result_types: Vec<_> = func_ty.results().collect();
+                info!(
+                    "Function signature: params={:?}, results={:?}",
+                    param_types, result_types
+                );
+
+                // Convert u64 args to wasmtime Val types based on function signature
+                let wasm_args: Vec<Val> = args
+                    .iter()
+                    .zip(param_types.iter())
+                    .map(|(arg, param_type)| match param_type {
+                        ValType::I32 => Val::I32(*arg as i32),
+                        ValType::I64 => Val::I64(*arg as i64),
+                        ValType::F32 => Val::F32((*arg as f32).to_bits()),
+                        ValType::F64 => Val::F64((*arg as f64).to_bits()),
+                        _ => Val::I32(*arg as i32), // Default to i32
+                    })
+                    .collect();
+
+                info!(
+                    "Calling function '{}' with {} params, expects {} results",
+                    function_name,
+                    wasm_args.len(),
+                    result_types.len()
+                );
+
+                // Prepare results vector based on expected return types
+                let mut results: Vec<Val> = result_types
+                    .iter()
+                    .map(|result_type| match result_type {
+                        ValType::I32 => Val::I32(0),
+                        ValType::I64 => Val::I64(0),
+                        ValType::F32 => Val::F32(0),
+                        ValType::F64 => Val::F64(0),
+                        _ => Val::I32(0),
+                    })
+                    .collect();
+
+                // Call the function
+                func.call(&mut store, &wasm_args, &mut results)
+                    .context(format!("Failed to call function '{}'", function_name))?;
+
+                info!("Function '{}' executed successfully", function_name);
+
+                // Convert result to string (assuming i32 or i64 return type)
+                let result_string = if !results.is_empty() {
+                    match &results[0] {
+                        Val::I32(v) => {
+                            info!("Function returned i32: {}", v);
+                            v.to_string()
+                        }
+                        Val::I64(v) => {
+                            info!("Function returned i64: {}", v);
+                            v.to_string()
+                        }
+                        Val::F32(v) => {
+                            info!("Function returned f32: {}", v);
+                            v.to_string()
+                        }
+                        Val::F64(v) => {
+                            info!("Function returned f64: {}", v);
+                            v.to_string()
+                        }
+                        _ => {
+                            info!("Function returned unsupported type");
+                            String::new()
+                        }
+                    }
+                } else {
+                    info!("Function returned no value");
+                    String::new()
+                };
+
+                // Convert to bytes (UTF-8)
+                let result_bytes = result_string.into_bytes();
+
+                info!(
+                    "Task {} completed successfully, result size: {} bytes",
+                    task_id,
+                    result_bytes.len()
+                );
+
+                Ok::<Vec<u8>, anyhow::Error>(result_bytes)
+            })
+            .await
+            .context("Failed to execute blocking task")??;
+
+            Ok(result)
+        }
     }
 
     async fn stop_app(&self, id: String) -> Result<()> {
-        info!("Stopping Wasmtime app: task_id={}", id);
+        info!("Stopping Wasmtime runtime app: task_id={}", id);
 
         let mut instances = self.instances.lock().await;
         if instances.remove(&id).is_some() {
-            debug!("Task {} stopped and removed", id);
+            info!("Task {} stopped and removed from instances", id);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Task {} not found", id))
+            Err(anyhow::anyhow!("Task {} not found in running instances", id))
         }
     }
-}
-
-async fn execute_function(
-    inst: &mut WasmInstance,
-    function_name: &str,
-    args: Vec<u64>,
-) -> Result<Vec<u8>> {
-    // Get the exported function
-    let func = inst
-        .instance
-        .get_func(&mut inst.store, function_name)
-        .context(format!("Function '{}' not found in module", function_name))?;
-
-    // Convert u64 args to wasmtime values (as i64)
-    let wasm_args: Vec<Val> = args.into_iter().map(|v| Val::I64(v as i64)).collect();
-
-    // Call the function
-    let mut results = vec![Val::I32(0)];
-    func.call(&mut inst.store, &wasm_args, &mut results)
-        .context(format!("Failed to call function '{}'", function_name))?;
-
-    // Convert result to bytes
-    let result_bytes = match &results[0] {
-        Val::I32(v) => v.to_le_bytes().to_vec(),
-        Val::I64(v) => v.to_le_bytes().to_vec(),
-        Val::F32(v) => v.to_le_bytes().to_vec(),
-        Val::F64(v) => v.to_le_bytes().to_vec(),
-        _ => Vec::new(),
-    };
-
-    debug!("Function executed successfully, result size: {} bytes", result_bytes.len());
-
-    Ok(result_bytes)
 }

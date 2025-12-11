@@ -43,21 +43,31 @@ impl Proplet {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartRequest {
     pub id: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub cli_args: Vec<String>,
     pub name: String,
     #[serde(default)]
     pub state: u8,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub file: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub image_url: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_null_default")]
     pub inputs: Vec<u64>,
     #[serde(default)]
     pub daemon: bool,
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
+}
+
+// Helper function to deserialize null as default value
+fn deserialize_null_default<'de, D, T>(deserializer: D) -> Result<T, D::Error>
+where
+    T: Default + Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    let opt = Option::deserialize(deserializer)?;
+    Ok(opt.unwrap_or_default())
 }
 
 impl StartRequest {
@@ -121,7 +131,20 @@ pub struct Chunk {
     pub app_name: String,
     pub chunk_idx: usize,
     pub total_chunks: usize,
+    #[serde(deserialize_with = "deserialize_base64")]
     pub data: Vec<u8>,
+}
+
+// Helper function to deserialize base64 string to Vec<u8>
+fn deserialize_base64<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde::de::Error;
+
+    let s = String::deserialize(deserializer)?;
+    STANDARD.decode(&s).map_err(Error::custom)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

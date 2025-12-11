@@ -125,9 +125,12 @@ impl Runtime for HostRuntime {
         info!("About to spawn command for task: {}", id);
 
         // Spawn the process
-        let child = cmd
-            .spawn()
-            .context("Failed to spawn host runtime process")?;
+        let child = cmd.spawn().context(format!(
+            "Failed to spawn host runtime process: {}. Command: {} {:?}",
+            self.runtime_path,
+            self.runtime_path,
+            cli_args
+        ))?;
 
         info!("Process spawned with PID: {:?}", child.id());
 
@@ -221,3 +224,4 @@ impl Runtime for HostRuntime {
         }
     }
 }
+
