@@ -100,12 +100,9 @@ pub struct MqttMessage {
 
 impl MqttMessage {
     pub fn decode<T: DeserializeOwned>(&self) -> Result<T> {
-        let payload_str = String::from_utf8_lossy(&self.payload);
-        debug!("Attempting to decode payload from topic '{}': {}", self.topic, payload_str);
-
         serde_json::from_slice(&self.payload).context(format!(
-            "Failed to deserialize message payload from topic '{}'. Payload: {}",
-            self.topic, payload_str
+            "Failed to deserialize message payload from topic '{}'",
+            self.topic
         ))
     }
 }

@@ -193,11 +193,19 @@ impl PropletService {
             // Decode base64-encoded wasm file
             debug!("Decoding base64 wasm file, encoded size: {}", req.file.len());
             use base64::{engine::general_purpose::STANDARD, Engine};
-            let decoded = STANDARD
-                .decode(&req.file)
-                .context("Failed to decode base64 file")?;
-            info!("Decoded wasm binary, size: {} bytes", decoded.len());
-            decoded
+            match STANDARD.decode(&req.file) {
+                Ok(decoded) => {
+                    info!("Decoded wasm binary, size: {} bytes", decoded.len());
+                    decoded
+                }
+                Err(e) => {
+                    error!("Failed to decode base64 file for task {}: {}", req.id, e);
+                    self.running_tasks.lock().await.remove(&req.id);
+                    self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
+                        .await?;
+                    return Err(e.into());
+                }
+            }
         } else if !req.image_url.is_empty() {
             // Request binary from registry
             info!("Requesting binary from registry: {}", req.image_url);
@@ -208,13 +216,19 @@ impl PropletService {
                 Ok(binary) => binary,
                 Err(e) => {
                     error!("Failed to get binary for task {}: {}", req.id, e);
+                    self.running_tasks.lock().await.remove(&req.id);
                     self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
                         .await?;
                     return Err(e);
                 }
             }
         } else {
-            return Err(anyhow::anyhow!("No wasm binary or image URL provided"));
+            let err = anyhow::anyhow!("No wasm binary or image URL provided");
+            error!("Validation error for task {}: {}", req.id, err);
+            self.running_tasks.lock().await.remove(&req.id);
+            self.publish_result(&req.id, Vec::new(), Some(err.to_string()))
+                .await?;
+            return Err(err);
         };
 
         // Execute the task
@@ -246,33 +260,31 @@ impl PropletService {
                 )
                 .await;
 
-            // Publish result
-            let payload = match result {
+            // Publish result using standardized ResultMessage
+            let (result_data, error) = match result {
                 Ok(data) => {
                     let result_str = String::from_utf8_lossy(&data).to_string();
                     info!("Task {} completed successfully. Result: {}", task_id, result_str);
-
-                    serde_json::json!({
-                        "task_id": task_id.clone(),
-                        "results": result_str,
-                    })
+                    (data, None)
                 }
                 Err(e) => {
                     error!("Task {} failed: {}", task_id, e);
-
-                    serde_json::json!({
-                        "task_id": task_id.clone(),
-                        "error": e.to_string(),
-                        "results": "",
-                    })
+                    (Vec::new(), Some(e.to_string()))
                 }
+            };
+
+            let result_msg = ResultMessage {
+                task_id: task_id.clone(),
+                proplet_id,
+                result: result_data,
+                error,
             };
 
             let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");
 
-            info!("Publishing result for task {}: {:?}", task_id, payload);
+            info!("Publishing result for task {}", task_id);
 
-            if let Err(e) = pubsub.publish(&topic, &payload).await {
+            if let Err(e) = pubsub.publish(&topic, &result_msg).await {
                 error!("Failed to publish result for task {}: {}", task_id, e);
             } else {
                 info!("Successfully published result for task {}", task_id);

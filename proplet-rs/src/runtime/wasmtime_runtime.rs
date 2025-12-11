@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::info;
 use wasmtime::*;
-use wasmtime_wasi::{WasiCtxBuilder, preview1::WasiP1Ctx};
+use wasmtime_wasi::{preview1::WasiP1Ctx, WasiCtxBuilder};
 
 pub struct WasmtimeRuntime {
     engine: Engine,
@@ -59,9 +59,7 @@ impl Runtime for WasmtimeRuntime {
         info!("Module compiled successfully for task: {}", id);
 
         // Create WASI P1 context with stdout/stderr capture
-        let wasi = WasiCtxBuilder::new()
-            .inherit_stdio()
-            .build_p1();
+        let wasi = WasiCtxBuilder::new().inherit_stdio().build_p1();
 
         // Create a new store with WASI context
         let mut store = Store::new(&self.engine, wasi);
@@ -155,6 +153,16 @@ impl Runtime for WasmtimeRuntime {
                     param_types, result_types
                 );
 
+                // Validate argument count matches function signature
+                if args.len() != param_types.len() {
+                    return Err(anyhow::anyhow!(
+                        "Argument count mismatch for function '{}': expected {} arguments but got {}",
+                        function_name,
+                        param_types.len(),
+                        args.len()
+                    ));
+                }
+
                 // Convert u64 args to wasmtime Val types based on function signature
                 let wasm_args: Vec<Val> = args
                     .iter()
@@ -193,29 +201,25 @@ impl Runtime for WasmtimeRuntime {
 
                 info!("Function '{}' executed successfully", function_name);
 
-                // Convert result to string (assuming i32 or i64 return type)
+                // Convert result to string
                 let result_string = if !results.is_empty() {
-                    match &results[0] {
-                        Val::I32(v) => {
-                            info!("Function returned i32: {}", v);
-                            v.to_string()
-                        }
-                        Val::I64(v) => {
-                            info!("Function returned i64: {}", v);
-                            v.to_string()
-                        }
-                        Val::F32(v) => {
-                            info!("Function returned f32: {}", v);
-                            v.to_string()
-                        }
-                        Val::F64(v) => {
-                            info!("Function returned f64: {}", v);
-                            v.to_string()
-                        }
-                        _ => {
-                            info!("Function returned unsupported type");
-                            String::new()
-                        }
+                    let result_val = &results[0];
+
+                    if let Some(v) = result_val.i32() {
+                        info!("Function returned i32: {}", v);
+                        v.to_string()
+                    } else if let Some(v) = result_val.i64() {
+                        info!("Function returned i64: {}", v);
+                        v.to_string()
+                    } else if let Some(v) = result_val.f32() {
+                        info!("Function returned f32: {}", v);
+                        v.to_string()
+                    } else if let Some(v) = result_val.f64() {
+                        info!("Function returned f64: {}", v);
+                        v.to_string()
+                    } else {
+                        info!("Function returned unsupported type");
+                        String::new()
                     }
                 } else {
                     info!("Function returned no value");
@@ -248,7 +252,10 @@ impl Runtime for WasmtimeRuntime {
             info!("Task {} stopped and removed from instances", id);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Task {} not found in running instances", id))
+            Err(anyhow::anyhow!(
+                "Task {} not found in running instances",
+                id
+            ))
         }
     }
 }
