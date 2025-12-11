@@ -14,6 +14,15 @@ pub struct WasmtimeRuntime {
 }
 
 impl WasmtimeRuntime {
+    /// Constructs a WasmtimeRuntime configured for performant Wasm execution.
+    ///
+    /// The new runtime initializes a Wasmtime engine with reference types, bulk memory, and SIMD enabled, and prepares an empty, thread-safe instance map.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let runtime = WasmtimeRuntime::new().unwrap();
+    /// ```
     pub fn new() -> Result<Self> {
         // Configure engine for optimal performance
         let mut config = Config::new();
@@ -32,6 +41,46 @@ impl WasmtimeRuntime {
 
 #[async_trait]
 impl Runtime for WasmtimeRuntime {
+    /// Starts a WASM module instance and either runs a single function synchronously or
+    /// registers the instance as a long‑running daemon and returns immediately.
+    ///
+    /// When `daemon` is true the function stores the created WASM store and spawns a background
+    /// task that keeps the instance alive; the call returns an empty `Vec<u8>` immediately.
+    /// When `daemon` is false the function invokes the named export in a blocking context,
+    /// converts the first return value to a UTF‑8 string, and returns its bytes.
+    ///
+    /// # Parameters
+    ///
+    /// - `wasm_binary`: The WASM module binary to compile and instantiate.
+    /// - `id`: Task identifier used to register and later stop daemon instances.
+    /// - `function_name`: Name of the exported function to invoke for synchronous runs.
+    /// - `daemon`: If `true` run as a background/daemon instance and return immediately.
+    /// - `args`: Positional arguments passed to the target function; each `u64` is coerced
+    ///   to the parameter type declared by the function (I32/I64/F32/F64).
+    ///
+    /// # Returns
+    ///
+    /// A `Vec<u8>` containing the UTF‑8 bytes of the first return value of the invoked function;
+    /// returns an empty `Vec<u8>` for daemon starts or when the function produces no supported result.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # // The following is an illustrative example; adjust imports/types to your crate layout.
+    /// # async fn _example() -> anyhow::Result<()> {
+    /// #     use tokio;
+    /// #     // Assume WasmtimeRuntime::new and RuntimeContext::default exist in scope.
+    /// #     let runtime = WasmtimeRuntime::new()?;
+    /// #     let wasm_bytes = vec![]; // a valid WASM binary with an exported `_start` or function
+    /// #     let ctx = RuntimeContext::default();
+    ///     let result = runtime
+    ///         .start_app(ctx, wasm_bytes, vec![], "task1".into(), "_start".into(), false, HashMap::new(), vec![])
+    ///         .await?;
+    /// #     let _ = String::from_utf8(result)?;
+    /// #     Ok(())
+    /// # }
+    /// ```
     async fn start_app(
         &self,
         _ctx: RuntimeContext,
@@ -244,6 +293,27 @@ impl Runtime for WasmtimeRuntime {
         }
     }
 
+    /// Stop a running Wasmtime app by its task id.
+    ///
+    /// Attempts to remove the instance associated with `id` from the runtime's instance map.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the task was found and removed, `Err` if no running task matched `id`.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # use tokio::runtime::Runtime;
+    /// # let rt = Runtime::new().unwrap();
+    /// # rt.block_on(async {
+    /// // Assume `runtime` is a WasmtimeRuntime with a running task stored under "task-123".
+    /// // let runtime = WasmtimeRuntime::new().unwrap();
+    /// let _ = runtime.stop_app("task-123".to_string()).await?;
+    /// # Ok::<(), anyhow::Error>(())
+    /// # });
+    /// ```
     async fn stop_app(&self, id: String) -> Result<()> {
         info!("Stopping Wasmtime runtime app: task_id={}", id);
 

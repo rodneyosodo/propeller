@@ -16,6 +16,22 @@ use tokio::sync::mpsc;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
+/// Program entry point that initializes configuration, logging, MQTT, runtime selection, and runs the Proplet service.
+///
+/// Initializes configuration from the environment, configures tracing, creates the MQTT client and event processor,
+/// selects and initializes the WebAssembly runtime (external or Wasmtime), starts the Proplet service, and installs a
+/// CTRL-C handler to perform a graceful shutdown.
+///
+/// # Returns
+///
+/// `Ok(())` when the service exits normally, or an error if initialization or service execution fails.
+///
+/// # Examples
+///
+/// ```no_run
+/// // Run the application (no-op in doctest)
+/// // tokio::runtime::Runtime::new().unwrap().block_on(crate::main()).unwrap();
+/// ```
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load configuration

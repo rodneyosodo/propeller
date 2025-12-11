@@ -17,6 +17,23 @@ pub struct HostRuntime {
 }
 
 impl HostRuntime {
+    /// Creates a new HostRuntime configured to run the given host runtime executable.
+    ///
+    /// The returned HostRuntime holds `runtime_path` as the path to the host runtime executable
+    /// and an empty, thread-safe map for tracking spawned child processes.
+    ///
+    /// # Parameters
+    ///
+    /// - `runtime_path`: Path to the host runtime executable to be invoked for running Wasm tasks.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use proplet_rs::runtime::host::HostRuntime;
+    ///
+    /// let rt = HostRuntime::new("/usr/local/bin/proplet-host".to_string());
+    /// assert!(rt.runtime_path.ends_with("proplet-host"));
+    /// ```
     pub fn new(runtime_path: String) -> Self {
         Self {
             runtime_path,
@@ -24,6 +41,23 @@ impl HostRuntime {
         }
     }
 
+    /// Creates a temporary WebAssembly file named `proplet_<id>.wasm` in the system temporary
+    /// directory, writes `wasm_binary` to it, flushes the contents, and returns the file path.
+    ///
+    /// The `id` is embedded in the filename to correlate the temp file with the originating task.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::path::PathBuf;
+    /// # async fn run_example() -> anyhow::Result<()> {
+    /// let runtime = /* obtain HostRuntime instance */ unimplemented!();
+    /// let wasm: Vec<u8> = vec![0, 1, 2, 3];
+    /// let path: PathBuf = runtime.create_temp_wasm_file("task123", &wasm).await?;
+    /// assert!(path.file_name().unwrap().to_string_lossy().starts_with("proplet_task123"));
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn create_temp_wasm_file(&self, id: &str, wasm_binary: &[u8]) -> Result<PathBuf> {
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join(format!("proplet_{}.wasm", id));
@@ -65,6 +99,37 @@ impl HostRuntime {
 
 #[async_trait]
 impl Runtime for HostRuntime {
+    /// Starts a host runtime process for the provided WebAssembly binary and returns its output.
+    ///
+    /// Creates a temporary wasm file, constructs and spawns the configured host runtime process
+    /// with the provided CLI args, environment, and numeric arguments. In daemon mode the child
+    /// process is stored and observed in the background and the function returns an empty
+    /// `Vec<u8>` immediately; in synchronous mode the function waits for process completion,
+    /// removes the temporary file, and returns the captured `stdout` bytes. Errors are returned
+    /// if process spawning, waiting, or required cleanup fail, or if the process exits with a
+    /// non-success status (the error includes the process stderr).
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::collections::HashMap;
+    /// # use tokio;
+    /// # async fn _example() -> anyhow::Result<()> {
+    /// // Prepare inputs (placeholders)
+    /// let runtime = crate::runtime::host::HostRuntime::new("/path/to/runtime".to_string());
+    /// let wasm = vec![0u8; 0]; // actual wasm bytes
+    /// let cli_args: Vec<String> = vec!["--invoke".into(), "add".into()];
+    /// let id = "task-1".to_string();
+    /// let function_name = "add".to_string();
+    /// let env: HashMap<String, String> = HashMap::new();
+    /// let args: Vec<u64> = vec![1, 2];
+    ///
+    /// // Run synchronously (will wait and return stdout bytes)
+    /// let _output = runtime
+    ///     .start_app(tokio::runtime::Handle::current(), wasm, cli_args, id, function_name, false, env, args)
+    ///     .await?;
+    /// # Ok(()) }
+    /// ```
     async fn start_app(
         &self,
         _ctx: RuntimeContext,
@@ -211,6 +276,33 @@ impl Runtime for HostRuntime {
         }
     }
 
+    /// Stop a running host runtime task by its identifier.
+    ///
+    /// Attempts to remove the tracked child process for `id` and terminate it. If a process
+    /// was found, the function sends a kill signal and returns `Ok(())`. If no process is
+    /// associated with `id`, the function returns an `Err` describing that the task was not found.
+    ///
+    /// # Parameters
+    ///
+    /// - `id`: The task identifier used when the process was started.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the tracked process was found and killed; `Err` if killing failed or the task
+    /// identifier was not found.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use proplet_rs::runtime::host::HostRuntime;
+    /// # use std::sync::Arc;
+    /// # tokio_test::block_on(async {
+    /// let rt = HostRuntime::new("/tmp/fake-runtime".into());
+    /// // Assume a daemon task was started and tracked under "task-1".
+    /// // Stop the task by id:
+    /// let _ = rt.stop_app("task-1".to_string()).await;
+    /// # });
+    /// ```
     async fn stop_app(&self, id: String) -> Result<()> {
         info!("Stopping Host runtime app: task_id={}", id);
 
@@ -224,4 +316,3 @@ impl Runtime for HostRuntime {
         }
     }
 }
-

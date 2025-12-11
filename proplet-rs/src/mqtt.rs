@@ -20,6 +20,32 @@ pub struct PubSub {
 }
 
 impl PubSub {
+    /// Create a new `PubSub` and its associated MQTT `EventLoop` from the given `MqttConfig`.
+    ///
+    /// The function parses the configured address (accepting `tcp://host:port` or `host:port`, using port `1883` when absent or not parseable), applies client ID, credentials, a 30s keep-alive, and increases the maximum packet size to 10 MB for both sent and received packets.
+    ///
+    /// Returns `Ok((PubSub, EventLoop))` on success or an error if MQTT client construction fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use proplet_rs::mqtt::{PubSub, MqttConfig};
+    ///
+    /// #[tokio::test]
+    /// async fn create_pubsub() {
+    ///     let cfg = MqttConfig {
+    ///         address: "localhost:1883".into(),
+    ///         client_id: "test-client".into(),
+    ///         timeout: 30,
+    ///         qos: 1,
+    ///         username: "user".into(),
+    ///         password: "pass".into(),
+    ///     };
+    ///
+    ///     let (pubsub, _eventloop) = PubSub::new(cfg).await.unwrap();
+    ///     // pubsub can now be used to publish/subscribe; eventloop drives incoming events.
+    /// }
+    /// ```
     pub async fn new(config: MqttConfig) -> Result<(Self, EventLoop)> {
         // Parse the address to extract host and port
         // Expected format: tcp://host:port or just host:port
@@ -99,6 +125,31 @@ pub struct MqttMessage {
 }
 
 impl MqttMessage {
+    /// Deserialize the message payload (JSON) into the requested type.
+    ///
+    /// On failure, the returned error includes context mentioning the message's topic.
+    ///
+    /// # Returns
+    ///
+    /// The deserialized value of type `T` on success.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use serde::Deserialize;
+    ///
+    /// #[derive(Deserialize, Debug, PartialEq)]
+    /// struct Item { id: u32, name: String }
+    ///
+    /// // construct a message with JSON payload
+    /// let msg = MqttMessage {
+    ///     topic: "m/domain/c/channel/path".to_string(),
+    ///     payload: serde_json::to_vec(&Item { id: 1, name: "a".into() }).unwrap(),
+    /// };
+    ///
+    /// let item: Item = msg.decode().unwrap();
+    /// assert_eq!(item, Item { id: 1, name: "a".into() });
+    /// ```
     pub fn decode<T: DeserializeOwned>(&self) -> Result<T> {
         serde_json::from_slice(&self.payload).context(format!(
             "Failed to deserialize message payload from topic '{}'",

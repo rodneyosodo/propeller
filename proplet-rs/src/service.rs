@@ -19,6 +19,23 @@ pub struct PropletService {
 }
 
 impl PropletService {
+    /// Creates a new PropletService configured to manage proplet lifecycle, messaging, and runtime tasks.
+    ///
+    /// Initializes an internal Proplet using `config.instance_id` and the agent string `"proplet-rs"`,
+    /// and prepares empty, thread-safe maps for received chunks, chunk metadata, and running tasks.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Construct required components (types shown for clarity; replace with real values).
+    /// let config = PropletConfig::default();
+    /// let pubsub = PubSub::new(); // or a test/dummy PubSub
+    /// let runtime: std::sync::Arc<dyn Runtime> = std::sync::Arc::new(MyRuntime::new());
+    ///
+    /// let service = PropletService::new(config, pubsub, runtime);
+    /// assert_eq!(service.config.instance_id, /* expected id value */ service.config.instance_id);
+    /// ```
+    pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
         let proplet = Proplet::new(config.instance_id, "proplet-rs".to_string());
 
@@ -33,6 +50,33 @@ impl PropletService {
         }
     }
 
+    /// Start the PropletService: publish discovery, subscribe to control/registry topics, spawn periodic liveliness updates,
+    /// and process incoming MQTT messages by dispatching each to a handler task.
+    ///
+    /// This method consumes an `Arc<Self>` and runs until the provided `mqtt_rx` channel is closed. For each incoming
+    /// MQTT message a new task is spawned to handle the message; liveliness updates are published on a background task.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use std::sync::Arc;
+    /// use tokio::sync::mpsc;
+    ///
+    /// // Assume `service` is an already constructed `Arc<PropletService>` and `MqttMessage` is in scope.
+    /// let (tx, rx) = mpsc::unbounded_channel();
+    /// let service: Arc<PropletService> = /* constructed elsewhere */ unimplemented!();
+    ///
+    /// // Run the service (typically spawned on the Tokio runtime)
+    /// let svc = service.clone();
+    /// tokio::spawn(async move {
+    ///     let _ = svc.run(rx).await;
+    /// });
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the receiver closes and the run loop exits, or an error if initialization (discovery/subscription)
+    /// fails.
     pub async fn run(
         self: Arc<Self>,
         mut mqtt_rx: mpsc::UnboundedReceiver<MqttMessage>,
@@ -64,6 +108,28 @@ impl PropletService {
         Ok(())
     }
 
+    /// Subscribe the service to control and registry topics for its configured domain and channel.
+    ///
+    /// Subscribes to the following topics derived from `self.config`:
+    /// - `control/manager/start`
+    /// - `control/manager/stop`
+    /// - `registry/server`
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on success, or an error if subscribing to any topic fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use anyhow::Result;
+    /// # #[tokio::test]
+    /// # async fn example() -> Result<()> {
+    /// # let service: crate::PropletService = /* construct service */ unimplemented!();
+    /// service.subscribe_topics().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn subscribe_topics(&self) -> Result<()> {
         let start_topic = build_topic(
             &self.config.domain_id,
@@ -89,6 +155,16 @@ impl PropletService {
         Ok(())
     }
 
+    /// Publishes a discovery message containing this proplet's ID and namespace to the control/proplet/create topic.
+    ///
+    /// The message's `proplet_id` is taken from `config.client_id`. The `namespace` uses `config.k8s_namespace` if set, otherwise `"default"`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Given an initialized `service: PropletService` and an async runtime:
+    /// service.publish_discovery().await?;
+    /// ```
     async fn publish_discovery(&self) -> Result<()> {
         let discovery = DiscoveryMessage {
             proplet_id: self.config.client_id.clone(),
@@ -123,6 +199,26 @@ impl PropletService {
         }
     }
 
+    /// Publish a liveliness update for this proplet.
+    ///
+    /// The function marks the proplet as alive, updates the proplet's task count from
+    /// the tracked running tasks, and publishes a `LivelinessMessage` on the
+    /// `control/proplet/alive` topic derived from the service configuration.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the liveliness message was published successfully, `Err(...)` if
+    /// the publish operation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # async fn example(svc: &crate::PropletService) -> Result<()> {
+    /// svc.publish_liveliness().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn publish_liveliness(&self) -> Result<()> {
         let mut proplet = self.proplet.lock().await;
         proplet.set_alive(true);
@@ -152,6 +248,19 @@ impl PropletService {
         Ok(())
     }
 
+    /// Dispatches an incoming MQTT message to the appropriate handler based on its topic.
+    ///
+    /// Tries to log the UTF-8 representation of the payload for debugging, then routes messages whose
+    /// topics contain "control/manager/start", "control/manager/stop", or "registry/server" to their
+    /// respective handlers. Messages from unknown topics are ignored.
+    ///
+    /// # Parameters
+    ///
+    /// - `msg`: The MQTT message whose topic and payload determine which internal handler is invoked.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if the message was handled or ignored successfully, or an error returned by a specific handler.
     async fn handle_message(&self, msg: MqttMessage) -> Result<()> {
         debug!("Handling message from topic: {}", msg.topic);
 
@@ -171,6 +280,33 @@ impl PropletService {
         }
     }
 
+    /// Handle an incoming "start" control message and initiate the requested task.
+    ///
+    /// Decodes the MQTT payload as a `StartRequest`, validates it, and records the task as running.
+    /// The function obtains the WebAssembly binary either by base64-decoding the `file` field or by
+    /// requesting and assembling chunks from the registry using `image_url`. If the binary is acquired,
+    /// the function spawns a background task that executes the app via the configured runtime and
+    /// publishes a `ResultMessage` (success or failure) to the results topic. On any failure prior to
+    /// spawning execution (decode/validation/obtaining binary), the function publishes an error result
+    /// and removes the task from the running set.
+    ///
+    /// # Parameters
+    ///
+    /// - `msg`: MQTT message containing a serialized `StartRequest` payload.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` if handling was initiated (the runtime task was spawned or an error result was published).
+    /// `Err(...)` if decoding/validation or obtaining the binary failed and the error was propagated.
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # async fn example(service: &crate::PropletService, msg: crate::mqtt::MqttMessage) -> anyhow::Result<()> {
+    /// service.handle_start_command(msg).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn handle_start_command(&self, msg: MqttMessage) -> Result<()> {
         let req: StartRequest = msg.decode().map_err(|e| {
             error!("Failed to decode start request: {}", e);
@@ -297,6 +433,27 @@ impl PropletService {
         Ok(())
     }
 
+    /// Stops the running task specified by the incoming MQTT `StopRequest`.
+    ///
+    /// The message payload is decoded to a `StopRequest` and validated; the runtime is
+    /// instructed to stop the task with the request's `id`, and the task id is removed
+    /// from the service's running task registry.
+    ///
+    /// # Parameters
+    ///
+    /// - `msg`: MQTT message whose payload must deserialize into a `StopRequest`.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` when the stop request was handled and the task was removed, or an error
+    /// if decoding, validation, or runtime stop fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// // Assuming `svc` is a PropletService and `msg` is an MqttMessage containing a valid StopRequest:
+    /// // svc.handle_stop_command(msg).await.unwrap();
+    /// ```
     async fn handle_stop_command(&self, msg: MqttMessage) -> Result<()> {
         let req: StopRequest = msg.decode()?;
         req.validate()?;
@@ -312,6 +469,24 @@ impl PropletService {
         Ok(())
     }
 
+    /// Stores an incoming chunk message for later assembly keyed by the chunk's `app_name`.
+    ///
+    /// The message payload is decoded as a `Chunk`; the function records `ChunkMetadata` (total
+    /// chunks for the app) if missing and appends the chunk bytes to the in-memory chunk list
+    /// for that app.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if decoding the MQTT message into a `Chunk` fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example(svc: &crate::PropletService, msg: crate::mqtt::MqttMessage) -> anyhow::Result<()> {
+    /// svc.handle_chunk(msg).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn handle_chunk(&self, msg: MqttMessage) -> Result<()> {
         let chunk: Chunk = msg.decode()?;
 
@@ -345,6 +520,23 @@ impl PropletService {
         Ok(())
     }
 
+    /// Requests a binary from the registry by publishing a registry request for the specified app.
+    ///
+    /// Publishes a `RegistryRequest { app_name }` message on the `registry/proplet` topic built
+    /// from the service configuration.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// # async fn example(service: &crate::PropletService) -> anyhow::Result<()> {
+    /// service.request_binary_from_registry("my-app").await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful publish, or an error if publishing fails.
     async fn request_binary_from_registry(&self, app_name: &str) -> Result<()> {
         let topic = build_topic(
             &self.config.domain_id,
@@ -366,6 +558,18 @@ impl PropletService {
         Ok(())
     }
 
+    /// Waits until all chunks for `app_name` are available and returns the assembled binary.
+    ///
+    /// Polls every 5 seconds and times out after 60 seconds. If the chunks are assembled before the
+    /// timeout, returns the concatenated bytes in order; otherwise returns an error.
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// // Given a `svc: &PropletService` in an async context:
+    /// // let binary = svc.wait_for_binary("example-app").await?;
+    /// // assert!(!binary.is_empty());
+    /// ```
     async fn wait_for_binary(&self, app_name: &str) -> Result<Vec<u8>> {
         // Wait up to 60 seconds for all chunks
         let timeout = tokio::time::Duration::from_secs(60);
@@ -386,6 +590,25 @@ impl PropletService {
         }
     }
 
+    /// Attempts to assemble stored chunks for `app_name` into a single contiguous binary.
+    ///
+    /// If metadata exists for `app_name` and the number of stored chunks equals the expected
+    /// total, concatenates the chunks in order and returns `Ok(Some(binary))`. If the
+    /// chunks are not yet complete or metadata is missing, returns `Ok(None)`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use futures::executor::block_on;
+    /// # // `svc` is a `&PropletService` prepared with stored chunks and metadata for "my-app".
+    /// # let svc: &PropletService = unsafe { std::mem::zeroed() }; // placeholder for example only
+    /// let result = block_on(svc.try_assemble_chunks("my-app")).unwrap();
+    /// if let Some(binary) = result {
+    ///     assert!(binary.len() > 0);
+    /// } else {
+    ///     // not all chunks received yet
+    /// }
+    /// ```
     async fn try_assemble_chunks(&self, app_name: &str) -> Result<Option<Vec<u8>>> {
         let chunks = self.chunks.lock().await;
         let metadata = self.chunk_metadata.lock().await;
@@ -413,6 +636,29 @@ impl PropletService {
         Ok(None)
     }
 
+    /// Publish a task result message to the proplet results topic.
+    ///
+    /// The message includes the proplet's id, the provided `task_id`, binary `result`, and an optional `error`
+    /// string; it is sent on the "control/proplet/results" topic derived from the service config.
+    ///
+    /// # Parameters
+    ///
+    /// - `task_id`: Identifier of the task whose result is being published.
+    /// - `result`: Binary payload produced by the task.
+    /// - `error`: Optional error message describing a failure for the task.
+    ///
+    /// # Returns
+    ///
+    /// `Ok(())` on successful publication, `Err` if publishing fails.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # async fn example(service: &crate::PropletService) -> anyhow::Result<()> {
+    /// service.publish_result("task-123", vec![1, 2, 3], None).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     async fn publish_result(
         &self,
         task_id: &str,

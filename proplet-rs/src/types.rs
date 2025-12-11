@@ -61,6 +61,43 @@ pub struct StartRequest {
 }
 
 // Helper function to deserialize null as default value
+/// Deserializes a value treating JSON `null` as the type's default.
+
+///
+
+/// This helper can be used with `#[serde(default, deserialize_with = "deserialize_null_default")]`
+
+/// to map an explicit `null` in the input to `T::default()`.
+
+///
+
+/// # Examples
+
+///
+
+/// ```
+
+/// use serde::Deserialize;
+
+///
+
+/// #[derive(Deserialize)]
+
+/// struct S {
+
+///     #[serde(default, deserialize_with = "deserialize_null_default")]
+
+///     v: Vec<i32>,
+
+/// }
+
+///
+
+/// let s: S = serde_json::from_str(r#"{"v": null}"#).unwrap();
+
+/// assert!(s.v.is_empty());
+
+/// ```
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
 where
     T: Default + Deserialize<'de>,
@@ -71,6 +108,33 @@ where
 }
 
 impl StartRequest {
+    /// Validates that the start request contains required identifying and payload fields.
+    ///
+    /// Returns `Ok(())` when `id` and `name` are non-empty and at least one of `file` or `image_url` is provided.
+    /// Returns an `Err(anyhow::Error)` with one of the following messages when validation fails:
+    /// - `"id is required"` if `id` is empty.
+    /// - `"function name is required"` if `name` is empty.
+    /// - `"either file or image_url must be provided"` if both `file` and `image_url` are empty.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use anyhow::Result;
+    ///
+    /// let req = StartRequest {
+    ///     id: "req-1".to_string(),
+    ///     cli_args: Vec::new(),
+    ///     name: "my_func".to_string(),
+    ///     state: 0,
+    ///     file: "handler.wasm".to_string(),
+    ///     image_url: String::new(),
+    ///     inputs: Vec::new(),
+    ///     daemon: false,
+    ///     env: None,
+    /// };
+    ///
+    /// assert!(req.validate().is_ok());
+    /// ```
     pub fn validate(&self) -> Result<()> {
         if self.id.is_empty() {
             return Err(anyhow::anyhow!("id is required"));
@@ -91,6 +155,17 @@ pub struct StopRequest {
 }
 
 impl StopRequest {
+    /// Validate that the stop request contains a non-empty id.
+    ///
+    /// Returns `Ok(())` when `id` is non-empty, otherwise returns an `Err` indicating
+    /// that the `id` is required.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// let req = StopRequest { id: "proplet-123".to_string() };
+    /// assert!(req.validate().is_ok());
+    /// ```
     pub fn validate(&self) -> Result<()> {
         if self.id.is_empty() {
             return Err(anyhow::anyhow!("id is required"));
@@ -136,6 +211,27 @@ pub struct Chunk {
 }
 
 // Helper function to deserialize base64 string to Vec<u8>
+/// Deserializes a base64-encoded string into raw bytes.
+///
+/// Decodes a base64 `String` produced by the deserializer using the standard
+/// base64 alphabet and returns the resulting `Vec<u8>` or a serde deserialization
+/// error when decoding fails.
+///
+/// # Examples
+///
+/// ```
+/// use serde::Deserialize;
+///
+/// #[derive(Deserialize)]
+/// struct S {
+///     #[serde(deserialize_with = "crate::deserialize_base64")]
+///     data: Vec<u8>,
+/// }
+///
+/// let json = r#"{ "data": "aGVsbG8=" }"#; // "hello"
+/// let s: S = serde_json::from_str(json).unwrap();
+/// assert_eq!(s.data, b"hello");
+/// ```
 fn deserialize_base64<'de, D>(deserializer: D) -> std::result::Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,
