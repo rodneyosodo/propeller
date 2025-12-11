@@ -13,14 +13,14 @@ pub trait Runtime: Send + Sync {
         ctx: RuntimeContext,
         wasm_binary: Vec<u8>,
         cli_args: Vec<String>,
-        id: Uuid,
+        id: String,
         function_name: String,
         daemon: bool,
         env: HashMap<String, String>,
-        args: Vec<f64>,
+        args: Vec<u64>,
     ) -> Result<Vec<u8>>;
 
-    async fn stop_app(&self, id: Uuid) -> Result<()>;
+    async fn stop_app(&self, id: String) -> Result<()>;
 }
 
 #[derive(Clone)]

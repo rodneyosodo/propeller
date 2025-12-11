@@ -39,31 +39,26 @@ cargo build --release
 Configure via environment variables:
 
 ```bash
-# Logging
 export PROPLET_LOG_LEVEL=info
-
-# Instance identification
-export PROPLET_INSTANCE_ID=$(uuidgen)
-
-# MQTT configuration
-export PROPLET_MQTT_ADDRESS=tcp://localhost:1883
+export PROPLET_INSTANCE_ID="supermq387f8e1ff929"
+export PROPLET_MQTT_ADDRESS="messaging.magistrala.absmach.eu"
 export PROPLET_MQTT_TIMEOUT=30
 export PROPLET_MQTT_QOS=2
-
-# SuperMQ credentials
-export PROPLET_DOMAIN_ID=your-domain-id
-export PROPLET_CHANNEL_ID=your-channel-id
-export PROPLET_CLIENT_ID=your-client-id
-export PROPLET_CLIENT_KEY=your-client-key
-
-# Optional: External WebAssembly runtime
-export PROPLET_EXTERNAL_WASM_RUNTIME=/path/to/external/runtime
-
-# Optional: Kubernetes namespace
+export PROPLET_DOMAIN_ID="464e3727-0b19-4cde-bbac-4b66bb4d88ac"
+export PROPLET_CHANNEL_ID="ac72e0fc-ab70-4aee-865c-2ae14e867d1a"
+export PROPLET_CLIENT_ID="7c2a65a7-8231-4e29-885e-d99abbcb2454"
+export PROPLET_CLIENT_KEY="b4dc0c06-f0ad-4d67-9355-5d025cef1750"
+export PROPLET_EXTERNAL_WASM_RUNTIME="/usr/bin/wasmtime"
 export PROPLET_MANAGER_K8S_NAMESPACE=default
-
-# Liveliness interval (seconds)
 export PROPLET_LIVELINESS_INTERVAL=10
+
+
+domain_id = "464e3727-0b19-4cde-bbac-4b66bb4d88ac"
+client_id = "7c2a65a7-8231-4e29-885e-d99abbcb2454"
+client_key = "b4dc0c06-f0ad-4d67-9355-5d025cef1750"
+channel_id = "ac72e0fc-ab70-4aee-865c-2ae14e867d1a"
+
+mosquitto_pub -I "Hello" -u 461bf169-5b11-4f0c-9b5a-387f8e1ff929 -P dc61afb0-96a8-4062-aef1-ee3facaafd19 -t m/a1907d9b-dee8-487d-9df5-3e348eae0954/c/e08f4ddd-95e0-485b-b72b-4404d804257f -h messaging.magistrala.absmach.eu -m '[{"n":"hello","bu":"m","u":"m","bt":1765290060849000000,"v":100}]' -p 1883 -d
 ```
 
 ## Running
@@ -146,3 +141,12 @@ Rust provides several performance benefits:
 ## License
 
 Same as the main Propeller project.
+
+
+mosquitto_pub -I "Hello" -u 461bf169-5b11-4f0c-9b5a-387f8e1ff929 -P dc61afb0-96a8-4062-aef1-ee3facaafd19 -t m/a1907d9b-dee8-487d-9df5-3e348eae0954/c/e08f4ddd-95e0-485b-b72b-4404d804257f -h messaging.magistrala.absmach.eu -m '[{"n":"hello","bu":"m","u":"m","bt":1765290060849000000,"v":100}]' -p 8883 -d --cafile /etc/ssl/certs/ca-certificates.crt
+
+curl -s -S -i --cacert /etc/ssl/certs/ca-certificates.crt -X POST -H "Content-Type: application/senml+json" -H "Authorization: Client dc61afb0-96a8-4062-aef1-ee3facaafd19" https://messaging.magistrala.absmach.eu/api/http/m/a1907d9b-dee8-487d-9df5-3e348eae0954/c/e08f4ddd-95e0-485b-b72b-4404d804257f/ -d '[{"n":"hello","bu":"m","u":"m","bt":1765290060849000000,"v":100}]'
+
+mosquitto_sub -u "461bf169-5b11-4f0c-9b5a-387f8e1ff929" -P "dc61afb0-96a8-4062-aef1-ee3facaafd19" -t m/a1907d9b-dee8-487d-9df5-3e348eae0954/c/e08f4ddd-95e0-485b-b72b-4404d804257f -I supermq -h messaging.magistrala.absmach.eu -p 1883 -d
+
+mosquitto_pub -I "Hello" -u 461bf169-5b11-4f0c-9b5a-387f8e1ff929 -P dc61afb0-96a8-4062-aef1-ee3facaafd19 -t m/a1907d9b-dee8-487d-9df5-3e348eae0954/c/e08f4ddd-95e0-485b-b72b-4404d804257f -h messaging.magistrala.absmach.eu -m '[{"n":"hello","bu":"m","u":"m","bt":1765290060849000000,"v":100}]' -p 1883 -d

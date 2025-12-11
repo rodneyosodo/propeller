@@ -5,11 +5,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tracing::{debug, error, info};
-use uuid::Uuid;
 use wasmtime::*;
 
 pub struct WasmtimeRuntime {
-    instances: Arc<Mutex<HashMap<Uuid, Arc<Mutex<WasmInstance>>>>>,
+    instances: Arc<Mutex<HashMap<String, Arc<Mutex<WasmInstance>>>>>,
 }
 
 struct WasmInstance {
@@ -30,14 +29,14 @@ impl WasmtimeRuntime {
 impl Runtime for WasmtimeRuntime {
     async fn start_app(
         &self,
-        ctx: RuntimeContext,
+        _ctx: RuntimeContext,
         wasm_binary: Vec<u8>,
-        cli_args: Vec<String>,
-        id: Uuid,
+        _cli_args: Vec<String>,
+        id: String,
         function_name: String,
         daemon: bool,
-        env: HashMap<String, String>,
-        args: Vec<f64>,
+        _env: HashMap<String, String>,
+        args: Vec<u64>,
     ) -> Result<Vec<u8>> {
         info!("Starting Wasmtime app: task_id={}, function={}", id, function_name);
 
@@ -71,7 +70,7 @@ impl Runtime for WasmtimeRuntime {
 
         {
             let mut instances = self.instances.lock().await;
-            instances.insert(id, wasm_inst.clone());
+            instances.insert(id.clone(), wasm_inst.clone());
         }
 
         // Execute the function
@@ -79,6 +78,7 @@ impl Runtime for WasmtimeRuntime {
             // For daemon mode, spawn in background
             let instances = self.instances.clone();
             let func_name = function_name.clone();
+            let task_id = id.clone();
 
             tokio::spawn(async move {
                 // Wait a bit before executing (mimics Go implementation)
@@ -86,11 +86,11 @@ impl Runtime for WasmtimeRuntime {
 
                 let mut inst = wasm_inst.lock().await;
                 if let Err(e) = execute_function(&mut inst, &func_name, args).await {
-                    error!("Daemon task {} failed: {}", id, e);
+                    error!("Daemon task {} failed: {}", task_id, e);
                 }
 
                 // Remove from instances map
-                instances.lock().await.remove(&id);
+                instances.lock().await.remove(&task_id);
             });
 
             Ok(Vec::new())
@@ -108,7 +108,7 @@ impl Runtime for WasmtimeRuntime {
         result
     }
 
-    async fn stop_app(&self, id: Uuid) -> Result<()> {
+    async fn stop_app(&self, id: String) -> Result<()> {
         info!("Stopping Wasmtime app: task_id={}", id);
 
         let mut instances = self.instances.lock().await;
@@ -124,7 +124,7 @@ impl Runtime for WasmtimeRuntime {
 async fn execute_function(
     inst: &mut WasmInstance,
     function_name: &str,
-    args: Vec<f64>,
+    args: Vec<u64>,
 ) -> Result<Vec<u8>> {
     // Get the exported function
     let func = inst
@@ -132,8 +132,8 @@ async fn execute_function(
         .get_func(&mut inst.store, function_name)
         .context(format!("Function '{}' not found in module", function_name))?;
 
-    // Convert f64 args to wasmtime values (as f64)
-    let wasm_args: Vec<Val> = args.into_iter().map(|v| Val::F64(v.to_bits())).collect();
+    // Convert u64 args to wasmtime values (as i64)
+    let wasm_args: Vec<Val> = args.into_iter().map(|v| Val::I64(v as i64)).collect();
 
     // Call the function
     let mut results = vec![Val::I32(0)];

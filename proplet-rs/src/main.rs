@@ -52,6 +52,8 @@ async fn main() -> Result<()> {
         client_id: config.instance_id.to_string(),
         timeout: config.mqtt_timeout(),
         qos: config.qos(),
+        username: config.client_id.clone(),
+        password: config.client_key.clone(),
     };
 
     let (pubsub, eventloop) = PubSub::new(mqtt_config).await?;

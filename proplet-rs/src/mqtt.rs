@@ -10,6 +10,8 @@ pub struct MqttConfig {
     pub client_id: String,
     pub timeout: Duration,
     pub qos: QoS,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Clone)]
@@ -19,17 +21,31 @@ pub struct PubSub {
 
 impl PubSub {
     pub async fn new(config: MqttConfig) -> Result<(Self, EventLoop)> {
-        let mut mqtt_options = MqttOptions::new(
-            config.client_id,
-            config
-                .address
-                .split("://")
-                .nth(1)
-                .unwrap_or(&config.address),
-            1883,
-        );
+        // Parse the address to extract host and port
+        // Expected format: tcp://host:port or just host:port
+        let address_without_scheme = config
+            .address
+            .split("://")
+            .nth(1)
+            .unwrap_or(&config.address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        let mut mqtt_options = MqttOptions::new(config.client_id, host, port);
 
         mqtt_options.set_keep_alive(Duration::from_secs(30));
+        mqtt_options.set_credentials(config.username, config.password);
+
+        // Increase max packet size to handle large chunks (10MB)
+        mqtt_options.set_max_packet_size(10 * 1024 * 1024, 10 * 1024 * 1024);
 
         let (client, eventloop) = AsyncClient::new(mqtt_options, 10);
 
@@ -84,7 +100,13 @@ pub struct MqttMessage {
 
 impl MqttMessage {
     pub fn decode<T: DeserializeOwned>(&self) -> Result<T> {
-        serde_json::from_slice(&self.payload).context("Failed to deserialize message payload")
+        let payload_str = String::from_utf8_lossy(&self.payload);
+        debug!("Attempting to decode payload from topic '{}': {}", self.topic, payload_str);
+
+        serde_json::from_slice(&self.payload).context(format!(
+            "Failed to deserialize message payload from topic '{}'. Payload: {}",
+            self.topic, payload_str
+        ))
     }
 }
 

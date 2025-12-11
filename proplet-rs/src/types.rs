@@ -1,8 +1,16 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::time::SystemTime;
 use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TaskState {
+    Running,
+    Completed,
+    Failed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proplet {
@@ -34,27 +42,34 @@ impl Proplet {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StartRequest {
-    pub id: Uuid,
-    #[serde(rename = "cliArgs")]
+    pub id: String,
+    #[serde(default)]
     pub cli_args: Vec<String>,
-    #[serde(rename = "functionName")]
-    pub function_name: String,
-    #[serde(rename = "wasmFile")]
-    pub wasm_file: Vec<u8>,
-    #[serde(rename = "imageURL")]
+    pub name: String,
+    #[serde(default)]
+    pub state: u8,
+    #[serde(default)]
+    pub file: String,
+    #[serde(default)]
     pub image_url: String,
-    pub params: Vec<f64>,
+    #[serde(default)]
+    pub inputs: Vec<u64>,
+    #[serde(default)]
     pub daemon: bool,
-    pub env: HashMap<String, String>,
+    #[serde(default)]
+    pub env: Option<HashMap<String, String>>,
 }
 
 impl StartRequest {
     pub fn validate(&self) -> Result<()> {
-        if self.function_name.is_empty() {
+        if self.id.is_empty() {
+            return Err(anyhow::anyhow!("id is required"));
+        }
+        if self.name.is_empty() {
             return Err(anyhow::anyhow!("function name is required"));
         }
-        if self.wasm_file.is_empty() && self.image_url.is_empty() {
-            return Err(anyhow::anyhow!("either wasm_file or image_url must be provided"));
+        if self.file.is_empty() && self.image_url.is_empty() {
+            return Err(anyhow::anyhow!("either file or image_url must be provided"));
         }
         Ok(())
     }
@@ -62,75 +77,69 @@ impl StartRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StopRequest {
-    pub id: Uuid,
+    pub id: String,
 }
 
 impl StopRequest {
     pub fn validate(&self) -> Result<()> {
+        if self.id.is_empty() {
+            return Err(anyhow::anyhow!("id is required"));
+        }
+
         Ok(())
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum TaskState {
-    Pending,
-    Scheduled,
-    Running,
-    Completed,
-    Failed,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Task {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
-    pub state: TaskState,
-    #[serde(rename = "imageURL")]
+    pub state: u8,
     pub image_url: String,
     pub file: Vec<u8>,
-    #[serde(rename = "cliArgs")]
     pub cli_args: Vec<String>,
-    pub inputs: Vec<f64>,
+    pub inputs: Vec<u64>,
     pub env: HashMap<String, String>,
     pub daemon: bool,
-    #[serde(rename = "propletID")]
-    pub proplet_id: Uuid,
-    pub results: Vec<u8>,
+    pub proplet_id: String,
+    pub results: Value,
     pub error: String,
+    pub start_time: SystemTime,
+    pub finish_time: SystemTime,
     pub created_at: SystemTime,
     pub updated_at: SystemTime,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChunkMetadata {
-    pub id: Uuid,
-    pub total: usize,
-    pub size: usize,
+    pub app_name: String,
+    pub total_chunks: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Chunk {
-    pub id: Uuid,
-    pub sequence: usize,
+    pub app_name: String,
+    pub chunk_idx: usize,
+    pub total_chunks: usize,
     pub data: Vec<u8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LivelinessMessage {
-    pub proplet_id: Uuid,
-    pub alive: bool,
-    pub task_count: usize,
+    pub proplet_id: String,
+    pub status: String,
+    pub namespace: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DiscoveryMessage {
-    pub proplet_id: Uuid,
-    pub name: String,
+    pub proplet_id: String,
+    pub namespace: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResultMessage {
-    pub task_id: Uuid,
+    pub task_id: String,
     pub proplet_id: Uuid,
     pub result: Vec<u8>,
     pub error: Option<String>,
