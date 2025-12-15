@@ -26,6 +26,9 @@ var (
 	stopTopicTemplate         = "m/%s/c/%s/control/manager/stop"
 	registryResponseTopic     = "m/%s/c/%s/registry/server"
 	fetchRequestTopicTemplate = "m/%s/c/%s/registry/proplet"
+
+	// NEW: metrics topic.
+	metricsTopicTemplate = "m/%s/c/%s/control/proplet/metrics"
 )
 
 type chunkAssemblyState struct {
@@ -68,11 +71,16 @@ type PropletService struct {
 	clientKey          string
 	k8sNamespace       string
 	livelinessInterval time.Duration
-	pubsub             pkgmqtt.PubSub
-	chunkAssembly      map[string]*chunkAssemblyState
-	chunksMutex        sync.Mutex
-	runtime            Runtime
-	logger             *slog.Logger
+
+	// NEW: metrics.
+	metricsInterval time.Duration
+	collector       *usageCollector
+
+	pubsub        pkgmqtt.PubSub
+	chunkAssembly map[string]*chunkAssemblyState
+	chunksMutex   sync.Mutex
+	runtime       Runtime
+	logger        *slog.Logger
 }
 
 type ChunkPayload struct {
@@ -82,7 +90,16 @@ type ChunkPayload struct {
 	Data        []byte `json:"data"`
 }
 
-func NewService(ctx context.Context, domainID, channelID, clientID, clientKey, k8sNamespace string, livelinessInterval time.Duration, pubsub pkgmqtt.PubSub, logger *slog.Logger, runtime Runtime) (*PropletService, error) {
+// UPDATED SIGNATURE: added metricsInterval.
+func NewService(
+	ctx context.Context,
+	domainID, channelID, clientID, clientKey, k8sNamespace string,
+	livelinessInterval time.Duration,
+	metricsInterval time.Duration,
+	pubsub pkgmqtt.PubSub,
+	logger *slog.Logger,
+	runtime Runtime,
+) (*PropletService, error) {
 	topic := fmt.Sprintf(discoveryTopicTemplate, domainID, channelID)
 	payload := map[string]interface{}{
 		"namespace":  k8sNamespace,
@@ -99,14 +116,22 @@ func NewService(ctx context.Context, domainID, channelID, clientID, clientKey, k
 		clientKey:          clientKey,
 		k8sNamespace:       k8sNamespace,
 		livelinessInterval: livelinessInterval,
-		pubsub:             pubsub,
-		chunkAssembly:      make(map[string]*chunkAssemblyState),
-		runtime:            runtime,
-		logger:             logger,
+
+		metricsInterval: metricsInterval,
+		collector:       newUsageCollector(),
+
+		pubsub:        pubsub,
+		chunkAssembly: make(map[string]*chunkAssemblyState),
+		runtime:       runtime,
+		logger:        logger,
 	}
 
 	go p.startLivelinessUpdates(ctx)
 	go p.startChunkExpiryTask(ctx)
+
+	if p.metricsInterval > 0 {
+		go p.startMetricsUpdates(ctx)
+	}
 
 	return p, nil
 }
@@ -188,6 +213,36 @@ func (p *PropletService) startLivelinessUpdates(ctx context.Context) {
 			}
 
 			p.logger.Debug("Published liveliness message", slog.String("topic", topic))
+		}
+	}
+}
+
+// NEW: metrics loop.
+func (p *PropletService) startMetricsUpdates(ctx context.Context) {
+	ticker := time.NewTicker(p.metricsInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			p.logger.Info("stopping metrics updates")
+
+			return
+		case <-ticker.C:
+			metrics := p.collector.Collect()
+			topic := fmt.Sprintf(metricsTopicTemplate, p.domainID, p.channelID)
+
+			payload := map[string]interface{}{
+				"proplet_id": p.clientID,
+				"namespace":  p.k8sNamespace,
+				"metrics":    metrics,
+			}
+
+			if err := p.pubsub.Publish(ctx, topic, payload); err != nil {
+				p.logger.Error("failed to publish metrics message", slog.Any("error", err))
+			}
+
+			p.logger.Debug("Published metrics message", slog.String("topic", topic))
 		}
 	}
 }
