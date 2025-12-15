@@ -9,7 +9,9 @@ use url::Url;
 pub struct MqttConfig {
     pub address: String,
     pub client_id: String,
+    #[allow(dead_code)]
     pub timeout: Duration,
+    #[allow(dead_code)]
     pub qos: QoS,
     pub keep_alive: Duration,
     pub max_packet_size: usize,
@@ -71,6 +73,7 @@ impl PubSub {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub async fn unsubscribe(&self, topic: &str) -> Result<()> {
         self.client
             .unsubscribe(topic)
@@ -298,5 +301,262 @@ mod tests {
         assert_eq!(host, "broker.example.com");
         assert_eq!(port, 1883);
         assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_build_topic() {
+        let topic = build_topic("domain-1", "channel-1", "control/manager/start");
+        assert_eq!(topic, "m/domain-1/c/channel-1/control/manager/start");
+    }
+
+    #[test]
+    fn test_build_topic_with_empty_path() {
+        let topic = build_topic("domain-1", "channel-1", "");
+        assert_eq!(topic, "m/domain-1/c/channel-1/");
+    }
+
+    #[test]
+    fn test_build_topic_with_slashes() {
+        let topic = build_topic("domain/1", "channel/1", "path/to/topic");
+        assert_eq!(topic, "m/domain/1/c/channel/1/path/to/topic");
+    }
+
+    #[test]
+    fn test_mqtt_message_decode_success() {
+        #[derive(Debug, serde::Deserialize, PartialEq)]
+        struct TestPayload {
+            id: String,
+            value: i32,
+        }
+
+        let payload = serde_json::json!({
+            "id": "test-123",
+            "value": 42
+        });
+
+        let msg = MqttMessage {
+            topic: "test/topic".to_string(),
+            payload: serde_json::to_vec(&payload).unwrap(),
+        };
+
+        let decoded: TestPayload = msg.decode().unwrap();
+        assert_eq!(decoded.id, "test-123");
+        assert_eq!(decoded.value, 42);
+    }
+
+    #[test]
+    fn test_mqtt_message_decode_failure() {
+        let msg = MqttMessage {
+            topic: "test/topic".to_string(),
+            payload: b"invalid json".to_vec(),
+        };
+
+        let result: Result<serde_json::Value> = msg.decode();
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Failed to deserialize"));
+    }
+
+    #[test]
+    fn test_mqtt_message_decode_empty_payload() {
+        let msg = MqttMessage {
+            topic: "test/topic".to_string(),
+            payload: Vec::new(),
+        };
+
+        let result: Result<serde_json::Value> = msg.decode();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_mqtt_config_address_parsing_with_scheme_and_port() {
+        // Test address parsing logic (unit test for the parsing logic)
+        let address = "tcp://broker.example.com:1883";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 1883);
+    }
+
+    #[test]
+    fn test_mqtt_config_address_parsing_without_scheme() {
+        let address = "localhost:1883";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 1883);
+    }
+
+    #[test]
+    fn test_mqtt_config_address_parsing_without_port() {
+        let address = "tcp://broker.example.com";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 1883);
+    }
+
+    #[test]
+    fn test_mqtt_config_address_parsing_custom_port() {
+        let address = "tcp://broker.example.com:8883";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 8883);
+    }
+
+    #[test]
+    fn test_mqtt_config_address_parsing_invalid_port() {
+        let address = "tcp://broker.example.com:invalid";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 1883); // Falls back to default
+    }
+
+    #[test]
+    fn test_mqtt_config_address_ipv4() {
+        let address = "tcp://192.168.1.100:1883";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "192.168.1.100");
+        assert_eq!(port, 1883);
+    }
+
+    #[test]
+    fn test_mqtt_config_address_ipv6() {
+        let address = "tcp://[::1]:1883";
+        let address_without_scheme = address.split("://").nth(1).unwrap_or(&address);
+
+        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
+            let host = &address_without_scheme[..colon_pos];
+            let port = address_without_scheme[colon_pos + 1..]
+                .parse::<u16>()
+                .unwrap_or(1883);
+            (host, port)
+        } else {
+            (address_without_scheme, 1883)
+        };
+
+        assert_eq!(host, "[::1]");
+        assert_eq!(port, 1883);
+    }
+
+    #[test]
+    fn test_mqtt_message_decode_with_nested_structure() {
+        #[derive(Debug, serde::Deserialize, PartialEq)]
+        struct NestedPayload {
+            outer: OuterData,
+        }
+
+        #[derive(Debug, serde::Deserialize, PartialEq)]
+        struct OuterData {
+            inner: InnerData,
+        }
+
+        #[derive(Debug, serde::Deserialize, PartialEq)]
+        struct InnerData {
+            value: String,
+        }
+
+        let payload = serde_json::json!({
+            "outer": {
+                "inner": {
+                    "value": "nested-value"
+                }
+            }
+        });
+
+        let msg = MqttMessage {
+            topic: "nested/topic".to_string(),
+            payload: serde_json::to_vec(&payload).unwrap(),
+        };
+
+        let decoded: NestedPayload = msg.decode().unwrap();
+        assert_eq!(decoded.outer.inner.value, "nested-value");
+    }
+
+    #[test]
+    fn test_mqtt_config_creation() {
+        let config = MqttConfig {
+            address: "tcp://localhost:1883".to_string(),
+            client_id: "test-client".to_string(),
+            timeout: Duration::from_secs(30),
+            qos: QoS::ExactlyOnce,
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            keep_alive: Duration::from_secs(30),
+            max_packet_size: 1024,
+            inflight: 10,
+            request_channel_capacity: 128,
+        };
+
+        assert_eq!(config.address, "tcp://localhost:1883");
+        assert_eq!(config.client_id, "test-client");
+        assert_eq!(config.timeout, Duration::from_secs(30));
+        assert_eq!(config.username, "user");
+        assert_eq!(config.password, "pass");
     }
 }

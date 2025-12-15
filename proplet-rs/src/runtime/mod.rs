@@ -25,5 +25,28 @@ pub trait Runtime: Send + Sync {
 
 #[derive(Clone)]
 pub struct RuntimeContext {
+    #[allow(dead_code)]
     pub proplet_id: Uuid,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_runtime_context_creation() {
+        let id = Uuid::new_v4();
+        let ctx = RuntimeContext { proplet_id: id };
+
+        assert_eq!(ctx.proplet_id, id);
+    }
+
+    #[test]
+    fn test_runtime_context_clone() {
+        let id = Uuid::new_v4();
+        let ctx1 = RuntimeContext { proplet_id: id };
+        let ctx2 = ctx1.clone();
+
+        assert_eq!(ctx1.proplet_id, ctx2.proplet_id);
+    }
 }

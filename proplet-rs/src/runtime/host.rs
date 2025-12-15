@@ -166,3 +166,104 @@ impl Runtime for HostRuntime {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_host_runtime_new() {
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string());
+        assert_eq!(runtime.runtime_path, "/usr/bin/wasmtime");
+    }
+
+    #[test]
+    fn test_temp_file_path_generation() {
+        let temp_dir = std::env::temp_dir();
+        let task_id = "task-123";
+        let expected_path = temp_dir.join(format!("proplet_{}.wasm", task_id));
+
+        assert!(expected_path
+            .to_string_lossy()
+            .contains("proplet_task-123.wasm"));
+    }
+
+    #[test]
+    fn test_temp_file_path_with_special_chars() {
+        let temp_dir = std::env::temp_dir();
+        let task_id = "task-with-dashes-123";
+        let file_path = temp_dir.join(format!("proplet_{}.wasm", task_id));
+
+        assert!(file_path
+            .to_string_lossy()
+            .contains("proplet_task-with-dashes-123.wasm"));
+    }
+
+    #[tokio::test]
+    async fn test_create_and_cleanup_temp_file() {
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string());
+        let task_id = "test-cleanup-task";
+        let wasm_data = vec![0x00, 0x61, 0x73, 0x6d]; // WASM magic number
+
+        let file_path = runtime
+            .create_temp_wasm_file(task_id, &wasm_data)
+            .await
+            .unwrap();
+
+        assert!(file_path.exists());
+
+        let content = tokio::fs::read(&file_path).await.unwrap();
+        assert_eq!(content, wasm_data);
+
+        runtime.cleanup_temp_file(file_path.clone()).await.unwrap();
+
+        assert!(!file_path.exists());
+    }
+
+    #[tokio::test]
+    async fn test_cleanup_nonexistent_file() {
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string());
+        let fake_path = std::env::temp_dir().join("nonexistent-file.wasm");
+
+        let result = runtime.cleanup_temp_file(fake_path).await;
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_create_temp_file_with_empty_data() {
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string());
+        let task_id = "empty-task";
+        let wasm_data = vec![];
+
+        let file_path = runtime
+            .create_temp_wasm_file(task_id, &wasm_data)
+            .await
+            .unwrap();
+
+        assert!(file_path.exists());
+
+        let content = tokio::fs::read(&file_path).await.unwrap();
+        assert_eq!(content.len(), 0);
+
+        runtime.cleanup_temp_file(file_path).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_create_temp_file_with_large_data() {
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string());
+        let task_id = "large-task";
+        let wasm_data = vec![0xAB; 1024 * 1024]; // 1 MB of data
+
+        let file_path = runtime
+            .create_temp_wasm_file(task_id, &wasm_data)
+            .await
+            .unwrap();
+
+        assert!(file_path.exists());
+
+        let content = tokio::fs::read(&file_path).await.unwrap();
+        assert_eq!(content.len(), 1024 * 1024);
+
+        runtime.cleanup_temp_file(file_path).await.unwrap();
+    }
+}

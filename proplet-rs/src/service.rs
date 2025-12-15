@@ -33,10 +33,7 @@ impl PropletService {
         }
     }
 
-    pub async fn run(
-        self: Arc<Self>,
-        mut mqtt_rx: mpsc::Receiver<MqttMessage>,
-    ) -> Result<()> {
+    pub async fn run(self: Arc<Self>, mut mqtt_rx: mpsc::Receiver<MqttMessage>) -> Result<()> {
         info!("Starting PropletService");
 
         self.publish_discovery().await?;
@@ -103,7 +100,9 @@ impl PropletService {
             "control/proplet/create",
         );
 
-        self.pubsub.publish(&topic, &discovery, self.config.qos()).await?;
+        self.pubsub
+            .publish(&topic, &discovery, self.config.qos())
+            .await?;
         info!("Published discovery message");
 
         Ok(())
@@ -144,7 +143,9 @@ impl PropletService {
             "control/proplet/alive",
         );
 
-        self.pubsub.publish(&topic, &liveliness, self.config.qos()).await?;
+        self.pubsub
+            .publish(&topic, &liveliness, self.config.qos())
+            .await?;
         debug!("Published liveliness update");
 
         Ok(())
@@ -187,7 +188,7 @@ impl PropletService {
         }
 
         let wasm_binary = if !req.file.is_empty() {
-            =            use base64::{engine::general_purpose::STANDARD, Engine};
+            use base64::{engine::general_purpose::STANDARD, Engine};
             match STANDARD.decode(&req.file) {
                 Ok(decoded) => {
                     info!("Decoded wasm binary, size: {} bytes", decoded.len());
@@ -253,11 +254,13 @@ impl PropletService {
                 )
                 .await;
 
-
             let (result_data, error) = match result {
                 Ok(data) => {
                     let result_str = String::from_utf8_lossy(&data).to_string();
-                    info!("Task {} completed successfully. Result: {}", task_id, result_str);
+                    info!(
+                        "Task {} completed successfully. Result: {}",
+                        task_id, result_str
+                    );
                     (data, None)
                 }
                 Err(e) => {
@@ -419,7 +422,9 @@ impl PropletService {
             "control/proplet/results",
         );
 
-        self.pubsub.publish(&topic, &result_msg, self.config.qos()).await?;
+        self.pubsub
+            .publish(&topic, &result_msg, self.config.qos())
+            .await?;
         Ok(())
     }
 }

@@ -223,3 +223,49 @@ impl Runtime for WasmtimeRuntime {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_wasmtime_runtime_new() {
+        let runtime = WasmtimeRuntime::new();
+        assert!(runtime.is_ok());
+    }
+
+    #[test]
+    fn test_wasmtime_runtime_engine_configuration() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+
+        assert!(runtime.instances.try_lock().is_ok());
+    }
+
+    #[test]
+    fn test_wasmtime_runtime_instances_empty_on_creation() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+
+        let instances = runtime.instances.try_lock().unwrap();
+        assert_eq!(instances.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_wasmtime_runtime_compile_invalid_wasm() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+
+        let invalid_wasm = vec![0xFF, 0xFF, 0xFF, 0xFF];
+
+        let result = Module::from_binary(&runtime.engine, &invalid_wasm);
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_wasmtime_runtime_compile_empty_wasm() {
+        let runtime = WasmtimeRuntime::new().unwrap();
+
+        let empty_wasm = vec![];
+
+        let result = Module::from_binary(&runtime.engine, &empty_wasm);
+        assert!(result.is_err());
+    }
+}
