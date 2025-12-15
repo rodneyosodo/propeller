@@ -88,9 +88,13 @@ impl PubSub {
         Ok(())
     }
 
-    pub fn disconnect(&self) -> Result<()> {
-        // rumqttc handles disconnection automatically when dropped
-        info!("Disconnecting MQTT client");
+    pub async fn disconnect(&self) -> Result<()> {
+        info!("Sending MQTT DISCONNECT packet");
+        self.client
+            .disconnect()
+            .await
+            .context("Failed to send DISCONNECT packet")?;
+        info!("MQTT client disconnected gracefully");
         Ok(())
     }
 }

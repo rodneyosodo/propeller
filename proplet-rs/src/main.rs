@@ -64,6 +64,7 @@ async fn main() -> Result<()> {
     };
 
     let (pubsub, eventloop) = PubSub::new(mqtt_config).await?;
+    let pubsub_clone = pubsub.clone();
 
     // Bounded channel for backpressure to prevent overwhelming the task executor
     let (tx, rx) = mpsc::channel(128);
@@ -85,18 +86,32 @@ async fn main() -> Result<()> {
     // Create and run service
     let service = Arc::new(PropletService::new(config.clone(), pubsub, runtime));
 
-    // Handle shutdown signal
-    tokio::spawn(async move {
+    // Handle shutdown signal with graceful cleanup
+    let shutdown_handle = tokio::spawn(async move {
         tokio::signal::ctrl_c()
             .await
             .expect("Failed to listen for ctrl-c");
 
-        info!("Received shutdown signal, exiting...");
+        info!("Received shutdown signal, cleaning up...");
+
+        // Send MQTT DISCONNECT packet before exiting
+        if let Err(e) = pubsub_clone.disconnect().await {
+            tracing::error!("Failed to disconnect gracefully: {}", e);
+        }
+
+        info!("Graceful shutdown complete");
         std::process::exit(0);
     });
 
     // Run the service
-    service.run(rx).await?;
+    tokio::select! {
+        result = service.run(rx) => {
+            result?;
+        }
+        _ = shutdown_handle => {
+            // Shutdown signal received
+        }
+    }
 
     Ok(())
 }
