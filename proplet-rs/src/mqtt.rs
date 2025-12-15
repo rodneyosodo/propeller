@@ -1,9 +1,10 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use rumqttc::{AsyncClient, Event, EventLoop, MqttOptions, Packet, QoS};
 use serde::{de::DeserializeOwned, Serialize};
 use std::time::Duration;
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, warn};
+use url::Url;
 
 pub struct MqttConfig {
     pub address: String,
@@ -25,23 +26,14 @@ pub struct PubSub {
 
 impl PubSub {
     pub async fn new(config: MqttConfig) -> Result<(Self, EventLoop)> {
-        // Parse the address to extract host and port
-        // Expected format: tcp://host:port or just host:port
-        let address_without_scheme = config
-            .address
-            .split("://")
-            .nth(1)
-            .unwrap_or(&config.address);
-
-        let (host, port) = if let Some(colon_pos) = address_without_scheme.rfind(':') {
-            let host = &address_without_scheme[..colon_pos];
-            let port = address_without_scheme[colon_pos + 1..]
-                .parse::<u16>()
-                .unwrap_or(1883);
-            (host, port)
-        } else {
-            (address_without_scheme, 1883)
-        };
+        // Parse the MQTT broker address
+        // Supports formats:
+        // - tcp://host:port
+        // - mqtt://host:port
+        // - ssl://host:port, tls://host:port, mqtts://host:port
+        // - host:port (defaults to tcp)
+        // - IPv6: tcp://[::1]:1883 or [::1]:1883
+        let (host, port, use_tls) = parse_mqtt_address(&config.address)?;
 
         let mut mqtt_options = MqttOptions::new(config.client_id, host, port);
 
@@ -50,9 +42,16 @@ impl PubSub {
         mqtt_options.set_max_packet_size(config.max_packet_size, config.max_packet_size);
         mqtt_options.set_inflight(config.inflight);
 
+        // Configure TLS if needed
+        if use_tls {
+            info!("Configuring TLS connection");
+            let transport = rumqttc::Transport::tls_with_default_config();
+            mqtt_options.set_transport(transport);
+        }
+
         let (client, eventloop) = AsyncClient::new(mqtt_options, config.request_channel_capacity);
 
-        info!("MQTT client created");
+        info!("MQTT client created (TLS: {})", use_tls);
 
         Ok((Self { client }, eventloop))
     }
@@ -141,4 +140,166 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
 
 pub fn build_topic(domain_id: &str, channel_id: &str, path: &str) -> String {
     format!("m/{}/c/{}/{}", domain_id, channel_id, path)
+}
+
+/// Parse MQTT broker address into (host, port, use_tls)
+///
+/// Supports various formats:
+/// - `tcp://host:port` or `mqtt://host:port` -> (host, port, false)
+/// - `ssl://host:port`, `tls://host:port`, or `mqtts://host:port` -> (host, port, true)
+/// - `host:port` (no scheme) -> (host, port, false)
+/// - IPv6: `tcp://[::1]:1883` or `[::1]:1883` -> (::1, 1883, false)
+///
+/// Default port: 1883 for non-TLS, 8883 for TLS
+fn parse_mqtt_address(address: &str) -> Result<(String, u16, bool)> {
+    // Try parsing as a full URL first
+    if let Ok(url) = Url::parse(address) {
+        let scheme = url.scheme();
+        let use_tls = matches!(scheme, "ssl" | "tls" | "mqtts");
+
+        let mut host = url
+            .host_str()
+            .ok_or_else(|| anyhow!("Missing host in URL: {}", address))?
+            .to_string();
+
+        // Remove brackets from IPv6 addresses (url crate returns them with brackets)
+        if host.starts_with('[') && host.ends_with(']') {
+            host = host[1..host.len() - 1].to_string();
+        }
+
+        let default_port = if use_tls { 8883 } else { 1883 };
+        let port = url.port().unwrap_or(default_port);
+
+        return Ok((host, port, use_tls));
+    }
+
+    // If URL parsing fails, try parsing as host:port
+    // Handle IPv6 addresses like [::1]:1883
+    if address.starts_with('[') {
+        // IPv6 format: [host]:port
+        if let Some(bracket_end) = address.find(']') {
+            let host = address[1..bracket_end].to_string();
+            let port = if let Some(colon_pos) = address[bracket_end..].find(':') {
+                address[bracket_end + colon_pos + 1..]
+                    .parse::<u16>()
+                    .unwrap_or(1883)
+            } else {
+                1883
+            };
+            return Ok((host, port, false));
+        }
+    }
+
+    // Regular host:port format (IPv4 or hostname)
+    if let Some(colon_pos) = address.rfind(':') {
+        let host = address[..colon_pos].to_string();
+        let port = address[colon_pos + 1..]
+            .parse::<u16>()
+            .context("Invalid port number")?;
+        return Ok((host, port, false));
+    }
+
+    // Just a hostname, use default port
+    Ok((address.to_string(), 1883, false))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_mqtt_address_tcp_scheme() {
+        let (host, port, tls) = parse_mqtt_address("tcp://localhost:1883").unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_mqtt_scheme() {
+        let (host, port, tls) = parse_mqtt_address("mqtt://broker.example.com:1883").unwrap();
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_ssl_scheme() {
+        let (host, port, tls) = parse_mqtt_address("ssl://broker.example.com:8883").unwrap();
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 8883);
+        assert_eq!(tls, true);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_tls_scheme() {
+        let (host, port, tls) = parse_mqtt_address("tls://broker.example.com:8883").unwrap();
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 8883);
+        assert_eq!(tls, true);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_mqtts_scheme() {
+        let (host, port, tls) = parse_mqtt_address("mqtts://broker.example.com").unwrap();
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 8883); // Default TLS port
+        assert_eq!(tls, true);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_host_port() {
+        let (host, port, tls) = parse_mqtt_address("192.168.1.100:1883").unwrap();
+        assert_eq!(host, "192.168.1.100");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_ipv6_with_scheme() {
+        let (host, port, tls) = parse_mqtt_address("tcp://[::1]:1883").unwrap();
+        assert_eq!(host, "::1");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_ipv6_with_tls() {
+        let (host, port, tls) = parse_mqtt_address("mqtts://[2001:db8::1]:8883").unwrap();
+        assert_eq!(host, "2001:db8::1");
+        assert_eq!(port, 8883);
+        assert_eq!(tls, true);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_ipv6_no_scheme() {
+        let (host, port, tls) = parse_mqtt_address("[::1]:1883").unwrap();
+        assert_eq!(host, "::1");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_ipv6_no_port() {
+        let (host, port, tls) = parse_mqtt_address("[fe80::1]").unwrap();
+        assert_eq!(host, "fe80::1");
+        assert_eq!(port, 1883); // Default port
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_hostname_only() {
+        let (host, port, tls) = parse_mqtt_address("localhost").unwrap();
+        assert_eq!(host, "localhost");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
+
+    #[test]
+    fn test_parse_mqtt_address_default_port_with_scheme() {
+        let (host, port, tls) = parse_mqtt_address("tcp://broker.example.com").unwrap();
+        assert_eq!(host, "broker.example.com");
+        assert_eq!(port, 1883);
+        assert_eq!(tls, false);
+    }
 }
