@@ -41,7 +41,10 @@ async fn main() -> Result<()> {
 
     tracing::subscriber::set_global_default(subscriber)?;
 
-    info!("Starting Proplet (Rust) - Instance ID: {}", config.instance_id);
+    info!(
+        "Starting Proplet (Rust) - Instance ID: {}",
+        config.instance_id
+    );
     info!("MQTT Address: {}", config.mqtt_address);
     info!("Domain ID: {}", config.domain_id);
     info!("Channel ID: {}", config.channel_id);
@@ -58,8 +61,8 @@ async fn main() -> Result<()> {
 
     let (pubsub, eventloop) = PubSub::new(mqtt_config).await?;
 
-    // Create message channel
-    let (tx, rx) = mpsc::unbounded_channel();
+    // Bounded channel for backpressure to prevent overwhelming the task executor
+    let (tx, rx) = mpsc::channel(128);
 
     // Start MQTT event processing
     tokio::spawn(async move {
