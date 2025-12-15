@@ -18,10 +18,8 @@ use tracing_subscriber::FmtSubscriber;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Load configuration
     let config = PropletConfig::from_env();
 
-    // Initialize logging
     let log_level = match config.log_level.to_lowercase().as_str() {
         "trace" => Level::TRACE,
         "debug" => Level::DEBUG,
@@ -45,11 +43,7 @@ async fn main() -> Result<()> {
         "Starting Proplet (Rust) - Instance ID: {}",
         config.instance_id
     );
-    info!("MQTT Address: {}", config.mqtt_address);
-    info!("Domain ID: {}", config.domain_id);
-    info!("Channel ID: {}", config.channel_id);
 
-    // Create MQTT client
     let mqtt_config = MqttConfig {
         address: config.mqtt_address.clone(),
         client_id: config.instance_id.to_string(),
@@ -69,12 +63,10 @@ async fn main() -> Result<()> {
     // Bounded channel for backpressure to prevent overwhelming the task executor
     let (tx, rx) = mpsc::channel(128);
 
-    // Start MQTT event processing
     tokio::spawn(async move {
         process_mqtt_events(eventloop, tx).await;
     });
 
-    // Create runtime based on configuration
     let runtime: Arc<dyn Runtime> = if let Some(external_runtime) = &config.external_wasm_runtime {
         info!("Using external Wasm runtime: {}", external_runtime);
         Arc::new(HostRuntime::new(external_runtime.clone()))
@@ -83,10 +75,8 @@ async fn main() -> Result<()> {
         Arc::new(WasmtimeRuntime::new()?)
     };
 
-    // Create and run service
     let service = Arc::new(PropletService::new(config.clone(), pubsub, runtime));
 
-    // Handle shutdown signal with graceful cleanup
     let shutdown_handle = tokio::spawn(async move {
         tokio::signal::ctrl_c()
             .await
@@ -103,13 +93,11 @@ async fn main() -> Result<()> {
         std::process::exit(0);
     });
 
-    // Run the service
     tokio::select! {
         result = service.run(rx) => {
             result?;
         }
         _ = shutdown_handle => {
-            // Shutdown signal received
         }
     }
 

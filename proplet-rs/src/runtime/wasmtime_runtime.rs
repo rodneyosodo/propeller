@@ -51,46 +51,35 @@ impl Runtime for WasmtimeRuntime {
             wasm_binary.len()
         );
 
-        // Compile the module
         info!("Compiling WASM module for task: {}", id);
         let module = Module::from_binary(&self.engine, &wasm_binary)
             .context("Failed to compile Wasmtime module from binary")?;
 
         info!("Module compiled successfully for task: {}", id);
 
-        // Create WASI P1 context with stdout/stderr capture
         let wasi = WasiCtxBuilder::new().inherit_stdio().build_p1();
 
-        // Create a new store with WASI context
         let mut store = Store::new(&self.engine, wasi);
 
-        // Create a linker and add WASI preview1 functions
         let mut linker = Linker::new(&self.engine);
         wasmtime_wasi::preview1::add_to_linker_sync(&mut linker, |ctx| ctx)
             .context("Failed to add WASI to linker")?;
 
-        // Instantiate the module
-        info!("Instantiating module for task: {}", id);
         let instance = linker
             .instantiate(&mut store, &module)
             .context("Failed to instantiate Wasmtime module")?;
 
-        info!("Module instantiated successfully for task: {}", id);
-
         if daemon {
-            // For daemon mode, store the instance and return immediately
             info!("Running in daemon mode for task: {}", id);
 
             let instances = self.instances.clone();
             let task_id = id.clone();
 
-            // Store the instance
             {
                 let mut instances_map = self.instances.lock().await;
                 instances_map.insert(id.clone(), store);
             }
 
-            // Spawn background task to execute the function
             tokio::spawn(async move {
                 // In daemon mode, we might want to execute after some delay or condition
                 // For now, just log that it's running
@@ -103,7 +92,6 @@ impl Runtime for WasmtimeRuntime {
                 // For now, simulate by waiting and then cleaning up
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
 
-                // Cleanup
                 instances.lock().await.remove(&task_id);
                 info!("Daemon task {} completed", task_id);
             });
@@ -111,10 +99,8 @@ impl Runtime for WasmtimeRuntime {
             info!("Daemon task {} started, returning immediately", id);
             Ok(Vec::new())
         } else {
-            // Synchronous execution - must run in blocking context
             info!("Running in synchronous mode for task: {}", id);
 
-            // Run the WASM execution in a blocking task to avoid runtime conflicts
             let task_id = id.clone();
             let result = tokio::task::spawn_blocking(move || {
                 // Initialize the WASM runtime by calling _initialize if it exists
@@ -128,7 +114,6 @@ impl Runtime for WasmtimeRuntime {
                     info!("No _initialize function found, skipping initialization for task: {}", task_id);
                 }
 
-                // Get the exported function
                 let func = instance
                     .get_func(&mut store, &function_name)
                     .context(format!(
@@ -136,24 +121,14 @@ impl Runtime for WasmtimeRuntime {
                         function_name
                     ))?;
 
-                info!(
-                    "Found function '{}', preparing to call with {} arguments",
-                    function_name,
-                    args.len()
-                );
 
-                // Get function type to determine parameter and return types
+
                 let func_ty = func.ty(&store);
 
-                // Log function signature
                 let param_types: Vec<_> = func_ty.params().collect();
                 let result_types: Vec<_> = func_ty.results().collect();
-                info!(
-                    "Function signature: params={:?}, results={:?}",
-                    param_types, result_types
-                );
 
-                // Validate argument count matches function signature
+
                 if args.len() != param_types.len() {
                     return Err(anyhow::anyhow!(
                         "Argument count mismatch for function '{}': expected {} arguments but got {}",
@@ -163,7 +138,6 @@ impl Runtime for WasmtimeRuntime {
                     ));
                 }
 
-                // Convert u64 args to wasmtime Val types based on function signature
                 let wasm_args: Vec<Val> = args
                     .iter()
                     .zip(param_types.iter())
@@ -183,7 +157,6 @@ impl Runtime for WasmtimeRuntime {
                     result_types.len()
                 );
 
-                // Prepare results vector based on expected return types
                 let mut results: Vec<Val> = result_types
                     .iter()
                     .map(|result_type| match result_type {
@@ -195,38 +168,29 @@ impl Runtime for WasmtimeRuntime {
                     })
                     .collect();
 
-                // Call the function
                 func.call(&mut store, &wasm_args, &mut results)
                     .context(format!("Failed to call function '{}'", function_name))?;
 
                 info!("Function '{}' executed successfully", function_name);
 
-                // Convert result to string
                 let result_string = if !results.is_empty() {
                     let result_val = &results[0];
 
                     if let Some(v) = result_val.i32() {
-                        info!("Function returned i32: {}", v);
                         v.to_string()
                     } else if let Some(v) = result_val.i64() {
-                        info!("Function returned i64: {}", v);
                         v.to_string()
                     } else if let Some(v) = result_val.f32() {
-                        info!("Function returned f32: {}", v);
                         v.to_string()
                     } else if let Some(v) = result_val.f64() {
-                        info!("Function returned f64: {}", v);
                         v.to_string()
                     } else {
-                        info!("Function returned unsupported type");
                         String::new()
                     }
                 } else {
-                    info!("Function returned no value");
                     String::new()
                 };
 
-                // Convert to bytes (UTF-8)
                 let result_bytes = result_string.into_bytes();
 
                 info!(

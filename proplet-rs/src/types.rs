@@ -60,7 +60,6 @@ pub struct StartRequest {
     pub env: Option<HashMap<String, String>>,
 }
 
-// Helper function to deserialize null as default value
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
 where
     T: Default + Deserialize<'de>,
@@ -135,7 +134,6 @@ pub struct Chunk {
     pub data: Vec<u8>,
 }
 
-// Helper function to deserialize base64 string to Vec<u8>
 fn deserialize_base64<'de, D>(deserializer: D) -> std::result::Result<Vec<u8>, D::Error>
 where
     D: serde::Deserializer<'de>,

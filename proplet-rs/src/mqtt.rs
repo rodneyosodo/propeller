@@ -26,13 +26,6 @@ pub struct PubSub {
 
 impl PubSub {
     pub async fn new(config: MqttConfig) -> Result<(Self, EventLoop)> {
-        // Parse the MQTT broker address
-        // Supports formats:
-        // - tcp://host:port
-        // - mqtt://host:port
-        // - ssl://host:port, tls://host:port, mqtts://host:port
-        // - host:port (defaults to tcp)
-        // - IPv6: tcp://[::1]:1883 or [::1]:1883
         let (host, port, use_tls) = parse_mqtt_address(&config.address)?;
 
         let mut mqtt_options = MqttOptions::new(config.client_id, host, port);

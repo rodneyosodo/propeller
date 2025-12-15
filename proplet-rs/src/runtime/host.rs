@@ -28,27 +28,16 @@ impl HostRuntime {
         let temp_dir = std::env::temp_dir();
         let file_path = temp_dir.join(format!("proplet_{}.wasm", id));
 
-        info!(
-            "Creating temp wasm file: {:?}, size: {} bytes",
-            file_path,
-            wasm_binary.len()
-        );
-
         let mut file = fs::File::create(&file_path)
             .await
             .context("Failed to create temporary wasm file")?;
-
-        info!("File created, writing {} bytes", wasm_binary.len());
 
         file.write_all(wasm_binary)
             .await
             .context("Failed to write wasm binary to temp file")?;
 
-        info!("Write complete, flushing");
-
         file.flush().await?;
 
-        info!("File flushed successfully: {:?}", file_path);
         Ok(file_path)
     }
 
@@ -78,58 +67,35 @@ impl Runtime for HostRuntime {
     ) -> Result<Vec<u8>> {
         info!(
             "Starting Host runtime app: task_id={}, function={}, daemon={}, wasm_size={}",
-            id, function_name, daemon, wasm_binary.len()
+            id,
+            function_name,
+            daemon,
+            wasm_binary.len()
         );
 
-        info!("About to create temp wasm file for task: {}", id);
-
-        // Create temporary wasm file
         let temp_file = self.create_temp_wasm_file(&id, &wasm_binary).await?;
 
-        info!("Temp file created successfully: {:?}", temp_file);
-
-        // Build command
-        info!("Building command with runtime_path: {}", self.runtime_path);
         let mut cmd = Command::new(&self.runtime_path);
 
-        // Add CLI arguments first (e.g., --invoke add)
         for arg in &cli_args {
             cmd.arg(arg);
         }
 
-        // Add wasm file
         cmd.arg(&temp_file);
 
-        // Add numeric parameters as additional arguments
         for arg in &args {
             cmd.arg(arg.to_string());
         }
 
-        // Set environment variables
         cmd.envs(&env);
 
-        // Configure stdio
         cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
 
-        // Log the full command being executed
-        info!(
-            "Command to execute: {} {} {:?} {:?}",
-            self.runtime_path,
-            temp_file.display(),
-            cli_args,
-            args
-        );
-
-        info!("About to spawn command for task: {}", id);
-
-        // Spawn the process
         let child = cmd.spawn().context(format!(
             "Failed to spawn host runtime process: {}. Command: {} {:?}",
-            self.runtime_path,
-            self.runtime_path,
-            cli_args
+            self.runtime_path, self.runtime_path, cli_args
         ))?;
 
         info!("Process spawned with PID: {:?}", child.id());
@@ -140,13 +106,11 @@ impl Runtime for HostRuntime {
             let mut processes = self.processes.lock().await;
             processes.insert(id.clone(), child);
 
-            // Spawn a background task to wait for the process and cleanup
             let processes = self.processes.clone();
             let temp_file_clone = temp_file.clone();
             let task_id = id.clone();
 
             tokio::spawn(async move {
-                // Wait for the process to complete
                 if let Some(mut process) = processes.lock().await.remove(&task_id) {
                     match process.wait().await {
                         Ok(status) => {
@@ -158,7 +122,6 @@ impl Runtime for HostRuntime {
                     }
                 }
 
-                // Cleanup temp file
                 let _ = fs::remove_file(temp_file_clone).await;
             });
 
@@ -166,7 +129,7 @@ impl Runtime for HostRuntime {
             Ok(Vec::new())
         } else {
             info!("Running in synchronous mode, waiting for task: {}", id);
-            // Wait for process to complete
+
             let output = child
                 .wait_with_output()
                 .await
@@ -174,7 +137,6 @@ impl Runtime for HostRuntime {
 
             info!("Process completed for task: {}", id);
 
-            // Cleanup temp file
             self.cleanup_temp_file(temp_file).await?;
 
             if !output.status.success() {
@@ -185,26 +147,6 @@ impl Runtime for HostRuntime {
                     output.status,
                     stderr
                 ));
-            }
-
-            // Print stdout and stderr
-            let stdout_str = String::from_utf8_lossy(&output.stdout);
-            let stderr_str = String::from_utf8_lossy(&output.stderr);
-
-            info!(
-                "Task {} completed successfully, output size: {} bytes, exit status: {}",
-                id,
-                output.stdout.len(),
-                output.status
-            );
-
-            // Always print stdout/stderr even if empty to help debug
-            info!("Task {} stdout: '{}'", id, stdout_str);
-            info!("Task {} stderr: '{}'", id, stderr_str);
-
-            // Also print raw bytes if output is not empty
-            if !output.stdout.is_empty() {
-                info!("Task {} stdout (raw bytes): {:?}", id, output.stdout);
             }
 
             Ok(output.stdout)
@@ -224,4 +166,3 @@ impl Runtime for HostRuntime {
         }
     }
 }
-

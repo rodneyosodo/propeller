@@ -39,19 +39,15 @@ impl PropletService {
     ) -> Result<()> {
         info!("Starting PropletService");
 
-        // Publish discovery message
         self.publish_discovery().await?;
 
-        // Subscribe to topics
         self.subscribe_topics().await?;
 
-        // Start liveliness updates
         let service = self.clone();
         tokio::spawn(async move {
             service.start_liveliness_updates().await;
         });
 
-        // Process MQTT messages
         while let Some(msg) = mqtt_rx.recv().await {
             let service = self.clone();
             tokio::spawn(async move {
@@ -185,16 +181,13 @@ impl PropletService {
 
         info!("Received start command for task: {}", req.id);
 
-        // Update running tasks
         {
             let mut tasks = self.running_tasks.lock().await;
             tasks.insert(req.id.clone(), TaskState::Running);
         }
 
         let wasm_binary = if !req.file.is_empty() {
-            // Decode base64-encoded wasm file
-            debug!("Decoding base64 wasm file, encoded size: {}", req.file.len());
-            use base64::{engine::general_purpose::STANDARD, Engine};
+            =            use base64::{engine::general_purpose::STANDARD, Engine};
             match STANDARD.decode(&req.file) {
                 Ok(decoded) => {
                     info!("Decoded wasm binary, size: {} bytes", decoded.len());
@@ -209,11 +202,9 @@ impl PropletService {
                 }
             }
         } else if !req.image_url.is_empty() {
-            // Request binary from registry
             info!("Requesting binary from registry: {}", req.image_url);
             self.request_binary_from_registry(&req.image_url).await?;
 
-            // Wait for chunks to be assembled
             match self.wait_for_binary(&req.image_url).await {
                 Ok(binary) => binary,
                 Err(e) => {
@@ -233,7 +224,6 @@ impl PropletService {
             return Err(err);
         };
 
-        // Execute the task
         let runtime = self.runtime.clone();
         let pubsub = self.pubsub.clone();
         let running_tasks = self.running_tasks.clone();
@@ -263,7 +253,7 @@ impl PropletService {
                 )
                 .await;
 
-            // Publish result using standardized ResultMessage
+
             let (result_data, error) = match result {
                 Ok(data) => {
                     let result_str = String::from_utf8_lossy(&data).to_string();
@@ -293,7 +283,6 @@ impl PropletService {
                 info!("Successfully published result for task {}", task_id);
             }
 
-            // Remove from running tasks
             running_tasks.lock().await.remove(&task_id);
         });
 
@@ -306,10 +295,8 @@ impl PropletService {
 
         info!("Received stop command for task: {}", req.id);
 
-        // Stop the task
         self.runtime.stop_app(req.id.clone()).await?;
 
-        // Remove from running tasks
         self.running_tasks.lock().await.remove(&req.id);
 
         Ok(())
@@ -328,7 +315,6 @@ impl PropletService {
         let mut chunks = self.chunks.lock().await;
         let mut metadata = self.chunk_metadata.lock().await;
 
-        // Store metadata if not already present
         if !metadata.contains_key(&chunk.app_name) {
             metadata.insert(
                 chunk.app_name.clone(),
@@ -339,7 +325,6 @@ impl PropletService {
             );
         }
 
-        // Append chunk data
         chunks
             .entry(chunk.app_name.clone())
             .or_insert_with(Vec::new)
@@ -370,7 +355,6 @@ impl PropletService {
     }
 
     async fn wait_for_binary(&self, app_name: &str) -> Result<Vec<u8>> {
-        // Wait up to 60 seconds for all chunks
         let timeout = tokio::time::Duration::from_secs(60);
         let start = tokio::time::Instant::now();
         let polling_interval = tokio::time::Duration::from_secs(5);
@@ -395,9 +379,7 @@ impl PropletService {
 
         if let Some(meta) = metadata.get(app_name) {
             if let Some(app_chunks) = chunks.get(app_name) {
-                // Check if all chunks are present
                 if app_chunks.len() == meta.total_chunks {
-                    // Assemble binary
                     let mut binary = Vec::new();
                     for chunk_data in app_chunks {
                         binary.extend_from_slice(chunk_data);
