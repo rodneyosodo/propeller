@@ -84,7 +84,6 @@ async fn main() -> Result<()> {
 
         info!("Received shutdown signal, cleaning up...");
 
-        // Send MQTT DISCONNECT packet before exiting
         if let Err(e) = pubsub_clone.disconnect().await {
             tracing::error!("Failed to disconnect gracefully: {}", e);
         }

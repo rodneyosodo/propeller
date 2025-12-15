@@ -91,7 +91,6 @@ impl Runtime for WasmtimeRuntime {
 
                 // For now, simulate by waiting and then cleaning up
                 tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-
                 instances.lock().await.remove(&task_id);
                 info!("Daemon task {} completed", task_id);
             });

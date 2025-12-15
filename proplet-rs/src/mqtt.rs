@@ -37,9 +37,7 @@ impl PubSub {
         mqtt_options.set_max_packet_size(config.max_packet_size, config.max_packet_size);
         mqtt_options.set_inflight(config.inflight);
 
-        // Configure TLS if needed
         if use_tls {
-            info!("Configuring TLS connection");
             let transport = rumqttc::Transport::tls_with_default_config();
             mqtt_options.set_transport(transport);
         }
@@ -162,7 +160,6 @@ fn parse_mqtt_address(address: &str) -> Result<(String, u16, bool)> {
             .ok_or_else(|| anyhow!("Missing host in URL: {}", address))?
             .to_string();
 
-        // Remove brackets from IPv6 addresses (url crate returns them with brackets)
         if host.starts_with('[') && host.ends_with(']') {
             host = host[1..host.len() - 1].to_string();
         }
@@ -173,10 +170,7 @@ fn parse_mqtt_address(address: &str) -> Result<(String, u16, bool)> {
         return Ok((host, port, use_tls));
     }
 
-    // If URL parsing fails, try parsing as host:port
-    // Handle IPv6 addresses like [::1]:1883
     if address.starts_with('[') {
-        // IPv6 format: [host]:port
         if let Some(bracket_end) = address.find(']') {
             let host = address[1..bracket_end].to_string();
             let port = if let Some(colon_pos) = address[bracket_end..].find(':') {
@@ -190,7 +184,6 @@ fn parse_mqtt_address(address: &str) -> Result<(String, u16, bool)> {
         }
     }
 
-    // Regular host:port format (IPv4 or hostname)
     if let Some(colon_pos) = address.rfind(':') {
         let host = address[..colon_pos].to_string();
         let port = address[colon_pos + 1..]
@@ -199,7 +192,6 @@ fn parse_mqtt_address(address: &str) -> Result<(String, u16, bool)> {
         return Ok((host, port, false));
     }
 
-    // Just a hostname, use default port
     Ok((address.to_string(), 1883, false))
 }
 

@@ -182,11 +182,6 @@ impl PropletService {
 
         info!("Received start command for task: {}", req.id);
 
-        {
-            let mut tasks = self.running_tasks.lock().await;
-            tasks.insert(req.id.clone(), TaskState::Running);
-        }
-
         let wasm_binary = if !req.file.is_empty() {
             use base64::{engine::general_purpose::STANDARD, Engine};
             match STANDARD.decode(&req.file) {
@@ -235,6 +230,11 @@ impl PropletService {
         let task_id = req.id.clone();
         let task_name = req.name.clone();
         let env = req.env.unwrap_or_default();
+
+        {
+            let mut tasks = self.running_tasks.lock().await;
+            tasks.insert(req.id.clone(), TaskState::Running);
+        }
 
         tokio::spawn(async move {
             let ctx = RuntimeContext { proplet_id };
