@@ -55,6 +55,10 @@ async fn main() -> Result<()> {
         client_id: config.instance_id.to_string(),
         timeout: config.mqtt_timeout(),
         qos: config.qos(),
+        keep_alive: config.mqtt_keep_alive(),
+        max_packet_size: config.mqtt_max_packet_size,
+        inflight: config.mqtt_inflight,
+        request_channel_capacity: config.mqtt_request_channel_capacity,
         username: config.client_id.clone(),
         password: config.client_key.clone(),
     };

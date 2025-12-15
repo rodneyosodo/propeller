@@ -2,7 +2,7 @@ use crate::config::PropletConfig;
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
 use crate::runtime::{Runtime, RuntimeContext};
 use crate::types::*;
-use anyhow::{Context, Result};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
@@ -35,7 +35,7 @@ impl PropletService {
 
     pub async fn run(
         self: Arc<Self>,
-        mut mqtt_rx: mpsc::UnboundedReceiver<MqttMessage>,
+        mut mqtt_rx: mpsc::Receiver<MqttMessage>,
     ) -> Result<()> {
         info!("Starting PropletService");
 
@@ -65,26 +65,28 @@ impl PropletService {
     }
 
     async fn subscribe_topics(&self) -> Result<()> {
+        let qos = self.config.qos();
+
         let start_topic = build_topic(
             &self.config.domain_id,
             &self.config.channel_id,
             "control/manager/start",
         );
-        self.pubsub.subscribe(&start_topic).await?;
+        self.pubsub.subscribe(&start_topic, qos).await?;
 
         let stop_topic = build_topic(
             &self.config.domain_id,
             &self.config.channel_id,
             "control/manager/stop",
         );
-        self.pubsub.subscribe(&stop_topic).await?;
+        self.pubsub.subscribe(&stop_topic, qos).await?;
 
         let chunk_topic = build_topic(
             &self.config.domain_id,
             &self.config.channel_id,
             "registry/server",
         );
-        self.pubsub.subscribe(&chunk_topic).await?;
+        self.pubsub.subscribe(&chunk_topic, qos).await?;
 
         Ok(())
     }
@@ -105,7 +107,7 @@ impl PropletService {
             "control/proplet/create",
         );
 
-        self.pubsub.publish(&topic, &discovery).await?;
+        self.pubsub.publish(&topic, &discovery, self.config.qos()).await?;
         info!("Published discovery message");
 
         Ok(())
@@ -146,7 +148,7 @@ impl PropletService {
             "control/proplet/alive",
         );
 
-        self.pubsub.publish(&topic, &liveliness).await?;
+        self.pubsub.publish(&topic, &liveliness, self.config.qos()).await?;
         debug!("Published liveliness update");
 
         Ok(())
@@ -237,6 +239,7 @@ impl PropletService {
         let running_tasks = self.running_tasks.clone();
         let domain_id = self.config.domain_id.clone();
         let channel_id = self.config.channel_id.clone();
+        let qos = self.config.qos();
         let proplet_id = self.proplet.lock().await.id;
         let task_id = req.id.clone();
         let task_name = req.name.clone();
@@ -284,7 +287,7 @@ impl PropletService {
 
             info!("Publishing result for task {}", task_id);
 
-            if let Err(e) = pubsub.publish(&topic, &result_msg).await {
+            if let Err(e) = pubsub.publish(&topic, &result_msg, qos).await {
                 error!("Failed to publish result for task {}: {}", task_id, e);
             } else {
                 info!("Successfully published result for task {}", task_id);
@@ -360,7 +363,7 @@ impl PropletService {
         let req = RegistryRequest {
             app_name: app_name.to_string(),
         };
-        self.pubsub.publish(&topic, &req).await?;
+        self.pubsub.publish(&topic, &req, self.config.qos()).await?;
 
         debug!("Requested binary from registry for app: {}", app_name);
         Ok(())
@@ -434,7 +437,7 @@ impl PropletService {
             "control/proplet/results",
         );
 
-        self.pubsub.publish(&topic, &result_msg).await?;
+        self.pubsub.publish(&topic, &result_msg, self.config.qos()).await?;
         Ok(())
     }
 }

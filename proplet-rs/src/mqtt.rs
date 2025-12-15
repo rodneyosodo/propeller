@@ -10,6 +10,10 @@ pub struct MqttConfig {
     pub client_id: String,
     pub timeout: Duration,
     pub qos: QoS,
+    pub keep_alive: Duration,
+    pub max_packet_size: usize,
+    pub inflight: u16,
+    pub request_channel_capacity: usize,
     pub username: String,
     pub password: String,
 }
@@ -41,24 +45,23 @@ impl PubSub {
 
         let mut mqtt_options = MqttOptions::new(config.client_id, host, port);
 
-        mqtt_options.set_keep_alive(Duration::from_secs(30));
+        mqtt_options.set_keep_alive(config.keep_alive);
         mqtt_options.set_credentials(config.username, config.password);
+        mqtt_options.set_max_packet_size(config.max_packet_size, config.max_packet_size);
+        mqtt_options.set_inflight(config.inflight);
 
-        // Increase max packet size to handle large chunks (10MB)
-        mqtt_options.set_max_packet_size(10 * 1024 * 1024, 10 * 1024 * 1024);
-
-        let (client, eventloop) = AsyncClient::new(mqtt_options, 10);
+        let (client, eventloop) = AsyncClient::new(mqtt_options, config.request_channel_capacity);
 
         info!("MQTT client created");
 
         Ok((Self { client }, eventloop))
     }
 
-    pub async fn publish<T: Serialize>(&self, topic: &str, payload: &T) -> Result<()> {
+    pub async fn publish<T: Serialize>(&self, topic: &str, payload: &T, qos: QoS) -> Result<()> {
         let json = serde_json::to_vec(payload).context("Failed to serialize payload")?;
 
         self.client
-            .publish(topic, QoS::ExactlyOnce, false, json)
+            .publish(topic, qos, false, json)
             .await
             .context("Failed to publish message")?;
 
@@ -66,9 +69,9 @@ impl PubSub {
         Ok(())
     }
 
-    pub async fn subscribe(&self, topic: &str) -> Result<()> {
+    pub async fn subscribe(&self, topic: &str, qos: QoS) -> Result<()> {
         self.client
-            .subscribe(topic, QoS::ExactlyOnce)
+            .subscribe(topic, qos)
             .await
             .context(format!("Failed to subscribe to topic: {}", topic))?;
 
@@ -107,7 +110,7 @@ impl MqttMessage {
     }
 }
 
-pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::UnboundedSender<MqttMessage>) {
+pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<MqttMessage>) {
     info!("Starting MQTT event loop");
 
     loop {
@@ -118,7 +121,7 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::UnboundedSe
                     payload: publish.payload.to_vec(),
                 };
 
-                if let Err(e) = tx.send(msg) {
+                if let Err(e) = tx.send(msg).await {
                     error!("Failed to send MQTT message to handler: {}", e);
                 }
             }

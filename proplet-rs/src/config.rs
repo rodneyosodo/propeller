@@ -16,6 +16,10 @@ pub struct PropletConfig {
     pub mqtt_address: String,
     pub mqtt_timeout: u64,
     pub mqtt_qos: u8,
+    pub mqtt_keep_alive: u64,
+    pub mqtt_max_packet_size: usize,
+    pub mqtt_inflight: u16,
+    pub mqtt_request_channel_capacity: usize,
     pub liveliness_interval: u64,
     pub domain_id: String,
     pub channel_id: String,
@@ -33,6 +37,10 @@ impl Default for PropletConfig {
             mqtt_address: "tcp://localhost:1883".to_string(),
             mqtt_timeout: 30,
             mqtt_qos: 2,
+            mqtt_keep_alive: 30,
+            mqtt_max_packet_size: 10 * 1024 * 1024, // 10MB
+            mqtt_inflight: 10,
+            mqtt_request_channel_capacity: 128,
             liveliness_interval: 10,
             domain_id: String::new(),
             channel_id: String::new(),
@@ -71,6 +79,30 @@ impl PropletConfig {
         if let Ok(val) = env::var("PROPLET_MQTT_QOS") {
             if let Ok(qos) = val.parse() {
                 config.mqtt_qos = qos;
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_MQTT_KEEP_ALIVE") {
+            if let Ok(keep_alive) = val.parse() {
+                config.mqtt_keep_alive = keep_alive;
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_MQTT_MAX_PACKET_SIZE") {
+            if let Ok(max_packet_size) = val.parse() {
+                config.mqtt_max_packet_size = max_packet_size;
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_MQTT_INFLIGHT") {
+            if let Ok(inflight) = val.parse() {
+                config.mqtt_inflight = inflight;
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_MQTT_REQUEST_CHANNEL_CAPACITY") {
+            if let Ok(capacity) = val.parse() {
+                config.mqtt_request_channel_capacity = capacity;
             }
         }
 
@@ -117,6 +149,10 @@ impl PropletConfig {
 
     pub fn mqtt_timeout(&self) -> Duration {
         Duration::from_secs(self.mqtt_timeout)
+    }
+
+    pub fn mqtt_keep_alive(&self) -> Duration {
+        Duration::from_secs(self.mqtt_keep_alive)
     }
 
     pub fn liveliness_interval(&self) -> Duration {
