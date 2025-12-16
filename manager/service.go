@@ -184,15 +184,16 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 		return err
 	}
 	payload := map[string]interface{}{
-		"id":        t.ID,
-		"name":      t.Name,
-		"state":     t.State,
-		"image_url": t.ImageURL,
-		"file":      t.File,
-		"inputs":    t.Inputs,
-		"cli_args":  t.CLIArgs,
-		"daemon":    t.Daemon,
-		"env":       t.Env,
+		"id":                 t.ID,
+		"name":               t.Name,
+		"state":              t.State,
+		"image_url":          t.ImageURL,
+		"file":               t.File,
+		"inputs":             t.Inputs,
+		"cli_args":           t.CLIArgs,
+		"daemon":             t.Daemon,
+		"env":                t.Env,
+		"monitoring_profile": t.MonitoringProfile,
 	}
 
 	topic := svc.baseTopic + "/control/manager/start"

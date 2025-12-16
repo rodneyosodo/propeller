@@ -291,7 +291,6 @@ func (p *PropletService) handleStartCommand(ctx context.Context) func(topic stri
 				return err
 			}
 
-			// Start monitoring if enabled
 			if err := p.startTaskMonitoring(ctx, req.ID, payload.MonitoringProfile); err != nil {
 				p.logger.Warn("Failed to start task monitoring", slog.String("task_id", req.ID), slog.Any("error", err))
 			}
@@ -336,6 +335,10 @@ func (p *PropletService) handleStartCommand(ctx context.Context) func(topic stri
 					}
 					if err := p.runtime.StartApp(ctx, config); err != nil {
 						p.logger.Error("Failed to start app", slog.String("app_name", req.imageURL), slog.Any("error", err))
+					} else {
+						if err := p.startTaskMonitoring(ctx, req.ID, payload.MonitoringProfile); err != nil {
+							p.logger.Warn("Failed to start task monitoring", slog.String("task_id", req.ID), slog.Any("error", err))
+						}
 					}
 
 					break
@@ -368,6 +371,9 @@ func (p *PropletService) handleStopCommand(ctx context.Context) func(topic strin
 		if err := p.runtime.StopApp(ctx, req.ID); err != nil {
 			return err
 		}
+
+		p.monitorManager.StopMonitoring(req.ID)
+		p.logger.Info("Stopped task monitoring", slog.String("task_id", req.ID))
 
 		return nil
 	}
@@ -422,9 +428,65 @@ func (p *PropletService) handleChunk(_ context.Context) func(topic string, msg m
 	}
 }
 
+func (p *PropletService) startTaskMonitoring(ctx context.Context, taskID string, profile *monitoring.MonitoringProfile) error {
+	if profile == nil {
+		p.logger.Debug("No monitoring profile provided", slog.String("task_id", taskID))
+		return nil
+	}
+	if !profile.Enabled {
+		p.logger.Debug("Monitoring disabled in profile", slog.String("task_id", taskID))
+		return nil
+	}
+
+	p.logger.Info("Starting task monitoring",
+		slog.String("task_id", taskID),
+		slog.Duration("interval", profile.Interval))
+
+	pid, err := p.runtime.GetPID(ctx, taskID)
+	if err != nil {
+		return fmt.Errorf("failed to get PID for task %s: %w", taskID, err)
+	}
+
+	exportFunc := func(tID string, metrics *monitoring.ProcessMetrics, agg *monitoring.AggregatedMetrics) {
+		topic := fmt.Sprintf(taskMetricsTopicTemplate, p.domainID, p.channelID)
+		payload := map[string]interface{}{
+			"task_id":    tID,
+			"proplet_id": p.clientID,
+			"metrics":    metrics,
+		}
+		if agg != nil {
+			payload["aggregated"] = agg
+		}
+
+		if err := p.pubsub.Publish(ctx, topic, payload); err != nil {
+			p.logger.Error("failed to publish task metrics",
+				slog.String("task_id", tID),
+				slog.Any("error", err))
+		}
+	}
+
+	if err := p.monitorManager.StartMonitoring(ctx, taskID, pid, *profile, exportFunc); err != nil {
+		return fmt.Errorf("failed to start monitoring: %w", err)
+	}
+
+	p.logger.Info("Started task monitoring",
+		slog.String("task_id", taskID),
+		slog.Int("pid", int(pid)))
+
+	return nil
+}
+
+func assembleChunks(chunks [][]byte) []byte {
+	var wasmBinary []byte
+	for _, chunk := range chunks {
+		wasmBinary = append(wasmBinary, chunk...)
+	}
+
+	return wasmBinary
+}
+
 func (c *ChunkPayload) Validate() error {
 	if c.AppName == "" {
-		return errors.New("chunk validation: app_name is required but missing")
 	}
 	if c.ChunkIdx < 0 || c.TotalChunks <= 0 {
 		return fmt.Errorf("chunk validation: invalid chunk_idx (%d) or total_chunks (%d)", c.ChunkIdx, c.TotalChunks)
