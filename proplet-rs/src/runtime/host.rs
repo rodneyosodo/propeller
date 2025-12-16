@@ -87,10 +87,10 @@ impl Runtime for HostRuntime {
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
 
-        let child = cmd.spawn().context(format!(
-            "Failed to spawn host runtime process: {}. Command: {} {:?}",
-            self.runtime_path, self.runtime_path, config.cli_args
-        ))?;
+        // Spawn the process
+        let child = cmd
+            .spawn()
+            .context("Failed to spawn host runtime process")?;
 
         info!("Process spawned with PID: {:?}", child.id());
 

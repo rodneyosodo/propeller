@@ -17,4 +17,5 @@ type StartConfig struct {
 type Runtime interface {
 	StartApp(ctx context.Context, config StartConfig) error
 	StopApp(ctx context.Context, id string) error
+	GetPID(ctx context.Context, id string) (int32, error)
 }

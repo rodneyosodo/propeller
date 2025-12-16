@@ -11,6 +11,7 @@ import (
 	"time"
 
 	pkgmqtt "github.com/absmach/propeller/pkg/mqtt"
+	"github.com/absmach/propeller/proplet/monitoring"
 	"github.com/absmach/propeller/task"
 )
 
@@ -27,8 +28,8 @@ var (
 	registryResponseTopic     = "m/%s/c/%s/registry/server"
 	fetchRequestTopicTemplate = "m/%s/c/%s/registry/proplet"
 
-	// NEW: metrics topic.
-	metricsTopicTemplate = "m/%s/c/%s/control/proplet/metrics"
+	metricsTopicTemplate     = "m/%s/c/%s/control/proplet/metrics"
+	taskMetricsTopicTemplate = "m/%s/c/%s/control/proplet/task_metrics"
 )
 
 type chunkAssemblyState struct {
@@ -72,9 +73,9 @@ type PropletService struct {
 	k8sNamespace       string
 	livelinessInterval time.Duration
 
-	// NEW: metrics.
 	metricsInterval time.Duration
 	collector       *usageCollector
+	monitorManager  *monitoring.MonitorManager
 
 	pubsub        pkgmqtt.PubSub
 	chunkAssembly map[string]*chunkAssemblyState
@@ -119,6 +120,7 @@ func NewService(
 
 		metricsInterval: metricsInterval,
 		collector:       newUsageCollector(),
+		monitorManager:  monitoring.NewMonitorManager(logger),
 
 		pubsub:        pubsub,
 		chunkAssembly: make(map[string]*chunkAssemblyState),
@@ -287,6 +289,11 @@ func (p *PropletService) handleStartCommand(ctx context.Context) func(topic stri
 			}
 			if err := p.runtime.StartApp(ctx, config); err != nil {
 				return err
+			}
+
+			// Start monitoring if enabled
+			if err := p.startTaskMonitoring(ctx, req.ID, payload.MonitoringProfile); err != nil {
+				p.logger.Warn("Failed to start task monitoring", slog.String("task_id", req.ID), slog.Any("error", err))
 			}
 
 			return nil

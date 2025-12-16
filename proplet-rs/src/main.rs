@@ -1,4 +1,5 @@
 mod config;
+mod monitoring;
 mod mqtt;
 mod runtime;
 mod service;

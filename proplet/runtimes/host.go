@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proplet"
@@ -20,6 +21,8 @@ type hostRuntime struct {
 	channelID   string
 	logger      *slog.Logger
 	wasmRuntime string
+	processes   map[string]*exec.Cmd
+	mu          sync.RWMutex
 }
 
 func NewHostRuntime(logger *slog.Logger, pubsub mqtt.PubSub, domainID, channelID, wasmRuntime string) proplet.Runtime {
@@ -29,6 +32,7 @@ func NewHostRuntime(logger *slog.Logger, pubsub mqtt.PubSub, domainID, channelID
 		channelID:   channelID,
 		logger:      logger,
 		wasmRuntime: wasmRuntime,
+		processes:   make(map[string]*exec.Cmd),
 	}
 }
 
@@ -70,6 +74,10 @@ func (w *hostRuntime) StartApp(ctx context.Context, config proplet.StartConfig) 
 		return fmt.Errorf("error starting command: %w", err)
 	}
 
+	w.mu.Lock()
+	w.processes[config.ID] = cmd
+	w.mu.Unlock()
+
 	if !config.Daemon {
 		go w.wait(ctx, cmd, filepath.Join(currentDir, config.ID+".wasm"), config.ID, &results)
 	}
@@ -78,11 +86,40 @@ func (w *hostRuntime) StartApp(ctx context.Context, config proplet.StartConfig) 
 }
 
 func (w *hostRuntime) StopApp(ctx context.Context, id string) error {
+	w.mu.Lock()
+	cmd, exists := w.processes[id]
+	delete(w.processes, id)
+	w.mu.Unlock()
+
+	if !exists {
+		return fmt.Errorf("process not found for id: %s", id)
+	}
+
+	if cmd.Process != nil {
+		return cmd.Process.Kill()
+	}
+
 	return nil
+}
+
+func (w *hostRuntime) GetPID(ctx context.Context, id string) (int32, error) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+
+	cmd, exists := w.processes[id]
+	if !exists || cmd.Process == nil {
+		return 0, fmt.Errorf("process not found for id: %s", id)
+	}
+
+	return int32(cmd.Process.Pid), nil
 }
 
 func (w *hostRuntime) wait(ctx context.Context, cmd *exec.Cmd, fileName, id string, results *bytes.Buffer) {
 	defer func() {
+		w.mu.Lock()
+		delete(w.processes, id)
+		w.mu.Unlock()
+
 		if err := os.Remove(fileName); err != nil {
 			w.logger.Error("failed to remove file", slog.String("fileName", fileName), slog.String("error", err.Error()))
 		}

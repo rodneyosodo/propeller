@@ -2,7 +2,7 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +58,8 @@ pub struct StartRequest {
     pub daemon: bool,
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
+    #[serde(rename = "monitoringProfile", default)]
+    pub monitoring_profile: Option<MonitoringProfile>,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -164,6 +166,68 @@ pub struct ResultMessage {
     pub proplet_id: Uuid,
     pub result: Vec<u8>,
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MonitoringProfile {
+    pub enabled: bool,
+    #[serde(with = "serde_duration")]
+    pub interval: Duration,
+    pub collect_cpu: bool,
+    pub collect_memory: bool,
+    pub collect_disk_io: bool,
+    pub collect_network_io: bool,
+    pub collect_threads: bool,
+    pub collect_file_descriptors: bool,
+    pub export_to_mqtt: bool,
+    pub retain_history: bool,
+    pub history_size: usize,
+}
+
+impl Default for MonitoringProfile {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            interval: Duration::from_secs(10),
+            collect_cpu: true,
+            collect_memory: true,
+            collect_disk_io: true,
+            collect_network_io: true,
+            collect_threads: true,
+            collect_file_descriptors: true,
+            export_to_mqtt: true,
+            retain_history: true,
+            history_size: 100,
+        }
+    }
+}
+
+mod serde_duration {
+    use serde::{Deserialize, Deserializer, Serializer};
+    use std::time::Duration;
+
+    pub fn serialize<S>(duration: &Duration, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_u64(duration.as_secs())
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Duration, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let secs = u64::deserialize(deserializer)?;
+        Ok(Duration::from_secs(secs))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsMessage {
+    pub task_id: Uuid,
+    pub proplet_id: Uuid,
+    pub metrics: crate::monitoring::metrics::ProcessMetrics,
+    pub aggregated: Option<crate::monitoring::metrics::AggregatedMetrics>,
 }
 
 #[cfg(test)]

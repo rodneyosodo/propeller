@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -102,4 +103,8 @@ func (w *wazeroRuntime) StopApp(ctx context.Context, id string) error {
 	delete(w.runtimes, id)
 
 	return nil
+}
+
+func (w *wazeroRuntime) GetPID(ctx context.Context, id string) (int32, error) {
+	return int32(os.Getpid()), nil
 }

@@ -22,12 +22,14 @@ pub struct PropletConfig {
     pub mqtt_inflight: u16,
     pub mqtt_request_channel_capacity: usize,
     pub liveliness_interval: u64,
+    pub metrics_interval: u64,
     pub domain_id: String,
     pub channel_id: String,
     pub client_id: String,
     pub client_key: String,
     pub k8s_namespace: Option<String>,
     pub external_wasm_runtime: Option<String>,
+    pub enable_monitoring: bool,
 }
 
 impl Default for PropletConfig {
@@ -43,12 +45,14 @@ impl Default for PropletConfig {
             mqtt_inflight: 10,
             mqtt_request_channel_capacity: 128,
             liveliness_interval: 10,
+            metrics_interval: 10,
             domain_id: String::new(),
             channel_id: String::new(),
             client_id: String::new(),
             client_key: String::new(),
             k8s_namespace: None,
             external_wasm_runtime: None,
+            enable_monitoring: true,
         }
     }
 }
@@ -135,6 +139,16 @@ impl PropletConfig {
 
         if let Ok(val) = env::var("PROPLET_EXTERNAL_WASM_RUNTIME") {
             config.external_wasm_runtime = Some(val);
+        }
+
+        if let Ok(val) = env::var("PROPLET_METRICS_INTERVAL") {
+            if let Ok(interval) = val.parse() {
+                config.metrics_interval = interval;
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_ENABLE_MONITORING") {
+            config.enable_monitoring = val.to_lowercase() == "true" || val == "1";
         }
 
         config

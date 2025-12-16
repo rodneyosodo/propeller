@@ -45,6 +45,12 @@ func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) ht
 				api.EncodeResponse,
 				opts...,
 			), "get-proplet").ServeHTTP)
+			r.Get("/metrics", otelhttp.NewHandler(kithttp.NewServer(
+				getPropletMetricsEndpoint(svc),
+				decodeMetricsReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-proplet-metrics").ServeHTTP)
 		})
 	})
 
@@ -98,6 +104,12 @@ func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) ht
 				api.EncodeResponse,
 				opts...,
 			), "stop-task").ServeHTTP)
+			r.Get("/metrics", otelhttp.NewHandler(kithttp.NewServer(
+				getTaskMetricsEndpoint(svc),
+				decodeMetricsReq("taskID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-task-metrics").ServeHTTP)
 		})
 	})
 
@@ -180,4 +192,24 @@ func decodeListEntityReq(_ context.Context, r *http.Request) (interface{}, error
 		offset: o,
 		limit:  l,
 	}, nil
+}
+
+func decodeMetricsReq(key string) kithttp.DecodeRequestFunc {
+	return func(_ context.Context, r *http.Request) (interface{}, error) {
+		o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+		if err != nil {
+			return nil, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		return metricsReq{
+			id:     chi.URLParam(r, key),
+			offset: o,
+			limit:  l,
+		}, nil
+	}
 }

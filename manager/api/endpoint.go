@@ -193,3 +193,45 @@ func stopTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 		}, nil
 	}
 }
+
+func getTaskMetricsEndpoint(svc manager.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		req, ok := request.(metricsReq)
+		if !ok {
+			return taskMetricsResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+		}
+		if err := req.validate(); err != nil {
+			return taskMetricsResponse{}, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		metrics, err := svc.GetTaskMetrics(ctx, req.id, req.offset, req.limit)
+		if err != nil {
+			return taskMetricsResponse{}, err
+		}
+
+		return taskMetricsResponse{
+			TaskMetricsPage: metrics,
+		}, nil
+	}
+}
+
+func getPropletMetricsEndpoint(svc manager.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request interface{}) (interface{}, error) {
+		req, ok := request.(metricsReq)
+		if !ok {
+			return propletMetricsResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+		}
+		if err := req.validate(); err != nil {
+			return propletMetricsResponse{}, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		metrics, err := svc.GetPropletMetrics(ctx, req.id, req.offset, req.limit)
+		if err != nil {
+			return propletMetricsResponse{}, err
+		}
+
+		return propletMetricsResponse{
+			PropletMetricsPage: metrics,
+		}, nil
+	}
+}
