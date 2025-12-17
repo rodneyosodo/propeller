@@ -52,11 +52,12 @@ func (s *chunkAssemblyState) isExpired(ttl time.Duration) bool {
 
 func (s *chunkAssemblyState) assemble() []byte {
 	var wasmBinary []byte
-	for i := 0; i < s.totalChunks; i++ {
+	for i := range s.totalChunks {
 		if chunk, exists := s.chunks[i]; exists {
 			wasmBinary = append(wasmBinary, chunk...)
 		}
 	}
+
 	return wasmBinary
 }
 
@@ -140,6 +141,7 @@ func (p *PropletService) startChunkExpiryTask(ctx context.Context) {
 		select {
 		case <-ctx.Done():
 			p.logger.Info("stopping chunk expiry task")
+
 			return
 		case <-ticker.C:
 			p.chunksMutex.Lock()
@@ -339,6 +341,7 @@ func (p *PropletService) handleChunk(_ context.Context) func(topic string, msg m
 				slog.String("app_name", chunk.AppName),
 				slog.Int("expected", state.totalChunks),
 				slog.Int("got", chunk.TotalChunks))
+
 			return fmt.Errorf("chunk total_chunks mismatch for '%s'", chunk.AppName)
 		}
 

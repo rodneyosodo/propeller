@@ -49,7 +49,9 @@ func (w *hostRuntime) StartApp(ctx context.Context, config proplet.StartConfig) 
 		return fmt.Errorf("error closing file: %w", err)
 	}
 
-	cliArgs := append(config.CLIArgs, filepath.Join(currentDir, config.ID+".wasm"))
+	cliArgs := config.CLIArgs
+
+	cliArgs = append(cliArgs, filepath.Join(currentDir, config.ID+".wasm"))
 	for i := range config.Args {
 		cliArgs = append(cliArgs, strconv.FormatUint(config.Args[i], 10))
 	}
