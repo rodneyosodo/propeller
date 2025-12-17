@@ -70,9 +70,8 @@ impl Runtime for WasmtimeRuntime {
         }
 
         // Execute the function
-        let result = if daemon {
+        if daemon {
             // For daemon mode, spawn in background
-            let instances = self.instances.clone();
             let func_name = function_name.to_string();
 
             tokio::spawn(async move {
@@ -84,23 +83,25 @@ impl Runtime for WasmtimeRuntime {
                     error!("Daemon task {} failed: {}", id, e);
                 }
 
-                // Remove from instances map
-                instances.lock().await.remove(&id);
+                // For daemon tasks, DO NOT remove from instances map
+                // The instance remains until stop_app is called explicitly
+                info!("Daemon task {} completed, instance kept active for explicit stop", id);
             });
 
             Ok(Vec::new())
         } else {
             // Execute synchronously
-            let mut inst = wasm_inst.lock().await;
-            let result = execute_function(&mut inst, function_name, args).await;
+            let result = {
+                let mut inst = wasm_inst.lock().await;
+                execute_function(&mut inst, function_name, args).await
+            };
 
-            // Remove from instances map
+            // Always remove from instances map after synchronous execution completes
+            // This ensures cleanup happens whether execution succeeded or failed
             self.instances.lock().await.remove(&id);
 
             result
-        };
-
-        result
+        }
     }
 
     async fn stop_app(&self, id: Uuid) -> Result<()> {
