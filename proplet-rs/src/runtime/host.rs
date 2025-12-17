@@ -14,6 +14,7 @@ use tracing::{debug, error, info};
 pub struct HostRuntime {
     runtime_path: String,
     processes: Arc<Mutex<HashMap<String, Child>>>,
+    pids: Arc<Mutex<HashMap<String, u32>>>,
 }
 
 impl HostRuntime {
@@ -21,6 +22,7 @@ impl HostRuntime {
         Self {
             runtime_path,
             processes: Arc::new(Mutex::new(HashMap::new())),
+            pids: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -54,11 +56,7 @@ impl HostRuntime {
 
 #[async_trait]
 impl Runtime for HostRuntime {
-    async fn start_app(
-        &self,
-        _ctx: RuntimeContext,
-        config: StartConfig,
-    ) -> Result<Vec<u8>> {
+    async fn start_app(&self, _ctx: RuntimeContext, config: StartConfig) -> Result<Vec<u8>> {
         info!(
             "Starting Host runtime app: task_id={}, function={}, daemon={}, wasm_size={}",
             config.id,
@@ -67,7 +65,9 @@ impl Runtime for HostRuntime {
             config.wasm_binary.len()
         );
 
-        let temp_file = self.create_temp_wasm_file(&config.id, &config.wasm_binary).await?;
+        let temp_file = self
+            .create_temp_wasm_file(&config.id, &config.wasm_binary)
+            .await?;
 
         let mut cmd = Command::new(&self.runtime_path);
 
@@ -87,20 +87,28 @@ impl Runtime for HostRuntime {
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
 
-        // Spawn the process
-        let child = cmd
-            .spawn()
-            .context("Failed to spawn host runtime process")?;
+        let child = cmd.spawn().context(format!(
+            "Failed to spawn host runtime process: {}. Command: {} {:?}",
+            self.runtime_path, self.runtime_path, config.cli_args
+        ))?;
 
-        info!("Process spawned with PID: {:?}", child.id());
+        let pid = child.id();
+        info!("Process spawned with PID: {:?}", pid);
+
+        if let Some(pid_val) = pid {
+            let mut pids = self.pids.lock().await;
+            pids.insert(config.id.clone(), pid_val);
+        }
+
+        let mut processes = self.processes.lock().await;
+        processes.insert(config.id.clone(), child);
+        drop(processes);
 
         if config.daemon {
             info!("Running in daemon mode for task: {}", config.id);
-            // For daemon mode, store the process and return immediately
-            let mut processes = self.processes.lock().await;
-            processes.insert(config.id.clone(), child);
-
+            
             let processes = self.processes.clone();
+            let pids = self.pids.clone();
             let temp_file_clone = temp_file.clone();
             let task_id = config.id.clone();
 
@@ -109,7 +117,7 @@ impl Runtime for HostRuntime {
                 // This allows stop_app to still access and kill the process
                 loop {
                     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    
+
                     let mut should_cleanup = false;
                     {
                         let mut processes_guard = processes.lock().await;
@@ -135,6 +143,7 @@ impl Runtime for HostRuntime {
 
                     if should_cleanup {
                         processes.lock().await.remove(&task_id);
+                        pids.lock().await.remove(&task_id);
                         break;
                     }
                 }
@@ -145,7 +154,16 @@ impl Runtime for HostRuntime {
             info!("Daemon task {} started, returning immediately", config.id);
             Ok(Vec::new())
         } else {
-            info!("Running in synchronous mode, waiting for task: {}", config.id);
+            info!(
+                "Running in synchronous mode, waiting for task: {}",
+                config.id
+            );
+
+            let child = {
+                let mut processes = self.processes.lock().await;
+                processes.remove(&config.id)
+                    .ok_or_else(|| anyhow::anyhow!("Failed to retrieve child process"))?
+            };
 
             let output = child
                 .wait_with_output()
@@ -154,6 +172,7 @@ impl Runtime for HostRuntime {
 
             info!("Process completed for task: {}", config.id);
 
+            self.pids.lock().await.remove(&config.id);
             self.cleanup_temp_file(temp_file).await?;
 
             if !output.status.success() {
@@ -173,6 +192,8 @@ impl Runtime for HostRuntime {
     async fn stop_app(&self, id: String) -> Result<()> {
         info!("Stopping Host runtime app: task_id={}", id);
 
+        self.pids.lock().await.remove(&id);
+
         let mut processes = self.processes.lock().await;
         if let Some(mut child) = processes.remove(&id) {
             child.kill().await.context("Failed to kill process")?;
@@ -180,6 +201,21 @@ impl Runtime for HostRuntime {
             Ok(())
         } else {
             Err(anyhow::anyhow!("Task {} not found", id))
+        }
+    }
+
+    async fn get_pid(&self, id: &str) -> Result<Option<u32>> {
+        let pids = self.pids.lock().await;
+        if let Some(&pid) = pids.get(id) {
+            return Ok(Some(pid));
+        }
+        drop(pids);
+
+        let processes = self.processes.lock().await;
+        if let Some(child) = processes.get(id) {
+            Ok(child.id())
+        } else {
+            Ok(None)
         }
     }
 }

@@ -1,4 +1,5 @@
 use crate::config::PropletConfig;
+use crate::metrics::MetricsCollector;
 use crate::monitoring::{system::SystemMonitor, ProcessMonitor};
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
@@ -50,13 +51,15 @@ pub struct PropletService {
     runtime: Arc<dyn Runtime>,
     chunk_assembly: Arc<Mutex<HashMap<String, ChunkAssemblyState>>>,
     running_tasks: Arc<Mutex<HashMap<String, TaskState>>>,
-    monitor: Arc<dyn ProcessMonitor>,
+    monitor: Arc<SystemMonitor>,
+    metrics_collector: Arc<Mutex<MetricsCollector>>,
 }
 
 impl PropletService {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
         let proplet = Proplet::new(config.instance_id, "proplet-rs".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
+        let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
 
         let service = Self {
             config,
@@ -66,6 +69,7 @@ impl PropletService {
             chunk_assembly: Arc::new(Mutex::new(HashMap::new())),
             running_tasks: Arc::new(Mutex::new(HashMap::new())),
             monitor,
+            metrics_collector,
         };
 
         service.start_chunk_expiry_task();
@@ -114,6 +118,14 @@ impl PropletService {
         tokio::spawn(async move {
             service.start_liveliness_updates().await;
         });
+
+        // Start proplet metrics updates if enabled
+        if self.config.enable_monitoring && self.config.metrics_interval > 0 {
+            let service = self.clone();
+            tokio::spawn(async move {
+                service.start_metrics_updates().await;
+            });
+        }
 
         while let Some(msg) = mqtt_rx.recv().await {
             let service = self.clone();
@@ -221,6 +233,53 @@ impl PropletService {
         Ok(())
     }
 
+    async fn start_metrics_updates(&self) {
+        let mut interval = tokio::time::interval(self.config.metrics_interval());
+
+        loop {
+            interval.tick().await;
+
+            if let Err(e) = self.publish_proplet_metrics().await {
+                error!("Failed to publish proplet metrics: {}", e);
+            }
+        }
+    }
+
+    async fn publish_proplet_metrics(&self) -> Result<()> {
+        let metrics = {
+            let mut collector = self.metrics_collector.lock().await;
+            collector.collect()
+        };
+
+        #[derive(serde::Serialize)]
+        struct PropletMetricsMessage {
+            proplet_id: String,
+            namespace: String,
+            metrics: crate::metrics::PropletMetrics,
+        }
+
+        let msg = PropletMetricsMessage {
+            proplet_id: self.config.client_id.clone(),
+            namespace: self
+                .config
+                .k8s_namespace
+                .clone()
+                .unwrap_or_else(|| "default".to_string()),
+            metrics,
+        };
+
+        let topic = build_topic(
+            &self.config.domain_id,
+            &self.config.channel_id,
+            "control/proplet/metrics",
+        );
+
+        self.pubsub.publish(&topic, &msg, self.config.qos()).await?;
+        debug!("Published proplet metrics");
+
+        Ok(())
+    }
+
     async fn handle_message(&self, msg: MqttMessage) -> Result<()> {
         debug!("Handling message from topic: {}", msg.topic);
 
@@ -252,7 +311,11 @@ impl PropletService {
 
         info!("Received start command for task: {}", req.id);
 
-<<<<<<< HEAD
+        {
+            let mut tasks = self.running_tasks.lock().await;
+            tasks.insert(req.id.clone(), TaskState::Running);
+        }
+
         let wasm_binary = if !req.file.is_empty() {
             use base64::{engine::general_purpose::STANDARD, Engine};
             match STANDARD.decode(&req.file) {
@@ -268,48 +331,16 @@ impl PropletService {
                     return Err(e.into());
                 }
             }
-=======
-        {
-            let mut tasks = self.running_tasks.lock().await;
-            tasks.insert(req.id, TaskState::Running);
-        }
-
-        let monitoring_profile = req.monitoring_profile.clone().unwrap_or_else(|| {
-            if req.daemon {
-                MonitoringProfile::long_running_daemon()
-            } else {
-                MonitoringProfile::standard()
-            }
-        });
-
-        if monitoring_profile.enabled {
-            self.monitor
-                .start_monitoring(req.id, monitoring_profile.clone())
-                .await?;
-        }
-
-        let wasm_binary = if !req.wasm_file.is_empty() {
-            req.wasm_file.clone()
->>>>>>> 86ef3d2 (feat(proplet): add proplet monitoring)
         } else if !req.image_url.is_empty() {
             info!("Requesting binary from registry: {}", req.image_url);
             self.request_binary_from_registry(&req.image_url).await?;
 
-<<<<<<< HEAD
             match self.wait_for_binary(&req.image_url).await {
                 Ok(binary) => binary,
                 Err(e) => {
                     error!("Failed to get binary for task {}: {}", req.id, e);
                     self.running_tasks.lock().await.remove(&req.id);
                     self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
-=======
-            match self.wait_for_binary(req.id).await {
-                Ok(binary) => binary,
-                Err(e) => {
-                    error!("Failed to get binary for task {}: {}", req.id, e);
-                    self.monitor.stop_monitoring(req.id).await.ok();
-                    self.publish_result(req.id, Vec::new(), Some(e.to_string()))
->>>>>>> 86ef3d2 (feat(proplet): add proplet monitoring)
                         .await?;
                     return Err(e);
                 }
@@ -323,6 +354,14 @@ impl PropletService {
             return Err(err);
         };
 
+        let monitoring_profile = req.monitoring_profile.clone().unwrap_or_else(|| {
+            if req.daemon {
+                MonitoringProfile::long_running_daemon()
+            } else {
+                MonitoringProfile::standard()
+            }
+        });
+
         let runtime = self.runtime.clone();
         let pubsub = self.pubsub.clone();
         let running_tasks = self.running_tasks.clone();
@@ -334,105 +373,104 @@ impl PropletService {
         let task_id = req.id.clone();
         let task_name = req.name.clone();
         let env = req.env.unwrap_or_default();
+        let daemon = req.daemon;
+        let cli_args = req.cli_args.clone();
+        let inputs = req.inputs.clone();
 
-        {
-            let mut tasks = self.running_tasks.lock().await;
-            tasks.insert(req.id.clone(), TaskState::Running);
-        }
-
-        let export_metrics = monitoring_profile.export_to_mqtt;
+        let export_metrics = monitoring_profile.enabled && monitoring_profile.export_to_mqtt;
 
         tokio::spawn(async move {
             let ctx = RuntimeContext { proplet_id };
 
-<<<<<<< HEAD
             info!("Executing task {} in spawned task", task_id);
 
             let config = StartConfig {
                 id: task_id.clone(),
                 function_name: task_name.clone(),
-                daemon: req.daemon,
+                daemon,
                 wasm_binary,
-                cli_args: req.cli_args,
+                cli_args,
                 env,
-                args: req.inputs,
+                args: inputs,
             };
 
-            let result = runtime.start_app(ctx, config).await;
-=======
-            let metrics_task = if export_metrics {
+            // Start monitoring setup (if enabled)
+            if export_metrics {
+                if let Err(e) = monitor.start_monitoring(&task_id, monitoring_profile.clone()).await {
+                    error!("Failed to start monitoring for task {}: {}", task_id, e);
+                }
+            }
+
+            // Spawn the monitoring attachment in a separate task to run concurrently
+            let monitor_handle = if export_metrics {
                 let monitor_clone = monitor.clone();
+                let runtime_clone = runtime.clone();
+                let task_id_clone = task_id.clone();
                 let pubsub_clone = pubsub.clone();
                 let domain_clone = domain_id.clone();
                 let channel_clone = channel_id.clone();
-                let task_id = req.id;
 
                 Some(tokio::spawn(async move {
-                    let mut interval = tokio::time::interval(monitoring_profile.interval);
-                    loop {
-                        interval.tick().await;
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    
+                    if let Ok(Some(pid)) = runtime_clone.get_pid(&task_id_clone).await {
+                        
+                        let task_id_for_closure = task_id_clone.clone();
+                        monitor_clone.attach_pid(&task_id_clone, pid, move |metrics, aggregated| {
+                            let pubsub = pubsub_clone.clone();
+                            let domain = domain_clone.clone();
+                            let channel = channel_clone.clone();
+                            let task_id = task_id_for_closure.clone();
 
-                        if let Ok(metrics) = monitor_clone.get_metrics(task_id).await {
-                            let metrics_msg = MetricsMessage {
-                                task_id,
-                                proplet_id,
-                                metrics,
-                                aggregated: None,
-                            };
+                            tokio::spawn(async move {
+                                let metrics_msg = MetricsMessage {
+                                    task_id,
+                                    proplet_id,
+                                    metrics,
+                                    aggregated,
+                                };
 
-                            let topic =
-                                build_topic(&domain_clone, &channel_clone, "metrics/proplet");
-                            let _ = pubsub_clone.publish(&topic, &metrics_msg).await;
-                        } else {
-                            break;
-                        }
+                                let topic = build_topic(&domain, &channel, "control/proplet/task_metrics");
+                                if let Err(e) = pubsub.publish(&topic, &metrics_msg, qos).await {
+                                    debug!("Failed to publish task metrics: {}", e);
+                                }
+                            });
+                        }).await;
+                    } else {
+                        debug!("No PID available for task {}, skipping monitoring", task_id_clone);
                     }
                 }))
             } else {
                 None
             };
 
-            let result = runtime
-                .start_app(
-                    ctx,
-                    wasm_binary,
-                    req.cli_args,
-                    req.id,
-                    req.function_name,
-                    req.daemon,
-                    req.env,
-                    req.params,
-                )
-                .await;
+            let result = runtime.start_app(ctx, config).await;
 
-            if let Some(task) = metrics_task {
-                task.abort();
+            if let Some(handle) = monitor_handle {
+                let _ = handle.await;
             }
 
-            monitor.stop_monitoring(req.id).await.ok();
+            monitor.stop_monitoring(&task_id).await.ok();
 
-            let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");
->>>>>>> 86ef3d2 (feat(proplet): add proplet monitoring)
-
-            let (result_data, error) = match result {
+            let (result_str, error) = match result {
                 Ok(data) => {
                     let result_str = String::from_utf8_lossy(&data).to_string();
                     info!(
                         "Task {} completed successfully. Result: {}",
                         task_id, result_str
                     );
-                    (data, None)
+                    (result_str, None)
                 }
                 Err(e) => {
                     error!("Task {} failed: {}", task_id, e);
-                    (Vec::new(), Some(e.to_string()))
+                    (String::new(), Some(e.to_string()))
                 }
             };
 
             let result_msg = ResultMessage {
                 task_id: task_id.clone(),
                 proplet_id,
-                result: result_data,
+                result: result_str,
                 error,
             };
 
@@ -446,11 +484,7 @@ impl PropletService {
                 info!("Successfully published result for task {}", task_id);
             }
 
-<<<<<<< HEAD
             running_tasks.lock().await.remove(&task_id);
-=======
-            running_tasks.lock().await.remove(&req.id);
->>>>>>> 86ef3d2 (feat(proplet): add proplet monitoring)
         });
 
         Ok(())
@@ -462,13 +496,9 @@ impl PropletService {
 
         info!("Received stop command for task: {}", req.id);
 
-<<<<<<< HEAD
         self.runtime.stop_app(req.id.clone()).await?;
+        self.monitor.stop_monitoring(&req.id).await.ok();
 
-=======
-        self.runtime.stop_app(req.id).await?;
-        self.monitor.stop_monitoring(req.id).await.ok();
->>>>>>> 86ef3d2 (feat(proplet): add proplet monitoring)
         self.running_tasks.lock().await.remove(&req.id);
 
         Ok(())
@@ -590,11 +620,12 @@ impl PropletService {
         error: Option<String>,
     ) -> Result<()> {
         let proplet_id = self.proplet.lock().await.id;
+        let result_str = String::from_utf8_lossy(&result).to_string();
 
         let result_msg = ResultMessage {
             task_id: task_id.to_string(),
             proplet_id,
-            result,
+            result: result_str,
             error,
         };
 

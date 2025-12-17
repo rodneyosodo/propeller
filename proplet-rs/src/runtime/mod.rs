@@ -22,6 +22,8 @@ pub trait Runtime: Send + Sync {
     async fn start_app(&self, ctx: RuntimeContext, config: StartConfig) -> Result<Vec<u8>>;
 
     async fn stop_app(&self, id: String) -> Result<()>;
+
+    async fn get_pid(&self, id: &str) -> Result<Option<u32>>;
 }
 
 #[derive(Clone)]

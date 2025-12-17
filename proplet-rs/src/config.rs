@@ -173,6 +173,10 @@ impl PropletConfig {
     pub fn liveliness_interval(&self) -> Duration {
         Duration::from_secs(self.liveliness_interval)
     }
+
+    pub fn metrics_interval(&self) -> Duration {
+        Duration::from_secs(self.metrics_interval)
+    }
 }
 
 #[cfg(test)]

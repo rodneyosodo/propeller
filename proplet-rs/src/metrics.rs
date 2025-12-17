@@ -1,0 +1,197 @@
+use serde::{Deserialize, Serialize};
+use std::time::SystemTime;
+use sysinfo::System;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PropletMetrics {
+    pub version: String,
+    pub timestamp: SystemTime,
+    pub cpu: CpuMetrics,
+    pub memory: MemoryMetrics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CpuMetrics {
+    pub user_seconds: f64,
+    pub system_seconds: f64,
+    pub percent: f64,
+}
+
+impl Default for CpuMetrics {
+    fn default() -> Self {
+        Self {
+            user_seconds: 0.0,
+            system_seconds: 0.0,
+            percent: 0.0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryMetrics {
+    pub rss_bytes: u64,
+    pub heap_alloc_bytes: u64,
+    pub heap_sys_bytes: u64,
+    pub heap_inuse_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_usage_bytes: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub container_limit_bytes: Option<u64>,
+}
+
+impl Default for MemoryMetrics {
+    fn default() -> Self {
+        Self {
+            rss_bytes: 0,
+            heap_alloc_bytes: 0,
+            heap_sys_bytes: 0,
+            heap_inuse_bytes: 0,
+            container_usage_bytes: None,
+            container_limit_bytes: None,
+        }
+    }
+}
+
+pub struct MetricsCollector {
+    system: System,
+}
+
+impl MetricsCollector {
+    pub fn new() -> Self {
+        Self {
+            system: System::new_all(),
+        }
+    }
+
+    pub fn collect(&mut self) -> PropletMetrics {
+        let now = SystemTime::now();
+
+        // Refresh system information
+        self.system.refresh_all();
+
+        let cpu = self.collect_cpu_metrics();
+        let memory = self.collect_memory_metrics();
+
+        PropletMetrics {
+            version: "v1".to_string(),
+            timestamp: now,
+            cpu,
+            memory,
+        }
+    }
+
+    fn collect_cpu_metrics(&mut self) -> CpuMetrics {
+        let mut cpu_metrics = CpuMetrics::default();
+
+        // Get global CPU usage - use average of all CPUs
+        let cpus = self.system.cpus();
+        if !cpus.is_empty() {
+            let total_usage: f32 = cpus.iter().map(|cpu| cpu.cpu_usage()).sum();
+            cpu_metrics.percent = (total_usage / cpus.len() as f32) as f64;
+        }
+
+        // Try to get process-specific CPU times (Linux)
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok((user, system)) = Self::read_proc_stat() {
+                cpu_metrics.user_seconds = user;
+                cpu_metrics.system_seconds = system;
+            }
+        }
+
+        cpu_metrics
+    }
+
+    #[cfg(target_os = "linux")]
+    fn read_proc_stat() -> Result<(f64, f64), std::io::Error> {
+        use std::fs;
+
+        let contents = fs::read_to_string("/proc/self/stat")?;
+
+        // Find the closing parenthesis of the command name
+        let close_paren = contents.rfind(')').unwrap_or(0);
+        let fields: Vec<&str> = contents[close_paren + 2..].split_whitespace().collect();
+
+        if fields.len() >= 14 {
+            // Fields 13 and 14 are utime and stime (in clock ticks)
+            let utime: u64 = fields[11].parse().unwrap_or(0);
+            let stime: u64 = fields[12].parse().unwrap_or(0);
+
+            // Convert clock ticks to seconds (typically 100 ticks per second)
+            const HZ: f64 = 100.0;
+            let user_seconds = utime as f64 / HZ;
+            let system_seconds = stime as f64 / HZ;
+
+            return Ok((user_seconds, system_seconds));
+        }
+
+        Ok((0.0, 0.0))
+    }
+
+    fn collect_memory_metrics(&mut self) -> MemoryMetrics {
+        let mut mem_metrics = MemoryMetrics::default();
+
+        // Get process memory from sysinfo
+        if let Some(process) = self
+            .system
+            .process(sysinfo::get_current_pid().ok().unwrap())
+        {
+            mem_metrics.rss_bytes = process.memory();
+        }
+
+        // Try to read cgroup memory limits (container environment)
+        #[cfg(target_os = "linux")]
+        {
+            if let Ok((usage, limit)) = Self::read_cgroup_memory() {
+                mem_metrics.container_usage_bytes = Some(usage);
+                if limit > 0 {
+                    mem_metrics.container_limit_bytes = Some(limit);
+                }
+            }
+        }
+
+        mem_metrics
+    }
+
+    #[cfg(target_os = "linux")]
+    fn read_cgroup_memory() -> Result<(u64, u64), std::io::Error> {
+        use std::fs;
+
+        // Try cgroup v2 first
+        if let Ok(usage_str) = fs::read_to_string("/sys/fs/cgroup/memory.current") {
+            let usage = usage_str.trim().parse().unwrap_or(0);
+            let limit = if let Ok(limit_str) = fs::read_to_string("/sys/fs/cgroup/memory.max") {
+                let limit_str = limit_str.trim();
+                if limit_str == "max" {
+                    0
+                } else {
+                    limit_str.parse().unwrap_or(0)
+                }
+            } else {
+                0
+            };
+            return Ok((usage, limit));
+        }
+
+        // Fall back to cgroup v1
+        if let Ok(usage_str) = fs::read_to_string("/sys/fs/cgroup/memory/memory.usage_in_bytes") {
+            let usage = usage_str.trim().parse().unwrap_or(0);
+            let limit = if let Ok(limit_str) =
+                fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes")
+            {
+                limit_str.trim().parse().unwrap_or(0)
+            } else {
+                0
+            };
+            return Ok((usage, limit));
+        }
+
+        Ok((0, 0))
+    }
+}
+
+impl Default for MetricsCollector {
+    fn default() -> Self {
+        Self::new()
+    }
+}

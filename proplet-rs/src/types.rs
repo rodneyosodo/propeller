@@ -164,7 +164,8 @@ pub struct DiscoveryMessage {
 pub struct ResultMessage {
     pub task_id: String,
     pub proplet_id: Uuid,
-    pub result: Vec<u8>,
+    #[serde(rename = "results")]
+    pub result: String,
     pub error: Option<String>,
 }
 
@@ -224,7 +225,7 @@ mod serde_duration {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsMessage {
-    pub task_id: Uuid,
+    pub task_id: String,
     pub proplet_id: Uuid,
     pub metrics: crate::monitoring::metrics::ProcessMetrics,
     pub aggregated: Option<crate::monitoring::metrics::AggregatedMetrics>,
@@ -294,6 +295,7 @@ mod tests {
             inputs: vec![1, 2, 3],
             daemon: false,
             env: Some(HashMap::new()),
+            monitoring_profile: None,
         };
 
         assert!(req.validate().is_ok());
@@ -311,6 +313,7 @@ mod tests {
             inputs: vec![],
             daemon: true,
             env: None,
+            monitoring_profile: None,
         };
 
         assert!(req.validate().is_ok());
@@ -328,6 +331,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: None,
+            monitoring_profile: None,
         };
 
         let result = req.validate();
@@ -347,6 +351,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: None,
+            monitoring_profile: None,
         };
 
         let result = req.validate();
@@ -366,6 +371,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: None,
+            monitoring_profile: None,
         };
 
         let result = req.validate();
@@ -646,6 +652,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: Some(env.clone()),
+            monitoring_profile: None,
         };
 
         assert_eq!(req.env.as_ref().unwrap().len(), 2);

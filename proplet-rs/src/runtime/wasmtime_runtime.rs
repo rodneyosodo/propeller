@@ -253,6 +253,10 @@ impl Runtime for WasmtimeRuntime {
             ))
         }
     }
+
+    async fn get_pid(&self, _id: &str) -> Result<Option<u32>> {
+        Ok(Some(std::process::id()))
+    }
 }
 
 #[cfg(test)]

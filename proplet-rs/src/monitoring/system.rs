@@ -1,4 +1,4 @@
-use super::metrics::ProcessMetrics;
+use super::metrics::{AggregatedMetrics, ProcessMetrics};
 use super::ProcessMonitor;
 use crate::types::MonitoringProfile;
 use anyhow::Result;
@@ -10,7 +10,6 @@ use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
 use tokio::sync::Mutex;
 use tokio::time::interval;
 use tracing::{debug, warn};
-use uuid::Uuid;
 
 struct MonitoredTask {
     pid: Option<u32>,
@@ -20,17 +19,18 @@ struct MonitoredTask {
 }
 
 pub struct SystemMonitor {
-    tasks: Arc<Mutex<HashMap<Uuid, MonitoredTask>>>,
+    tasks: Arc<Mutex<HashMap<String, MonitoredTask>>>,
     system: Arc<Mutex<System>>,
-    default_profile: MonitoringProfile,
 }
 
 impl SystemMonitor {
-    pub fn new(default_profile: MonitoringProfile) -> Self {
+    pub fn new(_default_profile: MonitoringProfile) -> Self {
+        let mut system = System::new_all();
+        system.refresh_all();
+
         Self {
             tasks: Arc::new(Mutex::new(HashMap::new())),
-            system: Arc::new(Mutex::new(System::new_all())),
-            default_profile,
+            system: Arc::new(Mutex::new(system)),
         }
     }
 
@@ -38,6 +38,7 @@ impl SystemMonitor {
         sys: &mut System,
         pid: u32,
         profile: &MonitoringProfile,
+        start_time: SystemTime,
     ) -> Result<ProcessMetrics> {
         let pid = Pid::from_u32(pid);
 
@@ -52,7 +53,7 @@ impl SystemMonitor {
 
         let process = sys
             .process(pid)
-            .ok_or_else(|| anyhow::anyhow!("Process not found"))?;
+            .ok_or_else(|| anyhow::anyhow!("Process with PID {} not found", pid.as_u32()))?;
 
         let mut metrics = ProcessMetrics::default();
         metrics.timestamp = SystemTime::now();
@@ -110,20 +111,72 @@ impl SystemMonitor {
             }
         }
 
+        // Calculate uptime
+        if let Ok(duration) = metrics.timestamp.duration_since(start_time) {
+            metrics.uptime_seconds = duration.as_secs();
+        }
+
         Ok(metrics)
     }
 
+    pub async fn attach_pid(
+        &self,
+        task_id: &str,
+        pid: u32,
+        export_fn: impl Fn(ProcessMetrics, Option<AggregatedMetrics>) + Send + 'static,
+    ) {
+        let profile = {
+            let mut tasks_guard = self.tasks.lock().await;
+            if let Some(task) = tasks_guard.get_mut(task_id) {
+                task.pid = Some(pid);
+                task.profile.clone()
+            } else {
+                return;
+            }
+        };
+
+        let task_id = task_id.to_string();
+        let tasks = self.tasks.clone();
+        let system = self.system.clone();
+
+        tokio::spawn(async move {
+            Self::monitor_task(task_id, pid, profile, tasks, system, export_fn).await;
+        });
+    }
+
     async fn monitor_task(
-        task_id: Uuid,
+        task_id: String,
         pid: u32,
         profile: MonitoringProfile,
-        tasks: Arc<Mutex<HashMap<Uuid, MonitoredTask>>>,
+        tasks: Arc<Mutex<HashMap<String, MonitoredTask>>>,
         system: Arc<Mutex<System>>,
+        export_fn: impl Fn(ProcessMetrics, Option<AggregatedMetrics>) + Send + 'static,
     ) {
-        let mut interval = interval(profile.interval);
+        {
+            let mut sys = system.lock().await;
+            let pid_val = Pid::from_u32(pid);
+            sys.refresh_processes_specifics(
+                ProcessesToUpdate::Some(&[pid_val]),
+                true,
+                ProcessRefreshKind::new()
+                    .with_cpu()
+                    .with_memory()
+                    .with_disk_usage(),
+            );
+        }
+
+        let mut interval_timer = interval(profile.interval);
+
+        let start_time = {
+            let tasks_guard = tasks.lock().await;
+            tasks_guard
+                .get(&task_id)
+                .map(|t| t.start_time)
+                .unwrap_or_else(SystemTime::now)
+        };
 
         loop {
-            interval.tick().await;
+            interval_timer.tick().await;
 
             let should_continue = {
                 let tasks_guard = tasks.lock().await;
@@ -136,7 +189,7 @@ impl SystemMonitor {
             }
 
             let mut sys = system.lock().await;
-            match Self::collect_process_metrics(&mut sys, pid, &profile).await {
+            match Self::collect_process_metrics(&mut sys, pid, &profile, start_time).await {
                 Ok(metrics) => {
                     let mut tasks_guard = tasks.lock().await;
                     if let Some(task) = tasks_guard.get_mut(&task_id) {
@@ -147,10 +200,15 @@ impl SystemMonitor {
                             }
                         }
 
-                        debug!(
-                            "Task {} metrics: CPU={:.2}%, MEM={} bytes",
-                            task_id, metrics.cpu_usage_percent, metrics.memory_usage_bytes
-                        );
+                        let aggregated = if !task.metrics_history.is_empty() {
+                            Some(Self::calculate_aggregated(&task.metrics_history))
+                        } else {
+                            None
+                        };
+
+                        if profile.export_to_mqtt {
+                            export_fn(metrics, aggregated);
+                        }
                     }
                 }
                 Err(e) => {
@@ -162,11 +220,56 @@ impl SystemMonitor {
             }
         }
     }
+
+    fn calculate_aggregated(history: &[ProcessMetrics]) -> AggregatedMetrics {
+        if history.is_empty() {
+            return AggregatedMetrics {
+                avg_cpu_usage: 0.0,
+                max_cpu_usage: 0.0,
+                avg_memory_usage: 0,
+                max_memory_usage: 0,
+                total_disk_read: 0,
+                total_disk_write: 0,
+                total_network_rx: 0,
+                total_network_tx: 0,
+                sample_count: 0,
+            };
+        }
+
+        let count = history.len() as f64;
+        let avg_cpu = history.iter().map(|s| s.cpu_usage_percent).sum::<f64>() / count;
+        let max_cpu = history
+            .iter()
+            .map(|s| s.cpu_usage_percent)
+            .fold(0.0, f64::max);
+        let avg_mem =
+            (history.iter().map(|s| s.memory_usage_bytes).sum::<u64>() as f64 / count) as u64;
+        let max_mem = history
+            .iter()
+            .map(|s| s.memory_usage_bytes)
+            .max()
+            .unwrap_or(0);
+
+        let last = history.last().unwrap();
+        let first = history.first().unwrap();
+
+        AggregatedMetrics {
+            avg_cpu_usage: avg_cpu,
+            max_cpu_usage: max_cpu,
+            avg_memory_usage: avg_mem,
+            max_memory_usage: max_mem,
+            total_disk_read: last.disk_read_bytes.saturating_sub(first.disk_read_bytes),
+            total_disk_write: last.disk_write_bytes.saturating_sub(first.disk_write_bytes),
+            total_network_rx: last.network_rx_bytes.saturating_sub(first.network_rx_bytes),
+            total_network_tx: last.network_tx_bytes.saturating_sub(first.network_tx_bytes),
+            sample_count: history.len(),
+        }
+    }
 }
 
 #[async_trait]
 impl ProcessMonitor for SystemMonitor {
-    async fn start_monitoring(&self, task_id: Uuid, profile: MonitoringProfile) -> Result<()> {
+    async fn start_monitoring(&self, task_id: &str, profile: MonitoringProfile) -> Result<()> {
         if !profile.enabled {
             debug!("Monitoring disabled for task {}", task_id);
             return Ok(());
@@ -176,10 +279,10 @@ impl ProcessMonitor for SystemMonitor {
 
         let mut tasks = self.tasks.lock().await;
         tasks.insert(
-            task_id,
+            task_id.to_string(),
             MonitoredTask {
                 pid: None,
-                profile: profile.clone(),
+                profile,
                 metrics_history: Vec::new(),
                 start_time: SystemTime::now(),
             },
@@ -188,43 +291,10 @@ impl ProcessMonitor for SystemMonitor {
         Ok(())
     }
 
-    async fn stop_monitoring(&self, task_id: Uuid) -> Result<()> {
+    async fn stop_monitoring(&self, task_id: &str) -> Result<()> {
         debug!("Stopping monitoring for task {}", task_id);
         let mut tasks = self.tasks.lock().await;
-        tasks.remove(&task_id);
+        tasks.remove(task_id);
         Ok(())
     }
-
-    async fn get_metrics(&self, task_id: Uuid) -> Result<ProcessMetrics> {
-        let tasks = self.tasks.lock().await;
-        let task = tasks
-            .get(&task_id)
-            .ok_or_else(|| anyhow::anyhow!("Task not found"))?;
-
-        task.metrics_history
-            .last()
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("No metrics available"))
-    }
-}
-
-pub async fn attach_pid_to_monitor(
-    tasks: Arc<Mutex<HashMap<Uuid, MonitoredTask>>>,
-    system: Arc<Mutex<System>>,
-    task_id: Uuid,
-    pid: u32,
-) {
-    let profile = {
-        let mut tasks_guard = tasks.lock().await;
-        if let Some(task) = tasks_guard.get_mut(&task_id) {
-            task.pid = Some(pid);
-            task.profile.clone()
-        } else {
-            return;
-        }
-    };
-
-    tokio::spawn(async move {
-        SystemMonitor::monitor_task(task_id, pid, profile, tasks, system).await;
-    });
 }
