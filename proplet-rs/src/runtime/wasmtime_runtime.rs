@@ -1,4 +1,4 @@
-use super::{Runtime, RuntimeContext};
+use super::{Runtime, RuntimeContext, StartConfig};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -35,27 +35,21 @@ impl Runtime for WasmtimeRuntime {
     async fn start_app(
         &self,
         _ctx: RuntimeContext,
-        wasm_binary: Vec<u8>,
-        _cli_args: Vec<String>,
-        id: String,
-        function_name: String,
-        daemon: bool,
-        _env: HashMap<String, String>,
-        args: Vec<u64>,
+        config: StartConfig,
     ) -> Result<Vec<u8>> {
         info!(
             "Starting Wasmtime runtime app: task_id={}, function={}, daemon={}, wasm_size={}",
-            id,
-            function_name,
-            daemon,
-            wasm_binary.len()
+            config.id,
+            config.function_name,
+            config.daemon,
+            config.wasm_binary.len()
         );
 
-        info!("Compiling WASM module for task: {}", id);
-        let module = Module::from_binary(&self.engine, &wasm_binary)
+        info!("Compiling WASM module for task: {}", config.id);
+        let module = Module::from_binary(&self.engine, &config.wasm_binary)
             .context("Failed to compile Wasmtime module from binary")?;
 
-        info!("Module compiled successfully for task: {}", id);
+        info!("Module compiled successfully for task: {}", config.id);
 
         let wasi = WasiCtxBuilder::new().inherit_stdio().build_p1();
 
@@ -69,15 +63,15 @@ impl Runtime for WasmtimeRuntime {
             .instantiate(&mut store, &module)
             .context("Failed to instantiate Wasmtime module")?;
 
-        if daemon {
-            info!("Running in daemon mode for task: {}", id);
+        if config.daemon {
+            info!("Running in daemon mode for task: {}", config.id);
 
             let instances = self.instances.clone();
-            let task_id = id.clone();
+            let task_id = config.id.clone();
 
             {
                 let mut instances_map = self.instances.lock().await;
-                instances_map.insert(id.clone(), store);
+                instances_map.insert(config.id.clone(), store);
             }
 
             tokio::spawn(async move {
@@ -95,12 +89,14 @@ impl Runtime for WasmtimeRuntime {
                 info!("Daemon task {} completed", task_id);
             });
 
-            info!("Daemon task {} started, returning immediately", id);
+            info!("Daemon task {} started, returning immediately", config.id);
             Ok(Vec::new())
         } else {
-            info!("Running in synchronous mode for task: {}", id);
+            info!("Running in synchronous mode for task: {}", config.id);
 
-            let task_id = id.clone();
+            let task_id = config.id.clone();
+            let function_name = config.function_name.clone();
+            let args = config.args.clone();
             let result = tokio::task::spawn_blocking(move || {
                 // Initialize the WASM runtime by calling _initialize if it exists
                 // This is the WASI reactor initialization function
@@ -126,7 +122,6 @@ impl Runtime for WasmtimeRuntime {
 
                 let param_types: Vec<_> = func_ty.params().collect();
                 let result_types: Vec<_> = func_ty.results().collect();
-
 
                 if args.len() != param_types.len() {
                     return Err(anyhow::anyhow!(

@@ -154,7 +154,16 @@ func (p *PropletService) handleStartCommand(ctx context.Context) func(topic stri
 		p.logger.Info("Received start command", slog.String("app_name", req.FunctionName))
 
 		if req.WasmFile != nil {
-			if err := p.runtime.StartApp(ctx, req.WasmFile, req.CLIArgs, req.ID, req.FunctionName, req.Daemon, req.Env, req.Params...); err != nil {
+			config := StartConfig{
+				ID:           req.ID,
+				FunctionName: req.FunctionName,
+				Daemon:       req.Daemon,
+				WasmBinary:   req.WasmFile,
+				CLIArgs:      req.CLIArgs,
+				Env:          req.Env,
+				Args:         req.Params,
+			}
+			if err := p.runtime.StartApp(ctx, config); err != nil {
 				return err
 			}
 
@@ -181,7 +190,16 @@ func (p *PropletService) handleStartCommand(ctx context.Context) func(topic stri
 				if exists && receivedChunks == metadata.TotalChunks {
 					p.logger.Info("All chunks received, deploying app", slog.String("app_name", req.imageURL))
 					wasmBinary := assembleChunks(p.chunks[req.imageURL])
-					if err := p.runtime.StartApp(ctx, wasmBinary, req.CLIArgs, req.ID, req.FunctionName, req.Daemon, req.Env, req.Params...); err != nil {
+					config := StartConfig{
+						ID:           req.ID,
+						FunctionName: req.FunctionName,
+						Daemon:       req.Daemon,
+						WasmBinary:   wasmBinary,
+						CLIArgs:      req.CLIArgs,
+						Env:          req.Env,
+						Args:         req.Params,
+					}
+					if err := p.runtime.StartApp(ctx, config); err != nil {
 						p.logger.Error("Failed to start app", slog.String("app_name", req.imageURL), slog.Any("error", err))
 					}
 

@@ -1,4 +1,4 @@
-use super::{Runtime, RuntimeContext};
+use super::{Runtime, RuntimeContext, StartConfig};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -57,37 +57,31 @@ impl Runtime for HostRuntime {
     async fn start_app(
         &self,
         _ctx: RuntimeContext,
-        wasm_binary: Vec<u8>,
-        cli_args: Vec<String>,
-        id: String,
-        function_name: String,
-        daemon: bool,
-        env: HashMap<String, String>,
-        args: Vec<u64>,
+        config: StartConfig,
     ) -> Result<Vec<u8>> {
         info!(
             "Starting Host runtime app: task_id={}, function={}, daemon={}, wasm_size={}",
-            id,
-            function_name,
-            daemon,
-            wasm_binary.len()
+            config.id,
+            config.function_name,
+            config.daemon,
+            config.wasm_binary.len()
         );
 
-        let temp_file = self.create_temp_wasm_file(&id, &wasm_binary).await?;
+        let temp_file = self.create_temp_wasm_file(&config.id, &config.wasm_binary).await?;
 
         let mut cmd = Command::new(&self.runtime_path);
 
-        for arg in &cli_args {
+        for arg in &config.cli_args {
             cmd.arg(arg);
         }
 
         cmd.arg(&temp_file);
 
-        for arg in &args {
+        for arg in &config.args {
             cmd.arg(arg.to_string());
         }
 
-        cmd.envs(&env);
+        cmd.envs(&config.env);
 
         cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -95,20 +89,20 @@ impl Runtime for HostRuntime {
 
         let child = cmd.spawn().context(format!(
             "Failed to spawn host runtime process: {}. Command: {} {:?}",
-            self.runtime_path, self.runtime_path, cli_args
+            self.runtime_path, self.runtime_path, config.cli_args
         ))?;
 
         info!("Process spawned with PID: {:?}", child.id());
 
-        if daemon {
-            info!("Running in daemon mode for task: {}", id);
+        if config.daemon {
+            info!("Running in daemon mode for task: {}", config.id);
             // For daemon mode, store the process and return immediately
             let mut processes = self.processes.lock().await;
-            processes.insert(id.clone(), child);
+            processes.insert(config.id.clone(), child);
 
             let processes = self.processes.clone();
             let temp_file_clone = temp_file.clone();
-            let task_id = id.clone();
+            let task_id = config.id.clone();
 
             tokio::spawn(async move {
                 // Poll the process status periodically instead of blocking on wait()
@@ -148,23 +142,23 @@ impl Runtime for HostRuntime {
                 let _ = fs::remove_file(temp_file_clone).await;
             });
 
-            info!("Daemon task {} started, returning immediately", id);
+            info!("Daemon task {} started, returning immediately", config.id);
             Ok(Vec::new())
         } else {
-            info!("Running in synchronous mode, waiting for task: {}", id);
+            info!("Running in synchronous mode, waiting for task: {}", config.id);
 
             let output = child
                 .wait_with_output()
                 .await
                 .context("Failed to wait for host runtime process")?;
 
-            info!("Process completed for task: {}", id);
+            info!("Process completed for task: {}", config.id);
 
             self.cleanup_temp_file(temp_file).await?;
 
             if !output.status.success() {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                error!("Task {} failed with stderr: {}", id, stderr);
+                error!("Task {} failed with stderr: {}", config.id, stderr);
                 return Err(anyhow::anyhow!(
                     "Process exited with status: {}, stderr: {}",
                     output.status,

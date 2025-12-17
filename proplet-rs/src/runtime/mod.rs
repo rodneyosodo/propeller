@@ -6,19 +6,20 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use uuid::Uuid;
 
+#[derive(Clone, Debug)]
+pub struct StartConfig {
+    pub id: String,
+    pub function_name: String,
+    pub daemon: bool,
+    pub wasm_binary: Vec<u8>,
+    pub cli_args: Vec<String>,
+    pub env: HashMap<String, String>,
+    pub args: Vec<u64>,
+}
+
 #[async_trait]
 pub trait Runtime: Send + Sync {
-    async fn start_app(
-        &self,
-        ctx: RuntimeContext,
-        wasm_binary: Vec<u8>,
-        cli_args: Vec<String>,
-        id: String,
-        function_name: String,
-        daemon: bool,
-        env: HashMap<String, String>,
-        args: Vec<u64>,
-    ) -> Result<Vec<u8>>;
+    async fn start_app(&self, ctx: RuntimeContext, config: StartConfig) -> Result<Vec<u8>>;
 
     async fn stop_app(&self, id: String) -> Result<()>;
 }

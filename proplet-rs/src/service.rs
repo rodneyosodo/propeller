@@ -1,6 +1,6 @@
 use crate::config::PropletConfig;
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
-use crate::runtime::{Runtime, RuntimeContext};
+use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 use crate::types::*;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -241,18 +241,17 @@ impl PropletService {
 
             info!("Executing task {} in spawned task", task_id);
 
-            let result = runtime
-                .start_app(
-                    ctx,
-                    wasm_binary,
-                    req.cli_args,
-                    task_id.clone(),
-                    task_name.clone(),
-                    req.daemon,
-                    env,
-                    req.inputs,
-                )
-                .await;
+            let config = StartConfig {
+                id: task_id.clone(),
+                function_name: task_name.clone(),
+                daemon: req.daemon,
+                wasm_binary,
+                cli_args: req.cli_args,
+                env,
+                args: req.inputs,
+            };
+
+            let result = runtime.start_app(ctx, config).await;
 
             let (result_data, error) = match result {
                 Ok(data) => {
