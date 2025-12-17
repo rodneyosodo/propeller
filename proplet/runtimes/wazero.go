@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
-	"time"
 
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proplet"
@@ -54,34 +53,61 @@ func (w *wazeroRuntime) StartApp(ctx context.Context, wasmBinary []byte, cliArgs
 		return errors.New("failed to find exported function")
 	}
 
-	go func() {
-		results, err := function.Call(ctx, args...)
-		if err != nil {
-			w.logger.Error("failed to call function", slog.String("id", id), slog.String("function", functionName), slog.String("error", err.Error()))
+	if daemon {
+		// For daemon tasks, run in background and keep runtime in map
+		// Don't auto-cleanup to allow stop_app to be called later
+		go func() {
+			results, err := function.Call(ctx, args...)
 
-			return
-		}
+			payload := map[string]interface{}{
+				"task_id": id,
+			}
 
-		if err := w.StopApp(ctx, id); err != nil {
-			w.logger.Error("failed to stop app", slog.String("id", id), slog.String("error", err.Error()))
-		}
+			if err != nil {
+				w.logger.Error("failed to call function", slog.String("id", id), slog.String("function", functionName), slog.String("error", err.Error()))
+				payload["error"] = err.Error()
+			} else {
+				payload["results"] = results
+			}
 
-		payload := map[string]interface{}{
-			"task_id": id,
-			"results": results,
-		}
+			topic := fmt.Sprintf(proplet.ResultsTopic, w.domainID, w.channelID)
+			if err := w.pubsub.Publish(ctx, topic, payload); err != nil {
+				w.logger.Error("failed to publish results", slog.String("id", id), slog.String("error", err.Error()))
+			}
 
-		topic := fmt.Sprintf(proplet.ResultsTopic, w.domainID, w.channelID)
-		if err := w.pubsub.Publish(ctx, topic, payload); err != nil {
-			w.logger.Error("failed to publish results", slog.String("id", id), slog.String("error", err.Error()))
+			// For daemon tasks, DO NOT call StopApp automatically
+			// The runtime remains in the map until explicitly stopped
+			w.logger.Info("Daemon task completed, runtime kept active for explicit stop", slog.String("id", id))
+		}()
 
-			return
-		}
+		return nil
+	}
 
-		w.logger.Info("Finished running app", slog.String("id", id))
-	}()
+	results, err := function.Call(ctx, args...)
 
-	time.Sleep(5 * time.Second)
+	if stopErr := w.StopApp(ctx, id); stopErr != nil {
+		w.logger.Error("failed to stop app", slog.String("id", id), slog.String("error", stopErr.Error()))
+	}
+
+	payload := map[string]interface{}{
+		"task_id": id,
+	}
+
+	if err != nil {
+		w.logger.Error("failed to call function", slog.String("id", id), slog.String("function", functionName), slog.String("error", err.Error()))
+		payload["error"] = err.Error()
+		return err
+	}
+
+	payload["results"] = results
+
+	topic := fmt.Sprintf(proplet.ResultsTopic, w.domainID, w.channelID)
+	if err := w.pubsub.Publish(ctx, topic, payload); err != nil {
+		w.logger.Error("failed to publish results", slog.String("id", id), slog.String("error", err.Error()))
+		return err
+	}
+
+	w.logger.Info("Finished running app", slog.String("id", id))
 
 	return nil
 }

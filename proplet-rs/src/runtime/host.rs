@@ -81,26 +81,21 @@ impl Runtime for HostRuntime {
         // Add wasm file as first argument
         cmd.arg(&temp_file);
 
-        // Add CLI arguments
         for arg in &cli_args {
             cmd.arg(arg);
         }
 
-        // Add numeric parameters as additional arguments
         for arg in &args {
             cmd.arg(arg.to_string());
         }
 
-        // Set environment variables
         cmd.envs(&env);
 
-        // Configure stdio
         cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
 
-        // Spawn the process
-        let mut child = cmd
+        let child = cmd
             .spawn()
             .context("Failed to spawn host runtime process")?;
 
@@ -118,30 +113,70 @@ impl Runtime for HostRuntime {
 
             tokio::spawn(async move {
                 // Wait for the process to complete
-                if let Some(mut process) = processes.lock().await.remove(&task_id) {
-                    match process.wait().await {
-                        Ok(status) => {
-                            info!("Daemon task {} exited with status: {}", task_id, status);
+                // First, check if the process exists without removing it
+                let process_exists = {
+                    let procs = processes.lock().await;
+                    procs.contains_key(&task_id)
+                };
+
+                if process_exists {
+                    // Wait for the process by checking if it's still running
+                    // We keep checking the process map instead of removing it
+                    loop {
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+                        let still_exists = {
+                            let procs = processes.lock().await;
+                            procs.contains_key(&task_id)
+                        };
+
+                        if !still_exists {
+                            info!("Daemon task {} was stopped externally", task_id);
+                            break;
                         }
-                        Err(e) => {
-                            error!("Daemon task {} wait error: {}", task_id, e);
+
+                        // Check if process has exited naturally
+                        // Try to acquire the process and check its status
+                        let exited = {
+                            let mut procs = processes.lock().await;
+                            if let Some(child) = procs.get_mut(&task_id) {
+                                match child.try_wait() {
+                                    Ok(Some(status)) => {
+                                        info!(
+                                            "Daemon task {} exited with status: {}",
+                                            task_id, status
+                                        );
+                                        true
+                                    }
+                                    Ok(None) => false,
+                                    Err(e) => {
+                                        error!("Daemon task {} wait error: {}", task_id, e);
+                                        true
+                                    }
+                                }
+                            } else {
+                                true // Process was removed
+                            }
+                        };
+
+                        if exited {
+                            // Remove from map now that it's finished
+                            processes.lock().await.remove(&task_id);
+                            break;
                         }
                     }
                 }
 
-                // Cleanup temp file
                 let _ = fs::remove_file(temp_file_clone).await;
             });
 
             Ok(Vec::new())
         } else {
-            // Wait for process to complete
             let output = child
                 .wait_with_output()
                 .await
                 .context("Failed to wait for host runtime process")?;
 
-            // Cleanup temp file
             self.cleanup_temp_file(temp_file).await?;
 
             if !output.status.success() {
