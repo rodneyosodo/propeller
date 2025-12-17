@@ -1,6 +1,6 @@
 use crate::config::PropletConfig;
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
-use crate::runtime::{Runtime, RuntimeContext};
+use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 use crate::types::*;
 use anyhow::Result;
 use std::collections::HashMap;
@@ -206,18 +206,18 @@ impl PropletService {
         tokio::spawn(async move {
             let ctx = RuntimeContext { proplet_id };
 
-            let result = runtime
-                .start_app(
-                    ctx,
-                    wasm_binary,
-                    req.cli_args,
-                    req.id,
-                    req.function_name,
-                    req.daemon,
-                    req.env,
-                    req.params,
-                )
-                .await;
+            let config = StartConfig {
+                ctx,
+                wasm_binary,
+                cli_args: req.cli_args,
+                id: req.id,
+                function_name: req.function_name,
+                daemon: req.daemon,
+                env: req.env,
+                args: req.params,
+            };
+
+            let result = runtime.start_app(config).await;
 
             // Publish result
             let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");

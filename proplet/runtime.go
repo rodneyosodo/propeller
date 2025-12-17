@@ -4,7 +4,17 @@ import "context"
 
 var ResultsTopic = "m/%s/c/%s/messages/control/proplet/results"
 
+type StartConfig struct {
+	CLIArgs      []string
+	ID           string
+	FunctionName string
+	Daemon       bool
+	Env          map[string]string
+	Args         []uint64
+	WasmBinary   []byte
+}
+
 type Runtime interface {
-	StartApp(ctx context.Context, wasmBinary []byte, cliArgs []string, id, functionName string, daemon bool, env map[string]string, args ...uint64) error
+	StartApp(ctx context.Context, config StartConfig) error
 	StopApp(ctx context.Context, id string) error
 }

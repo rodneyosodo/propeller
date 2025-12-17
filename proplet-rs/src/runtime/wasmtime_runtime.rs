@@ -1,4 +1,4 @@
-use super::{Runtime, RuntimeContext};
+use super::{Runtime, StartConfig};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -28,17 +28,12 @@ impl WasmtimeRuntime {
 
 #[async_trait]
 impl Runtime for WasmtimeRuntime {
-    async fn start_app(
-        &self,
-        ctx: RuntimeContext,
-        wasm_binary: Vec<u8>,
-        cli_args: Vec<String>,
-        id: Uuid,
-        function_name: String,
-        daemon: bool,
-        env: HashMap<String, String>,
-        args: Vec<f64>,
-    ) -> Result<Vec<u8>> {
+    async fn start_app(&self, config: StartConfig) -> Result<Vec<u8>> {
+        let id = config.id;
+        let function_name = &config.function_name;
+        let daemon = config.daemon;
+        let args = config.args;
+        
         info!("Starting Wasmtime app: task_id={}, function={}", id, function_name);
 
         // Create engine with default configuration
@@ -49,7 +44,7 @@ impl Runtime for WasmtimeRuntime {
         let mut store = Store::new(&engine, ());
 
         // Create module from binary
-        let module = Module::from_binary(&engine, &wasm_binary)
+        let module = Module::from_binary(&engine, &config.wasm_binary)
             .context("Failed to create Wasmtime module from binary")?;
 
         // Create linker
@@ -78,7 +73,7 @@ impl Runtime for WasmtimeRuntime {
         let result = if daemon {
             // For daemon mode, spawn in background
             let instances = self.instances.clone();
-            let func_name = function_name.clone();
+            let func_name = function_name.to_string();
 
             tokio::spawn(async move {
                 // Wait a bit before executing (mimics Go implementation)
@@ -97,7 +92,7 @@ impl Runtime for WasmtimeRuntime {
         } else {
             // Execute synchronously
             let mut inst = wasm_inst.lock().await;
-            let result = execute_function(&mut inst, &function_name, args).await;
+            let result = execute_function(&mut inst, function_name, args).await;
 
             // Remove from instances map
             self.instances.lock().await.remove(&id);

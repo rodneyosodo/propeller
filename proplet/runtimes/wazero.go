@@ -32,39 +32,39 @@ func NewWazeroRuntime(logger *slog.Logger, pubsub mqtt.PubSub, domainID, channel
 	}
 }
 
-func (w *wazeroRuntime) StartApp(ctx context.Context, wasmBinary []byte, cliArgs []string, id, functionName string, daemon bool, env map[string]string, args ...uint64) error {
+func (w *wazeroRuntime) StartApp(ctx context.Context, config proplet.StartConfig) error {
 	r := wazero.NewRuntime(ctx)
 
 	w.mutex.Lock()
-	w.runtimes[id] = r
+	w.runtimes[config.ID] = r
 	w.mutex.Unlock()
 
 	// Instantiate WASI, which implements host functions needed for TinyGo to
 	// implement `panic`.
 	wasi_snapshot_preview1.MustInstantiate(ctx, r)
 
-	module, err := r.InstantiateWithConfig(ctx, wasmBinary, wazero.NewModuleConfig().WithStartFunctions("_initialize"))
+	module, err := r.InstantiateWithConfig(ctx, config.WasmBinary, wazero.NewModuleConfig().WithStartFunctions("_initialize"))
 	if err != nil {
 		return errors.Join(errors.New("failed to instantiate Wasm module"), err)
 	}
 
-	function := module.ExportedFunction(functionName)
+	function := module.ExportedFunction(config.FunctionName)
 	if function == nil {
 		return errors.New("failed to find exported function")
 	}
 
-	if daemon {
+	if config.Daemon {
 		// For daemon tasks, run in background and keep runtime in map
 		// Don't auto-cleanup to allow stop_app to be called later
 		go func() {
-			results, err := function.Call(ctx, args...)
+			results, err := function.Call(ctx, config.Args...)
 
 			payload := map[string]interface{}{
-				"task_id": id,
+				"task_id": config.ID,
 			}
 
 			if err != nil {
-				w.logger.Error("failed to call function", slog.String("id", id), slog.String("function", functionName), slog.String("error", err.Error()))
+				w.logger.Error("failed to call function", slog.String("id", config.ID), slog.String("function", config.FunctionName), slog.String("error", err.Error()))
 				payload["error"] = err.Error()
 			} else {
 				payload["results"] = results
@@ -72,29 +72,29 @@ func (w *wazeroRuntime) StartApp(ctx context.Context, wasmBinary []byte, cliArgs
 
 			topic := fmt.Sprintf(proplet.ResultsTopic, w.domainID, w.channelID)
 			if err := w.pubsub.Publish(ctx, topic, payload); err != nil {
-				w.logger.Error("failed to publish results", slog.String("id", id), slog.String("error", err.Error()))
+				w.logger.Error("failed to publish results", slog.String("id", config.ID), slog.String("error", err.Error()))
 			}
 
 			// For daemon tasks, DO NOT call StopApp automatically
 			// The runtime remains in the map until explicitly stopped
-			w.logger.Info("Daemon task completed, runtime kept active for explicit stop", slog.String("id", id))
+			w.logger.Info("Daemon task completed, runtime kept active for explicit stop", slog.String("id", config.ID))
 		}()
 
 		return nil
 	}
 
-	results, err := function.Call(ctx, args...)
+	results, err := function.Call(ctx, config.Args...)
 
-	if stopErr := w.StopApp(ctx, id); stopErr != nil {
-		w.logger.Error("failed to stop app", slog.String("id", id), slog.String("error", stopErr.Error()))
+	if stopErr := w.StopApp(ctx, config.ID); stopErr != nil {
+		w.logger.Error("failed to stop app", slog.String("id", config.ID), slog.String("error", stopErr.Error()))
 	}
 
 	payload := map[string]interface{}{
-		"task_id": id,
+		"task_id": config.ID,
 	}
 
 	if err != nil {
-		w.logger.Error("failed to call function", slog.String("id", id), slog.String("function", functionName), slog.String("error", err.Error()))
+		w.logger.Error("failed to call function", slog.String("id", config.ID), slog.String("function", config.FunctionName), slog.String("error", err.Error()))
 		payload["error"] = err.Error()
 		return err
 	}
@@ -103,11 +103,11 @@ func (w *wazeroRuntime) StartApp(ctx context.Context, wasmBinary []byte, cliArgs
 
 	topic := fmt.Sprintf(proplet.ResultsTopic, w.domainID, w.channelID)
 	if err := w.pubsub.Publish(ctx, topic, payload); err != nil {
-		w.logger.Error("failed to publish results", slog.String("id", id), slog.String("error", err.Error()))
+		w.logger.Error("failed to publish results", slog.String("id", config.ID), slog.String("error", err.Error()))
 		return err
 	}
 
-	w.logger.Info("Finished running app", slog.String("id", id))
+	w.logger.Info("Finished running app", slog.String("id", config.ID))
 
 	return nil
 }

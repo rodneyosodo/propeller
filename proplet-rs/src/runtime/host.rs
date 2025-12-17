@@ -1,4 +1,4 @@
-use super::{Runtime, RuntimeContext};
+use super::{Runtime, StartConfig};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -56,24 +56,18 @@ impl HostRuntime {
 
 #[async_trait]
 impl Runtime for HostRuntime {
-    async fn start_app(
-        &self,
-        _ctx: RuntimeContext,
-        wasm_binary: Vec<u8>,
-        cli_args: Vec<String>,
-        id: Uuid,
-        function_name: String,
-        daemon: bool,
-        env: HashMap<String, String>,
-        args: Vec<f64>,
-    ) -> Result<Vec<u8>> {
+    async fn start_app(&self, config: StartConfig) -> Result<Vec<u8>> {
+        let id = config.id;
+        let function_name = &config.function_name;
+        let daemon = config.daemon;
+        
         info!(
             "Starting Host runtime app: task_id={}, function={}, daemon={}",
             id, function_name, daemon
         );
 
         // Create temporary wasm file
-        let temp_file = self.create_temp_wasm_file(id, &wasm_binary).await?;
+        let temp_file = self.create_temp_wasm_file(id, &config.wasm_binary).await?;
 
         // Build command
         let mut cmd = Command::new(&self.runtime_path);
@@ -81,15 +75,15 @@ impl Runtime for HostRuntime {
         // Add wasm file as first argument
         cmd.arg(&temp_file);
 
-        for arg in &cli_args {
+        for arg in &config.cli_args {
             cmd.arg(arg);
         }
 
-        for arg in &args {
+        for arg in &config.args {
             cmd.arg(arg.to_string());
         }
 
-        cmd.envs(&env);
+        cmd.envs(&config.env);
 
         cmd.stdout(Stdio::piped())
             .stderr(Stdio::piped())
