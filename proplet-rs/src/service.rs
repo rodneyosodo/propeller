@@ -5,8 +5,9 @@ use crate::types::*;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, Mutex};
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 pub struct PropletService {
@@ -16,6 +17,7 @@ pub struct PropletService {
     runtime: Arc<dyn Runtime>,
     chunks: Arc<Mutex<HashMap<Uuid, Vec<Option<Vec<u8>>>>>>,
     chunk_metadata: Arc<Mutex<HashMap<Uuid, ChunkMetadata>>>,
+    chunk_received_time: Arc<Mutex<HashMap<Uuid, Instant>>>,
     running_tasks: Arc<Mutex<HashMap<Uuid, TaskState>>>,
 }
 
@@ -34,6 +36,7 @@ impl PropletService {
             runtime,
             chunks: Arc::new(Mutex::new(HashMap::new())),
             chunk_metadata: Arc::new(Mutex::new(HashMap::new())),
+            chunk_received_time: Arc::new(Mutex::new(HashMap::new())),
             running_tasks: Arc::new(Mutex::new(HashMap::new())),
         }
     }
@@ -51,6 +54,12 @@ impl PropletService {
         let service = self.clone();
         tokio::spawn(async move {
             service.start_liveliness_updates().await;
+        });
+
+        // Start chunk expiry cleanup
+        let service = self.clone();
+        tokio::spawn(async move {
+            service.start_chunk_expiry_cleanup().await;
         });
 
         // Process MQTT messages
@@ -145,6 +154,39 @@ impl PropletService {
         debug!("Published liveliness update");
 
         Ok(())
+    }
+
+    async fn start_chunk_expiry_cleanup(&self) {
+        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        const CHUNK_TTL: Duration = Duration::from_secs(5 * 60); // 5 minutes
+
+        loop {
+            interval.tick().await;
+
+            let now = Instant::now();
+            let mut chunks = self.chunks.lock().await;
+            let mut metadata = self.chunk_metadata.lock().await;
+            let mut received_time = self.chunk_received_time.lock().await;
+
+            let mut expired_tasks = Vec::new();
+
+            for (task_id, time) in received_time.iter() {
+                if now.duration_since(*time) > CHUNK_TTL {
+                    warn!(
+                        "Expiring incomplete chunks for task {} (age: {:?})",
+                        task_id,
+                        now.duration_since(*time)
+                    );
+                    expired_tasks.push(*task_id);
+                }
+            }
+
+            for task_id in expired_tasks {
+                chunks.remove(&task_id);
+                metadata.remove(&task_id);
+                received_time.remove(&task_id);
+            }
+        }
     }
 
     async fn handle_message(&self, msg: MqttMessage) -> Result<()> {
@@ -273,6 +315,9 @@ impl PropletService {
 
         if let Some(meta) = metadata.get(&chunk.id) {
             let task_chunks = chunks.entry(chunk.id).or_insert_with(|| {
+                // Record when we first received chunks for this task
+                let mut received_time = self.chunk_received_time.blocking_lock();
+                received_time.entry(chunk.id).or_insert_with(Instant::now);
                 vec![None; meta.total]
             });
 
@@ -315,6 +360,11 @@ impl PropletService {
 
             let assembled = self.try_assemble_chunks(task_id).await?;
             if let Some(binary) = assembled {
+                // Cleanup chunks after successful assembly
+                self.chunks.lock().await.remove(&task_id);
+                self.chunk_metadata.lock().await.remove(&task_id);
+                self.chunk_received_time.lock().await.remove(&task_id);
+                
                 return Ok(binary);
             }
 

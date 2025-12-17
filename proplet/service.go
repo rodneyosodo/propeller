@@ -35,6 +35,7 @@ type PropletService struct {
 	pubsub             pkgmqtt.PubSub
 	chunks             map[string][][]byte
 	chunkMetadata      map[string]*ChunkPayload
+	chunkReceivedTime  map[string]time.Time
 	chunksMutex        sync.Mutex
 	runtime            Runtime
 	logger             *slog.Logger
@@ -67,11 +68,13 @@ func NewService(ctx context.Context, domainID, channelID, clientID, clientKey, k
 		pubsub:             pubsub,
 		chunks:             make(map[string][][]byte),
 		chunkMetadata:      make(map[string]*ChunkPayload),
+		chunkReceivedTime:  make(map[string]time.Time),
 		runtime:            runtime,
 		logger:             logger,
 	}
 
 	go p.startLivelinessUpdates(ctx)
+	go p.startChunkExpiryCleanup(ctx)
 
 	return p, nil
 }
@@ -121,6 +124,35 @@ func (p *PropletService) startLivelinessUpdates(ctx context.Context) {
 			}
 
 			p.logger.Debug("Published liveliness message", slog.String("topic", topic))
+		}
+	}
+}
+
+func (p *PropletService) startChunkExpiryCleanup(ctx context.Context) {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+
+	const chunkTTL = 5 * time.Minute
+
+	for {
+		select {
+		case <-ctx.Done():
+			p.logger.Info("stopping chunk expiry cleanup")
+			return
+		case <-ticker.C:
+			p.chunksMutex.Lock()
+			now := time.Now()
+			for appName, receivedTime := range p.chunkReceivedTime {
+				if now.Sub(receivedTime) > chunkTTL {
+					p.logger.Warn("Expiring incomplete chunks",
+						slog.String("app_name", appName),
+						slog.Duration("age", now.Sub(receivedTime)))
+					delete(p.chunks, appName)
+					delete(p.chunkMetadata, appName)
+					delete(p.chunkReceivedTime, appName)
+				}
+			}
+			p.chunksMutex.Unlock()
 		}
 	}
 }
@@ -184,25 +216,38 @@ func (p *PropletService) handleStartCommand(ctx context.Context) func(topic stri
 			for {
 				p.chunksMutex.Lock()
 				metadata, exists := p.chunkMetadata[req.imageURL]
-				receivedChunks := len(p.chunks[req.imageURL])
+				chunks := p.chunks[req.imageURL]
 				p.chunksMutex.Unlock()
 
-				if exists && receivedChunks == metadata.TotalChunks {
-					p.logger.Info("All chunks received, deploying app", slog.String("app_name", req.imageURL))
-					config := StartConfig{
-						CLIArgs:      req.CLIArgs,
-						ID:           req.ID,
-						FunctionName: req.FunctionName,
-						Daemon:       req.Daemon,
-						Env:          req.Env,
-						Args:         req.Params,
-						WasmBinary:   assembleChunks(p.chunks[req.imageURL]),
-					}
-					if err := p.runtime.StartApp(ctx, config); err != nil {
-						p.logger.Error("Failed to start app", slog.String("app_name", req.imageURL), slog.Any("error", err))
-					}
+				if exists && len(chunks) == metadata.TotalChunks {
+					// Try to assemble - will fail if any chunks are missing
+					wasmBinary, complete := assembleChunks(chunks)
+					if complete {
+						p.logger.Info("All chunks received, deploying app", slog.String("app_name", req.imageURL))
 
-					break
+						config := StartConfig{
+							CLIArgs:      req.CLIArgs,
+							ID:           req.ID,
+							FunctionName: req.FunctionName,
+							Daemon:       req.Daemon,
+							Env:          req.Env,
+							Args:         req.Params,
+							WasmBinary:   wasmBinary,
+						}
+
+						if err := p.runtime.StartApp(ctx, config); err != nil {
+							p.logger.Error("Failed to start app", slog.String("app_name", req.imageURL), slog.Any("error", err))
+						}
+
+						// Cleanup chunks after successful assembly
+						p.chunksMutex.Lock()
+						delete(p.chunks, req.imageURL)
+						delete(p.chunkMetadata, req.imageURL)
+						delete(p.chunkReceivedTime, req.imageURL)
+						p.chunksMutex.Unlock()
+
+						break
+					}
 				}
 
 				time.Sleep(pollingInterval)
@@ -256,11 +301,18 @@ func (p *PropletService) handleChunk(_ context.Context) func(topic string, msg m
 		p.chunksMutex.Lock()
 		defer p.chunksMutex.Unlock()
 
+		// Initialize chunk storage if this is the first chunk
 		if _, exists := p.chunkMetadata[chunk.AppName]; !exists {
 			p.chunkMetadata[chunk.AppName] = &chunk
+			// Pre-allocate slice with correct size
+			p.chunks[chunk.AppName] = make([][]byte, chunk.TotalChunks)
+			p.chunkReceivedTime[chunk.AppName] = time.Now()
 		}
 
-		p.chunks[chunk.AppName] = append(p.chunks[chunk.AppName], chunk.Data)
+		// Store chunk at correct index
+		if chunk.ChunkIdx >= 0 && chunk.ChunkIdx < len(p.chunks[chunk.AppName]) {
+			p.chunks[chunk.AppName][chunk.ChunkIdx] = chunk.Data
+		}
 
 		log.Printf("Received chunk %d/%d for app '%s'\n", chunk.ChunkIdx+1, chunk.TotalChunks, chunk.AppName)
 
@@ -268,13 +320,18 @@ func (p *PropletService) handleChunk(_ context.Context) func(topic string, msg m
 	}
 }
 
-func assembleChunks(chunks [][]byte) []byte {
+func assembleChunks(chunks [][]byte) ([]byte, bool) {
 	var wasmBinary []byte
-	for _, chunk := range chunks {
+	for i, chunk := range chunks {
+		if chunk == nil {
+			// Chunk missing - cannot assemble yet
+			return nil, false
+		}
 		wasmBinary = append(wasmBinary, chunk...)
+		_ = i // Keep index for potential logging
 	}
 
-	return wasmBinary
+	return wasmBinary, true
 }
 
 func (c *ChunkPayload) Validate() error {
