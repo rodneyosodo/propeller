@@ -111,14 +111,37 @@ impl Runtime for HostRuntime {
             let task_id = id.clone();
 
             tokio::spawn(async move {
-                if let Some(mut process) = processes.lock().await.remove(&task_id) {
-                    match process.wait().await {
-                        Ok(status) => {
-                            info!("Daemon task {} exited with status: {}", task_id, status);
+                // Poll the process status periodically instead of blocking on wait()
+                // This allows stop_app to still access and kill the process
+                loop {
+                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                    
+                    let mut should_cleanup = false;
+                    {
+                        let mut processes_guard = processes.lock().await;
+                        if let Some(process) = processes_guard.get_mut(&task_id) {
+                            match process.try_wait() {
+                                Ok(Some(status)) => {
+                                    info!("Daemon task {} exited with status: {}", task_id, status);
+                                    should_cleanup = true;
+                                }
+                                Ok(None) => {
+                                    // Process is still running, continue polling
+                                }
+                                Err(e) => {
+                                    error!("Daemon task {} try_wait error: {}", task_id, e);
+                                    should_cleanup = true;
+                                }
+                            }
+                        } else {
+                            // Process was removed (likely by stop_app), exit the loop
+                            break;
                         }
-                        Err(e) => {
-                            error!("Daemon task {} wait error: {}", task_id, e);
-                        }
+                    }
+
+                    if should_cleanup {
+                        processes.lock().await.remove(&task_id);
+                        break;
                     }
                 }
 
