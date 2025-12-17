@@ -3,18 +3,51 @@ use crate::mqtt::{build_topic, MqttMessage, PubSub};
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 use crate::types::*;
 use anyhow::Result;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
-use tracing::{debug, error, info};
+use tokio::time::Instant;
+use tracing::{debug, error, info, warn};
+
+#[derive(Debug)]
+struct ChunkAssemblyState {
+    chunks: BTreeMap<usize, Vec<u8>>,
+    total_chunks: usize,
+    created_at: Instant,
+}
+
+impl ChunkAssemblyState {
+    fn new(total_chunks: usize) -> Self {
+        Self {
+            chunks: BTreeMap::new(),
+            total_chunks,
+            created_at: Instant::now(),
+        }
+    }
+
+    fn is_complete(&self) -> bool {
+        self.chunks.len() == self.total_chunks
+    }
+
+    fn is_expired(&self, ttl: tokio::time::Duration) -> bool {
+        self.created_at.elapsed() > ttl
+    }
+
+    fn assemble(&self) -> Vec<u8> {
+        let mut binary = Vec::new();
+        for chunk_data in self.chunks.values() {
+            binary.extend_from_slice(chunk_data);
+        }
+        binary
+    }
+}
 
 pub struct PropletService {
     config: PropletConfig,
     proplet: Arc<Mutex<Proplet>>,
     pubsub: PubSub,
     runtime: Arc<dyn Runtime>,
-    chunks: Arc<Mutex<HashMap<String, Vec<Vec<u8>>>>>,
-    chunk_metadata: Arc<Mutex<HashMap<String, ChunkMetadata>>>,
+    chunk_assembly: Arc<Mutex<HashMap<String, ChunkAssemblyState>>>,
     running_tasks: Arc<Mutex<HashMap<String, TaskState>>>,
 }
 
@@ -22,15 +55,48 @@ impl PropletService {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
         let proplet = Proplet::new(config.instance_id, "proplet-rs".to_string());
 
-        Self {
+        let service = Self {
             config,
             proplet: Arc::new(Mutex::new(proplet)),
             pubsub,
             runtime,
-            chunks: Arc::new(Mutex::new(HashMap::new())),
-            chunk_metadata: Arc::new(Mutex::new(HashMap::new())),
+            chunk_assembly: Arc::new(Mutex::new(HashMap::new())),
             running_tasks: Arc::new(Mutex::new(HashMap::new())),
-        }
+        };
+
+        service.start_chunk_expiry_task();
+
+        service
+    }
+
+    fn start_chunk_expiry_task(&self) {
+        let chunk_assembly = self.chunk_assembly.clone();
+        let ttl = tokio::time::Duration::from_secs(300); // 5 minutes TTL
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+
+                let mut assembly = chunk_assembly.lock().await;
+                let expired: Vec<String> = assembly
+                    .iter()
+                    .filter(|(_, state)| state.is_expired(ttl))
+                    .map(|(name, _)| name.clone())
+                    .collect();
+
+                for app_name in expired {
+                    if let Some(state) = assembly.remove(&app_name) {
+                        warn!(
+                            "Expired incomplete chunk assembly for '{}': received {}/{} chunks",
+                            app_name,
+                            state.chunks.len(),
+                            state.total_chunks
+                        );
+                    }
+                }
+            }
+        });
     }
 
     pub async fn run(self: Arc<Self>, mut mqtt_rx: mpsc::Receiver<MqttMessage>) -> Result<()> {
@@ -314,23 +380,38 @@ impl PropletService {
             chunk.app_name
         );
 
-        let mut chunks = self.chunks.lock().await;
-        let mut metadata = self.chunk_metadata.lock().await;
+        let mut assembly = self.chunk_assembly.lock().await;
 
-        if !metadata.contains_key(&chunk.app_name) {
-            metadata.insert(
-                chunk.app_name.clone(),
-                ChunkMetadata {
-                    app_name: chunk.app_name.clone(),
-                    total_chunks: chunk.total_chunks,
-                },
+        let state = assembly
+            .entry(chunk.app_name.clone())
+            .or_insert_with(|| ChunkAssemblyState::new(chunk.total_chunks));
+
+        if state.total_chunks != chunk.total_chunks {
+            warn!(
+                "Chunk total_chunks mismatch for '{}': expected {}, got {}",
+                chunk.app_name, state.total_chunks, chunk.total_chunks
             );
+            return Err(anyhow::anyhow!(
+                "Chunk total_chunks mismatch for '{}'",
+                chunk.app_name
+            ));
         }
 
-        chunks
-            .entry(chunk.app_name.clone())
-            .or_insert_with(Vec::new)
-            .push(chunk.data);
+        if state.chunks.contains_key(&chunk.chunk_idx) {
+            debug!(
+                "Duplicate chunk {} for app '{}', ignoring",
+                chunk.chunk_idx, chunk.app_name
+            );
+        } else {
+            state.chunks.insert(chunk.chunk_idx, chunk.data);
+            debug!(
+                "Stored chunk {} for app '{}' ({}/{} chunks received)",
+                chunk.chunk_idx,
+                chunk.app_name,
+                state.chunks.len(),
+                state.total_chunks
+            );
+        }
 
         Ok(())
     }
@@ -376,24 +457,22 @@ impl PropletService {
     }
 
     async fn try_assemble_chunks(&self, app_name: &str) -> Result<Option<Vec<u8>>> {
-        let chunks = self.chunks.lock().await;
-        let metadata = self.chunk_metadata.lock().await;
+        let mut assembly = self.chunk_assembly.lock().await;
 
-        if let Some(meta) = metadata.get(app_name) {
-            if let Some(app_chunks) = chunks.get(app_name) {
-                if app_chunks.len() == meta.total_chunks {
-                    let mut binary = Vec::new();
-                    for chunk_data in app_chunks {
-                        binary.extend_from_slice(chunk_data);
-                    }
+        if let Some(state) = assembly.get(app_name) {
+            if state.is_complete() {
+                let binary = state.assemble();
 
-                    info!(
-                        "Assembled binary for app '{}', size: {} bytes",
-                        app_name,
-                        binary.len()
-                    );
-                    return Ok(Some(binary));
-                }
+                info!(
+                    "Assembled binary for app '{}', size: {} bytes from {} chunks",
+                    app_name,
+                    binary.len(),
+                    state.total_chunks
+                );
+
+                assembly.remove(app_name);
+
+                return Ok(Some(binary));
             }
         }
 
