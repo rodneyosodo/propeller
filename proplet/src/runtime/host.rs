@@ -28,7 +28,7 @@ impl HostRuntime {
 
     async fn create_temp_wasm_file(&self, id: &str, wasm_binary: &[u8]) -> Result<PathBuf> {
         let temp_dir = std::env::temp_dir();
-        let file_path = temp_dir.join(format!("proplet_{}.wasm", id));
+        let file_path = temp_dir.join(format!("proplet_{id}.wasm"));
 
         let mut file = fs::File::create(&file_path)
             .await
@@ -200,7 +200,7 @@ impl Runtime for HostRuntime {
             debug!("Process for task {} killed", id);
             Ok(())
         } else {
-            Err(anyhow::anyhow!("Task {} not found", id))
+            Err(anyhow::anyhow!("Task {id} not found"))
         }
     }
 
