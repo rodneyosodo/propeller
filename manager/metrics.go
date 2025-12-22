@@ -3,8 +3,8 @@ package manager
 import (
 	"time"
 
-	"github.com/absmach/propeller/proplet"
-	"github.com/absmach/propeller/proplet/monitoring"
+	"github.com/absmach/propeller/pkg/proplet"
+	"github.com/absmach/propeller/pkg/proplet/monitoring"
 )
 
 type TaskMetrics struct {
