@@ -1,14 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::time::SystemTime;
 use sysinfo::System;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PropletMetrics {
-    pub version: String,
-    pub timestamp: SystemTime,
-    pub cpu: CpuMetrics,
-    pub memory: MemoryMetrics,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CpuMetrics {
@@ -27,7 +18,7 @@ impl Default for CpuMetrics {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct MemoryMetrics {
     pub rss_bytes: u64,
     pub heap_alloc_bytes: u64,
@@ -37,19 +28,6 @@ pub struct MemoryMetrics {
     pub container_usage_bytes: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub container_limit_bytes: Option<u64>,
-}
-
-impl Default for MemoryMetrics {
-    fn default() -> Self {
-        Self {
-            rss_bytes: 0,
-            heap_alloc_bytes: 0,
-            heap_sys_bytes: 0,
-            heap_inuse_bytes: 0,
-            container_usage_bytes: None,
-            container_limit_bytes: None,
-        }
-    }
 }
 
 pub struct MetricsCollector {
@@ -63,21 +41,13 @@ impl MetricsCollector {
         }
     }
 
-    pub fn collect(&mut self) -> PropletMetrics {
-        let now = SystemTime::now();
-
-        // Refresh system information
+    pub fn collect(&mut self) -> (CpuMetrics, MemoryMetrics) {
         self.system.refresh_all();
 
         let cpu = self.collect_cpu_metrics();
         let memory = self.collect_memory_metrics();
 
-        PropletMetrics {
-            version: "v1".to_string(),
-            timestamp: now,
-            cpu,
-            memory,
-        }
+        (cpu, memory)
     }
 
     fn collect_cpu_metrics(&mut self) -> CpuMetrics {
@@ -109,11 +79,19 @@ impl MetricsCollector {
         let contents = fs::read_to_string("/proc/self/stat")?;
 
         // Find the closing parenthesis of the command name
-        let close_paren = contents.rfind(')').unwrap_or(0);
+        let close_paren = contents.rfind(')').ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid /proc/self/stat format",
+            )
+        })?;
+        if close_paren + 2 >= contents.len() {
+            return Ok((0.0, 0.0));
+        }
         let fields: Vec<&str> = contents[close_paren + 2..].split_whitespace().collect();
 
         if fields.len() >= 14 {
-            // Fields 13 and 14 are utime and stime (in clock ticks)
+            // Fields 11 and 12 (0-indexed after comm) are utime and stime (in clock ticks)
             let utime: u64 = fields[11].parse().unwrap_or(0);
             let stime: u64 = fields[12].parse().unwrap_or(0);
 

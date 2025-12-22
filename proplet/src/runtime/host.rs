@@ -106,7 +106,7 @@ impl Runtime for HostRuntime {
 
         if config.daemon {
             info!("Running in daemon mode for task: {}", config.id);
-            
+
             let processes = self.processes.clone();
             let pids = self.pids.clone();
             let temp_file_clone = temp_file.clone();
@@ -159,16 +159,66 @@ impl Runtime for HostRuntime {
                 config.id
             );
 
-            let child = {
-                let mut processes = self.processes.lock().await;
-                processes.remove(&config.id)
-                    .ok_or_else(|| anyhow::anyhow!("Failed to retrieve child process"))?
-            };
+            // Keep the child in the processes map during wait to allow interruption via stop_app
+            // We'll poll for completion instead of blocking with wait_with_output
+            let output = loop {
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-            let output = child
-                .wait_with_output()
-                .await
-                .context("Failed to wait for host runtime process")?;
+                let mut processes = self.processes.lock().await;
+                if let Some(child) = processes.get_mut(&config.id) {
+                    match child.try_wait() {
+                        Ok(Some(status)) => {
+                            // Process has completed, now we can safely remove it and collect output
+                            drop(processes);
+
+                            let mut child = {
+                                let mut processes = self.processes.lock().await;
+                                processes
+                                    .remove(&config.id)
+                                    .ok_or_else(|| anyhow::anyhow!("Failed to retrieve child process"))?
+                            };
+
+                            // Collect stdout and stderr
+                            let stdout = if let Some(mut stdout_reader) = child.stdout.take() {
+                                use tokio::io::AsyncReadExt;
+                                let mut buf = Vec::new();
+                                stdout_reader.read_to_end(&mut buf).await.unwrap_or_default();
+                                buf
+                            } else {
+                                Vec::new()
+                            };
+
+                            let stderr = if let Some(mut stderr_reader) = child.stderr.take() {
+                                use tokio::io::AsyncReadExt;
+                                let mut buf = Vec::new();
+                                stderr_reader.read_to_end(&mut buf).await.unwrap_or_default();
+                                buf
+                            } else {
+                                Vec::new()
+                            };
+
+                            break std::process::Output {
+                                status,
+                                stdout,
+                                stderr,
+                            };
+                        }
+                        Ok(None) => {
+                            // Process is still running, continue polling
+                        }
+                        Err(e) => {
+                            // Error checking process status
+                            drop(processes);
+                            return Err(anyhow::anyhow!("Failed to check process status: {}", e));
+                        }
+                    }
+                } else {
+                    // Process was removed (likely by stop_app), meaning it was killed
+                    drop(processes);
+                    self.cleanup_temp_file(temp_file).await?;
+                    return Err(anyhow::anyhow!("Task {} was stopped before completion", config.id));
+                }
+            };
 
             info!("Process completed for task: {}", config.id);
 

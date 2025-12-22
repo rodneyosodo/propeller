@@ -115,7 +115,7 @@ func (l listTaskResponse) Empty() bool {
 	return false
 }
 
-type messageResponse map[string]interface{}
+type messageResponse map[string]any
 
 func (w messageResponse) Code() int {
 	return http.StatusOK

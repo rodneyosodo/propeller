@@ -248,6 +248,11 @@ impl Runtime for WasmtimeRuntime {
     }
 
     async fn get_pid(&self, _id: &str) -> Result<Option<u32>> {
+        let tasks = self.tasks.lock().await;
+        if !tasks.contains_key(_id) {
+            return Ok(None);
+        }
+
         Ok(Some(std::process::id()))
     }
 }

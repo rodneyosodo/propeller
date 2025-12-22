@@ -55,15 +55,25 @@ impl SystemMonitor {
             .process(pid)
             .ok_or_else(|| anyhow::anyhow!("Process with PID {} not found", pid.as_u32()))?;
 
-        let mut metrics = ProcessMetrics::default();
-        metrics.timestamp = SystemTime::now();
+        let mut metrics = ProcessMetrics {
+            cpu_percent: 0.0,
+            memory_bytes: 0,
+            memory_percent: 0.0,
+            disk_read_bytes: 0,
+            disk_write_bytes: 0,
+            network_rx_bytes: 0,
+            network_tx_bytes: 0,
+            uptime_seconds: 0,
+            thread_count: 0,
+            file_descriptor_count: 0,
+        };
 
         if profile.collect_cpu {
-            metrics.cpu_usage_percent = process.cpu_usage() as f64;
+            metrics.cpu_percent = process.cpu_usage() as f64;
         }
 
         if profile.collect_memory {
-            metrics.memory_usage_bytes = process.memory();
+            metrics.memory_bytes = process.memory();
         }
 
         if profile.collect_disk_io {
@@ -111,8 +121,7 @@ impl SystemMonitor {
             }
         }
 
-        // Calculate uptime
-        if let Ok(duration) = metrics.timestamp.duration_since(start_time) {
+        if let Ok(duration) = SystemTime::now().duration_since(start_time) {
             metrics.uptime_seconds = duration.as_secs();
         }
 
@@ -237,18 +246,10 @@ impl SystemMonitor {
         }
 
         let count = history.len() as f64;
-        let avg_cpu = history.iter().map(|s| s.cpu_usage_percent).sum::<f64>() / count;
-        let max_cpu = history
-            .iter()
-            .map(|s| s.cpu_usage_percent)
-            .fold(0.0, f64::max);
-        let avg_mem =
-            (history.iter().map(|s| s.memory_usage_bytes).sum::<u64>() as f64 / count) as u64;
-        let max_mem = history
-            .iter()
-            .map(|s| s.memory_usage_bytes)
-            .max()
-            .unwrap_or(0);
+        let avg_cpu = history.iter().map(|s| s.cpu_percent).sum::<f64>() / count;
+        let max_cpu = history.iter().map(|s| s.cpu_percent).fold(0.0, f64::max);
+        let avg_mem = (history.iter().map(|s| s.memory_bytes).sum::<u64>() as f64 / count) as u64;
+        let max_mem = history.iter().map(|s| s.memory_bytes).max().unwrap_or(0);
 
         let last = history.last().unwrap();
         let first = history.first().unwrap();

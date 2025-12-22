@@ -120,14 +120,14 @@ func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) ht
 }
 
 func decodeEntityReq(key string) kithttp.DecodeRequestFunc {
-	return func(_ context.Context, r *http.Request) (interface{}, error) {
+	return func(_ context.Context, r *http.Request) (any, error) {
 		return entityReq{
 			id: chi.URLParam(r, key),
 		}, nil
 	}
 }
 
-func decodeTaskReq(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeTaskReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
 		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
 	}
@@ -140,7 +140,7 @@ func decodeTaskReq(_ context.Context, r *http.Request) (interface{}, error) {
 	return req, nil
 }
 
-func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
 	var req taskReq
 	if err := r.ParseMultipartForm(maxFileSize); err != nil {
 		return nil, err
@@ -164,7 +164,7 @@ func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (interface{}, e
 	return req, nil
 }
 
-func decodeUpdateTaskReq(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeUpdateTaskReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
 		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
 	}
@@ -177,7 +177,7 @@ func decodeUpdateTaskReq(_ context.Context, r *http.Request) (interface{}, error
 	return req, nil
 }
 
-func decodeListEntityReq(_ context.Context, r *http.Request) (interface{}, error) {
+func decodeListEntityReq(_ context.Context, r *http.Request) (any, error) {
 	o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
 	if err != nil {
 		return nil, errors.Join(apiutil.ErrValidation, err)
@@ -195,7 +195,7 @@ func decodeListEntityReq(_ context.Context, r *http.Request) (interface{}, error
 }
 
 func decodeMetricsReq(key string) kithttp.DecodeRequestFunc {
-	return func(_ context.Context, r *http.Request) (interface{}, error) {
+	return func(_ context.Context, r *http.Request) (any, error) {
 		o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
 		if err != nil {
 			return nil, errors.Join(apiutil.ErrValidation, err)

@@ -42,6 +42,7 @@ int main(void)
 
   if (publish_discovery(domain_id, PROPLET_ID, channel_id) != 0) {
     LOG_ERR("MQTT discovery publish failed");
+    return -1;
   }
 
   for (int i = 0; i < 20; i++) {
