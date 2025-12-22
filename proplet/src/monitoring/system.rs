@@ -55,15 +55,23 @@ impl SystemMonitor {
             .process(pid)
             .ok_or_else(|| anyhow::anyhow!("Process with PID {} not found", pid.as_u32()))?;
 
-        let mut metrics = ProcessMetrics::default();
-        metrics.timestamp = SystemTime::now();
+        let mut metrics = ProcessMetrics {
+            cpu_percent: 0.0,
+            memory_bytes: 0,
+            memory_percent: 0.0,
+            disk_read_bytes: 0,
+            disk_write_bytes: 0,
+            uptime_seconds: 0,
+            thread_count: 0,
+            file_descriptor_count: 0,
+        };
 
         if profile.collect_cpu {
-            metrics.cpu_usage_percent = process.cpu_usage() as f64;
+            metrics.cpu_percent = process.cpu_usage() as f64;
         }
 
         if profile.collect_memory {
-            metrics.memory_usage_bytes = process.memory();
+            metrics.memory_bytes = process.memory() * 1024;
         }
 
         if profile.collect_disk_io {
@@ -96,13 +104,14 @@ impl SystemMonitor {
             }
             #[cfg(target_os = "macos")]
             {
-                use std::process::Command;
+                use tokio::process::Command;
                 if let Ok(output) = Command::new("lsof")
                     .args(["-p", &pid.as_u32().to_string()])
                     .output()
+                    .await
                 {
-                    metrics.file_descriptor_count =
-                        output.stdout.split(|&b| b == b'\n').count() as u32;
+                    let count = output.stdout.split(|&b| b == b'\n').count();
+                    metrics.file_descriptor_count = count.saturating_sub(1) as u32;
                 }
             }
             #[cfg(target_os = "windows")]
@@ -111,8 +120,7 @@ impl SystemMonitor {
             }
         }
 
-        // Calculate uptime
-        if let Ok(duration) = metrics.timestamp.duration_since(start_time) {
+        if let Ok(duration) = SystemTime::now().duration_since(start_time) {
             metrics.uptime_seconds = duration.as_secs();
         }
 
@@ -230,25 +238,15 @@ impl SystemMonitor {
                 max_memory_usage: 0,
                 total_disk_read: 0,
                 total_disk_write: 0,
-                total_network_rx: 0,
-                total_network_tx: 0,
                 sample_count: 0,
             };
         }
 
         let count = history.len() as f64;
-        let avg_cpu = history.iter().map(|s| s.cpu_usage_percent).sum::<f64>() / count;
-        let max_cpu = history
-            .iter()
-            .map(|s| s.cpu_usage_percent)
-            .fold(0.0, f64::max);
-        let avg_mem =
-            (history.iter().map(|s| s.memory_usage_bytes).sum::<u64>() as f64 / count) as u64;
-        let max_mem = history
-            .iter()
-            .map(|s| s.memory_usage_bytes)
-            .max()
-            .unwrap_or(0);
+        let avg_cpu = history.iter().map(|s| s.cpu_percent).sum::<f64>() / count;
+        let max_cpu = history.iter().map(|s| s.cpu_percent).fold(0.0, f64::max);
+        let avg_mem = (history.iter().map(|s| s.memory_bytes).sum::<u64>() as f64 / count) as u64;
+        let max_mem = history.iter().map(|s| s.memory_bytes).max().unwrap_or(0);
 
         let last = history.last().unwrap();
         let first = history.first().unwrap();
@@ -260,8 +258,6 @@ impl SystemMonitor {
             max_memory_usage: max_mem,
             total_disk_read: last.disk_read_bytes.saturating_sub(first.disk_read_bytes),
             total_disk_write: last.disk_write_bytes.saturating_sub(first.disk_write_bytes),
-            total_network_rx: last.network_rx_bytes.saturating_sub(first.network_rx_bytes),
-            total_network_tx: last.network_tx_bytes.saturating_sub(first.network_tx_bytes),
             sample_count: history.len(),
         }
     }

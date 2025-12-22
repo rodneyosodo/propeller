@@ -7,6 +7,7 @@ use crate::types::*;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
+use std::time::SystemTime;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -57,7 +58,7 @@ pub struct PropletService {
 
 impl PropletService {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
-        let proplet = Proplet::new(config.instance_id, "proplet".to_string());
+        let proplet = Proplet::new(config.instance_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
 
@@ -246,7 +247,7 @@ impl PropletService {
     }
 
     async fn publish_proplet_metrics(&self) -> Result<()> {
-        let metrics = {
+        let (cpu_metrics, memory_metrics) = {
             let mut collector = self.metrics_collector.lock().await;
             collector.collect()
         };
@@ -255,7 +256,9 @@ impl PropletService {
         struct PropletMetricsMessage {
             proplet_id: String,
             namespace: String,
-            metrics: crate::metrics::PropletMetrics,
+            timestamp: SystemTime,
+            cpu_metrics: crate::metrics::CpuMetrics,
+            memory_metrics: crate::metrics::MemoryMetrics,
         }
 
         let msg = PropletMetricsMessage {
@@ -265,7 +268,9 @@ impl PropletService {
                 .k8s_namespace
                 .clone()
                 .unwrap_or_else(|| "default".to_string()),
-            metrics,
+            timestamp: SystemTime::now(),
+            cpu_metrics,
+            memory_metrics,
         };
 
         let topic = build_topic(
@@ -369,7 +374,7 @@ impl PropletService {
         let domain_id = self.config.domain_id.clone();
         let channel_id = self.config.channel_id.clone();
         let qos = self.config.qos();
-        let proplet_id = self.proplet.lock().await.id;
+        let proplet_id = self.proplet.lock().await.id.clone();
         let task_id = req.id.clone();
         let task_name = req.name.clone();
         let env = req.env.unwrap_or_default();
@@ -380,7 +385,9 @@ impl PropletService {
         let export_metrics = monitoring_profile.enabled && monitoring_profile.export_to_mqtt;
 
         tokio::spawn(async move {
-            let ctx = RuntimeContext { proplet_id };
+            let ctx = RuntimeContext {
+                proplet_id: proplet_id.clone(),
+            };
 
             info!("Executing task {} in spawned task", task_id);
 
@@ -396,7 +403,10 @@ impl PropletService {
 
             // Start monitoring setup (if enabled)
             if export_metrics {
-                if let Err(e) = monitor.start_monitoring(&task_id, monitoring_profile.clone()).await {
+                if let Err(e) = monitor
+                    .start_monitoring(&task_id, monitoring_profile.clone())
+                    .await
+                {
                     error!("Failed to start monitoring for task {}: {}", task_id, e);
                 }
             }
@@ -409,35 +419,48 @@ impl PropletService {
                 let pubsub_clone = pubsub.clone();
                 let domain_clone = domain_id.clone();
                 let channel_clone = channel_id.clone();
+                let proplet_id_clone = proplet_id.clone();
 
                 Some(tokio::spawn(async move {
                     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    
+
                     if let Ok(Some(pid)) = runtime_clone.get_pid(&task_id_clone).await {
-                        
                         let task_id_for_closure = task_id_clone.clone();
-                        monitor_clone.attach_pid(&task_id_clone, pid, move |metrics, aggregated| {
-                            let pubsub = pubsub_clone.clone();
-                            let domain = domain_clone.clone();
-                            let channel = channel_clone.clone();
-                            let task_id = task_id_for_closure.clone();
+                        let proplet_id_for_closure = proplet_id_clone.clone();
+                        monitor_clone
+                            .attach_pid(&task_id_clone, pid, move |metrics, aggregated| {
+                                let pubsub = pubsub_clone.clone();
+                                let domain = domain_clone.clone();
+                                let channel = channel_clone.clone();
+                                let task_id = task_id_for_closure.clone();
+                                let proplet_id = proplet_id_for_closure.clone();
 
-                            tokio::spawn(async move {
-                                let metrics_msg = MetricsMessage {
-                                    task_id,
-                                    proplet_id,
-                                    metrics,
-                                    aggregated,
-                                };
+                                tokio::spawn(async move {
+                                    let metrics_msg = MetricsMessage {
+                                        task_id,
+                                        proplet_id,
+                                        metrics,
+                                        aggregated,
+                                        timestamp: SystemTime::now(),
+                                    };
 
-                                let topic = build_topic(&domain, &channel, "control/proplet/task_metrics");
-                                if let Err(e) = pubsub.publish(&topic, &metrics_msg, qos).await {
-                                    debug!("Failed to publish task metrics: {}", e);
-                                }
-                            });
-                        }).await;
+                                    let topic = build_topic(
+                                        &domain,
+                                        &channel,
+                                        "control/proplet/task_metrics",
+                                    );
+                                    if let Err(e) = pubsub.publish(&topic, &metrics_msg, qos).await
+                                    {
+                                        debug!("Failed to publish task metrics: {}", e);
+                                    }
+                                });
+                            })
+                            .await;
                     } else {
-                        debug!("No PID available for task {}, skipping monitoring", task_id_clone);
+                        debug!(
+                            "No PID available for task {}, skipping monitoring",
+                            task_id_clone
+                        );
                     }
                 }))
             } else {
@@ -619,7 +642,7 @@ impl PropletService {
         results: Vec<u8>,
         error: Option<String>,
     ) -> Result<()> {
-        let proplet_id = self.proplet.lock().await.id;
+        let proplet_id = self.proplet.lock().await.id.clone();
         let result_str = String::from_utf8_lossy(&results).to_string();
 
         let result_msg = ResultMessage {

@@ -2,7 +2,6 @@ use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum TaskState {
@@ -13,7 +12,7 @@ pub enum TaskState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Proplet {
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub task_count: usize,
     pub alive: bool,
@@ -21,7 +20,7 @@ pub struct Proplet {
 }
 
 impl Proplet {
-    pub fn new(id: Uuid, name: String) -> Self {
+    pub fn new(id: String, name: String) -> Self {
         Self {
             id,
             name,
@@ -136,7 +135,7 @@ pub struct DiscoveryMessage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResultMessage {
     pub task_id: String,
-    pub proplet_id: Uuid,
+    pub proplet_id: String,
     pub results: String,
     pub error: Option<String>,
 }
@@ -149,7 +148,6 @@ pub struct MonitoringProfile {
     pub collect_cpu: bool,
     pub collect_memory: bool,
     pub collect_disk_io: bool,
-    pub collect_network_io: bool,
     pub collect_threads: bool,
     pub collect_file_descriptors: bool,
     pub export_to_mqtt: bool,
@@ -165,7 +163,6 @@ impl Default for MonitoringProfile {
             collect_cpu: true,
             collect_memory: true,
             collect_disk_io: true,
-            collect_network_io: true,
             collect_threads: true,
             collect_file_descriptors: true,
             export_to_mqtt: true,
@@ -198,32 +195,34 @@ mod serde_duration {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MetricsMessage {
     pub task_id: String,
-    pub proplet_id: Uuid,
+    pub proplet_id: String,
     pub metrics: crate::monitoring::metrics::ProcessMetrics,
     pub aggregated: Option<crate::monitoring::metrics::AggregatedMetrics>,
+    pub timestamp: SystemTime,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use uuid::Uuid;
 
     #[test]
     fn test_proplet_new() {
         let id = Uuid::new_v4();
-        let proplet = Proplet::new(id, "test-proplet".to_string());
+        let proplet = Proplet::new(id.to_string(), "test-proplet".to_string());
 
-        assert_eq!(proplet.id, id);
+        assert_eq!(proplet.id, id.to_string());
         assert_eq!(proplet.name, "test-proplet");
         assert_eq!(proplet.task_count, 0);
-        assert_eq!(proplet.alive, false);
+        assert!(!proplet.alive);
         assert!(proplet.alive_history.is_empty());
     }
 
     #[test]
     fn test_proplet_set_alive_true() {
         let id = Uuid::new_v4();
-        let mut proplet = Proplet::new(id, "test".to_string());
+        let mut proplet = Proplet::new(id.to_string(), "test".to_string());
 
         proplet.set_alive(true);
 
@@ -234,7 +233,7 @@ mod tests {
     #[test]
     fn test_proplet_set_alive_false() {
         let id = Uuid::new_v4();
-        let mut proplet = Proplet::new(id, "test".to_string());
+        let mut proplet = Proplet::new(id.to_string(), "test".to_string());
 
         proplet.set_alive(false);
 
@@ -245,7 +244,7 @@ mod tests {
     #[test]
     fn test_proplet_set_alive_multiple_times() {
         let id = Uuid::new_v4();
-        let mut proplet = Proplet::new(id, "test".to_string());
+        let mut proplet = Proplet::new(id.to_string(), "test".to_string());
 
         proplet.set_alive(true);
         proplet.set_alive(false);
@@ -376,7 +375,7 @@ mod tests {
         assert!(req.file.is_empty());
         assert_eq!(req.image_url, "registry.example.com/app:v1");
         assert!(req.inputs.is_empty());
-        assert_eq!(req.daemon, false);
+        assert!(!req.daemon);
         assert!(req.env.is_none());
         assert_eq!(req.state, 1);
     }
@@ -489,7 +488,7 @@ mod tests {
     fn test_result_message_with_success() {
         let msg = ResultMessage {
             task_id: "task-result-1".to_string(),
-            proplet_id: Uuid::new_v4(),
+            proplet_id: Uuid::new_v4().to_string(),
             results: String::from("hello world"),
             error: None,
         };
@@ -506,7 +505,7 @@ mod tests {
     fn test_result_message_with_error() {
         let msg = ResultMessage {
             task_id: "task-result-2".to_string(),
-            proplet_id: Uuid::new_v4(),
+            proplet_id: Uuid::new_v4().to_string(),
             results: String::new(),
             error: Some("Execution failed".to_string()),
         };

@@ -4,23 +4,22 @@ import (
 	"time"
 
 	"github.com/absmach/propeller/pkg/proplet"
-	"github.com/absmach/propeller/pkg/proplet/monitoring"
 )
 
 type TaskMetrics struct {
-	TaskID     string                        `json:"task_id"`
-	PropletID  string                        `json:"proplet_id"`
-	Metrics    monitoring.ProcessMetrics     `json:"metrics"`
-	Aggregated *monitoring.AggregatedMetrics `json:"aggregated,omitempty"`
-	Timestamp  time.Time                     `json:"timestamp"`
+	TaskID     string                     `json:"task_id"`
+	PropletID  string                     `json:"proplet_id"`
+	Metrics    proplet.ProcessMetrics     `json:"metrics"`
+	Aggregated *proplet.AggregatedMetrics `json:"aggregated,omitempty"`
+	Timestamp  time.Time                  `json:"timestamp"`
 }
 
 type PropletMetrics struct {
 	PropletID string                `json:"proplet_id"`
-	Version   string                `json:"version"`
+	Namespace string                `json:"namespace"`
 	Timestamp time.Time             `json:"timestamp"`
-	CPU       proplet.CPUMetrics    `json:"cpu"`
-	Memory    proplet.MemoryMetrics `json:"memory"`
+	CPU       proplet.CPUMetrics    `json:"cpu_metrics"`
+	Memory    proplet.MemoryMetrics `json:"memory_metrics"`
 }
 
 type TaskMetricsPage struct {

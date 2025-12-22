@@ -11,7 +11,6 @@ import (
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/proplet"
-	"github.com/absmach/propeller/pkg/proplet/monitoring"
 	"github.com/absmach/propeller/pkg/scheduler"
 	"github.com/absmach/propeller/pkg/storage"
 	"github.com/absmach/propeller/task"
@@ -183,7 +182,7 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 	if err != nil {
 		return err
 	}
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"id":                 t.ID,
 		"name":               t.Name,
 		"state":              t.State,
@@ -283,8 +282,72 @@ func (svc *service) Subscribe(ctx context.Context) error {
 	return nil
 }
 
-func (svc *service) handle(ctx context.Context) func(topic string, msg map[string]interface{}) error {
-	return func(topic string, msg map[string]interface{}) error {
+func filterAndPaginateMetrics[T any](data []any, offset, limit uint64, filterFn func(any) (T, bool)) (entities []T, total uint64) {
+	var filtered []T
+	for _, item := range data {
+		if value, ok := filterFn(item); ok {
+			filtered = append(filtered, value)
+		}
+	}
+
+	totalFiltered := uint64(len(filtered))
+
+	if offset >= totalFiltered {
+		return []T{}, totalFiltered
+	}
+
+	start := offset
+	end := min(offset+limit, totalFiltered)
+
+	return filtered[start:end], totalFiltered
+}
+
+func (svc *service) GetTaskMetrics(ctx context.Context, taskID string, offset, limit uint64) (TaskMetricsPage, error) {
+	data, _, err := svc.metricsDB.List(ctx, 0, 100000)
+	if err != nil {
+		return TaskMetricsPage{}, err
+	}
+
+	metrics, total := filterAndPaginateMetrics(data, offset, limit, func(item any) (TaskMetrics, bool) {
+		if m, ok := item.(TaskMetrics); ok && m.TaskID == taskID {
+			return m, true
+		}
+
+		return TaskMetrics{}, false
+	})
+
+	return TaskMetricsPage{
+		Offset:  offset,
+		Limit:   limit,
+		Total:   total,
+		Metrics: metrics,
+	}, nil
+}
+
+func (svc *service) GetPropletMetrics(ctx context.Context, propletID string, offset, limit uint64) (PropletMetricsPage, error) {
+	data, _, err := svc.metricsDB.List(ctx, 0, 100000)
+	if err != nil {
+		return PropletMetricsPage{}, err
+	}
+
+	metrics, total := filterAndPaginateMetrics(data, offset, limit, func(item any) (PropletMetrics, bool) {
+		if m, ok := item.(PropletMetrics); ok && m.PropletID == propletID {
+			return m, true
+		}
+
+		return PropletMetrics{}, false
+	})
+
+	return PropletMetricsPage{
+		Offset:  offset,
+		Limit:   limit,
+		Total:   total,
+		Metrics: metrics,
+	}, nil
+}
+
+func (svc *service) handle(ctx context.Context) func(topic string, msg map[string]any) error {
+	return func(topic string, msg map[string]any) error {
 		switch topic {
 		case svc.baseTopic + "/control/proplet/create":
 			if err := svc.createPropletHandler(ctx, msg); err != nil {
@@ -299,15 +362,13 @@ func (svc *service) handle(ctx context.Context) func(topic string, msg map[strin
 			return svc.handleTaskMetrics(ctx, msg)
 		case svc.baseTopic + "/control/proplet/metrics":
 			return svc.handlePropletMetrics(ctx, msg)
-		case svc.baseTopic + "/metrics/proplet":
-			return svc.handlePropletMetrics(ctx, msg)
 		}
 
 		return nil
 	}
 }
 
-func (svc *service) createPropletHandler(ctx context.Context, msg map[string]interface{}) error {
+func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any) error {
 	propletID, ok := msg["proplet_id"].(string)
 	if !ok {
 		return errors.New("invalid proplet_id")
@@ -327,7 +388,7 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]int
 	return nil
 }
 
-func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]interface{}) error {
+func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]any) error {
 	propletID, ok := msg["proplet_id"].(string)
 	if !ok {
 		return errors.New("invalid proplet_id")
@@ -356,7 +417,7 @@ func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]in
 	return nil
 }
 
-func (svc *service) updateResultsHandler(ctx context.Context, msg map[string]interface{}) error {
+func (svc *service) updateResultsHandler(ctx context.Context, msg map[string]any) error {
 	taskID, ok := msg["task_id"].(string)
 	if !ok {
 		return errors.New("invalid task_id")
@@ -385,7 +446,7 @@ func (svc *service) updateResultsHandler(ctx context.Context, msg map[string]int
 	return nil
 }
 
-func (svc *service) handleTaskMetrics(ctx context.Context, msg map[string]interface{}) error {
+func (svc *service) handleTaskMetrics(ctx context.Context, msg map[string]any) error {
 	taskID, ok := msg["task_id"].(string)
 	if !ok {
 		return errors.New("invalid task_id")
@@ -402,27 +463,36 @@ func (svc *service) handleTaskMetrics(ctx context.Context, msg map[string]interf
 	taskMetrics := TaskMetrics{
 		TaskID:    taskID,
 		PropletID: propletID,
-		Timestamp: time.Now(),
 	}
 
-	if metricsData, ok := msg["metrics"].(map[string]interface{}); ok {
+	if ts, ok := msg["timestamp"].(string); ok {
+		if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+			taskMetrics.Timestamp = t
+		}
+	}
+	if taskMetrics.Timestamp.IsZero() {
+		taskMetrics.Timestamp = time.Now()
+	}
+
+	if metricsData, ok := msg["metrics"].(map[string]any); ok {
 		taskMetrics.Metrics = svc.parseProcessMetrics(metricsData)
 	}
 
-	if aggData, ok := msg["aggregated"].(map[string]interface{}); ok {
+	if aggData, ok := msg["aggregated"].(map[string]any); ok {
 		taskMetrics.Aggregated = svc.parseAggregatedMetrics(aggData)
 	}
 
 	key := fmt.Sprintf("%s:%d", taskID, taskMetrics.Timestamp.UnixNano())
 	if err := svc.metricsDB.Create(ctx, key, taskMetrics); err != nil {
 		svc.logger.WarnContext(ctx, "failed to store task metrics", "error", err, "task_id", taskID)
+
 		return err
 	}
 
 	return nil
 }
 
-func (svc *service) handlePropletMetrics(ctx context.Context, msg map[string]interface{}) error {
+func (svc *service) handlePropletMetrics(ctx context.Context, msg map[string]any) error {
 	propletID, ok := msg["proplet_id"].(string)
 	if !ok {
 		return errors.New("invalid proplet_id")
@@ -430,113 +500,42 @@ func (svc *service) handlePropletMetrics(ctx context.Context, msg map[string]int
 	if propletID == "" {
 		return errors.New("proplet id is empty")
 	}
+	namespace, _ := msg["namespace"].(string)
 
 	propletMetrics := PropletMetrics{
 		PropletID: propletID,
-		Timestamp: time.Now(),
+		Namespace: namespace,
 	}
 
-	metricsField, ok := msg["metrics"].(map[string]interface{})
-	if !ok {
-		svc.logger.WarnContext(ctx, "metrics field not found or invalid", "proplet_id", propletID)
-		return errors.New("invalid or missing metrics field")
-	}
-
-	if version, ok := metricsField["version"].(string); ok {
-		propletMetrics.Version = version
-	}
-
-	if ts, ok := metricsField["timestamp"].(string); ok {
+	if ts, ok := msg["timestamp"].(string); ok {
 		if t, err := time.Parse(time.RFC3339Nano, ts); err == nil {
 			propletMetrics.Timestamp = t
 		}
 	}
+	if propletMetrics.Timestamp.IsZero() {
+		propletMetrics.Timestamp = time.Now()
+	}
 
-	if cpuData, ok := metricsField["cpu"].(map[string]interface{}); ok {
+	if cpuData, ok := msg["cpu_metrics"].(map[string]any); ok {
 		propletMetrics.CPU = svc.parseCPUMetrics(cpuData)
 	}
 
-	if memData, ok := metricsField["memory"].(map[string]interface{}); ok {
+	if memData, ok := msg["memory_metrics"].(map[string]any); ok {
 		propletMetrics.Memory = svc.parseMemoryMetrics(memData)
 	}
 
 	key := fmt.Sprintf("%s:%d", propletID, propletMetrics.Timestamp.UnixNano())
 	if err := svc.metricsDB.Create(ctx, key, propletMetrics); err != nil {
 		svc.logger.WarnContext(ctx, "failed to store proplet metrics", "error", err, "proplet_id", propletID)
+
 		return err
 	}
 
 	return nil
 }
 
-func (svc *service) GetTaskMetrics(ctx context.Context, taskID string, offset, limit uint64) (TaskMetricsPage, error) {
-	data, _, err := svc.metricsDB.List(ctx, 0, 10000)
-	if err != nil {
-		return TaskMetricsPage{}, err
-	}
-
-	var taskMetrics []TaskMetrics
-	for _, item := range data {
-		if m, ok := item.(TaskMetrics); ok {
-			if m.TaskID == taskID {
-				taskMetrics = append(taskMetrics, m)
-			}
-		}
-	}
-
-	totalFiltered := uint64(len(taskMetrics))
-	start := offset
-	end := offset + limit
-	if start > totalFiltered {
-		start = totalFiltered
-	}
-	if end > totalFiltered {
-		end = totalFiltered
-	}
-
-	return TaskMetricsPage{
-		Offset:  offset,
-		Limit:   limit,
-		Total:   totalFiltered,
-		Metrics: taskMetrics[start:end],
-	}, nil
-}
-
-func (svc *service) GetPropletMetrics(ctx context.Context, propletID string, offset, limit uint64) (PropletMetricsPage, error) {
-	data, _, err := svc.metricsDB.List(ctx, 0, 10000)
-	if err != nil {
-		return PropletMetricsPage{}, err
-	}
-
-	var propletMetrics []PropletMetrics
-	for _, item := range data {
-		if m, ok := item.(PropletMetrics); ok {
-			if m.PropletID == propletID {
-				propletMetrics = append(propletMetrics, m)
-			}
-		}
-	}
-
-	totalFiltered := uint64(len(propletMetrics))
-	start := offset
-	end := offset + limit
-	if start > totalFiltered {
-		start = totalFiltered
-	}
-	if end > totalFiltered {
-		end = totalFiltered
-	}
-
-	return PropletMetricsPage{
-		Offset:  offset,
-		Limit:   limit,
-		Total:   totalFiltered,
-		Metrics: propletMetrics[start:end],
-	}, nil
-}
-
-func (svc *service) parseProcessMetrics(data map[string]interface{}) monitoring.ProcessMetrics {
-	metrics := monitoring.ProcessMetrics{}
+func (svc *service) parseProcessMetrics(data map[string]any) proplet.ProcessMetrics {
+	metrics := proplet.ProcessMetrics{}
 
 	if val, ok := data["cpu_percent"].(float64); ok {
 		metrics.CPUPercent = val
@@ -553,12 +552,6 @@ func (svc *service) parseProcessMetrics(data map[string]interface{}) monitoring.
 	if val, ok := data["disk_write_bytes"].(float64); ok {
 		metrics.DiskWriteBytes = uint64(val)
 	}
-	if val, ok := data["network_rx_bytes"].(float64); ok {
-		metrics.NetworkRxBytes = uint64(val)
-	}
-	if val, ok := data["network_tx_bytes"].(float64); ok {
-		metrics.NetworkTxBytes = uint64(val)
-	}
 	if val, ok := data["uptime_seconds"].(float64); ok {
 		metrics.UptimeSeconds = int64(val)
 	}
@@ -568,17 +561,12 @@ func (svc *service) parseProcessMetrics(data map[string]interface{}) monitoring.
 	if val, ok := data["file_descriptor_count"].(float64); ok {
 		metrics.FileDescriptorCount = int32(val)
 	}
-	if val, ok := data["timestamp"].(string); ok {
-		if t, err := time.Parse(time.RFC3339Nano, val); err == nil {
-			metrics.Timestamp = t
-		}
-	}
 
 	return metrics
 }
 
-func (svc *service) parseAggregatedMetrics(data map[string]interface{}) *monitoring.AggregatedMetrics {
-	metrics := &monitoring.AggregatedMetrics{}
+func (svc *service) parseAggregatedMetrics(data map[string]any) *proplet.AggregatedMetrics {
+	metrics := &proplet.AggregatedMetrics{}
 
 	if val, ok := data["avg_cpu_usage"].(float64); ok {
 		metrics.AvgCPUUsage = val
@@ -598,12 +586,6 @@ func (svc *service) parseAggregatedMetrics(data map[string]interface{}) *monitor
 	if val, ok := data["total_disk_write"].(float64); ok {
 		metrics.TotalDiskWrite = uint64(val)
 	}
-	if val, ok := data["total_network_rx"].(float64); ok {
-		metrics.TotalNetworkRx = uint64(val)
-	}
-	if val, ok := data["total_network_tx"].(float64); ok {
-		metrics.TotalNetworkTx = uint64(val)
-	}
 	if val, ok := data["sample_count"].(float64); ok {
 		metrics.SampleCount = int(val)
 	}
@@ -611,7 +593,7 @@ func (svc *service) parseAggregatedMetrics(data map[string]interface{}) *monitor
 	return metrics
 }
 
-func (svc *service) parseCPUMetrics(data map[string]interface{}) proplet.CPUMetrics {
+func (svc *service) parseCPUMetrics(data map[string]any) proplet.CPUMetrics {
 	metrics := proplet.CPUMetrics{}
 
 	if val, ok := data["user_seconds"].(float64); ok {
@@ -627,7 +609,7 @@ func (svc *service) parseCPUMetrics(data map[string]interface{}) proplet.CPUMetr
 	return metrics
 }
 
-func (svc *service) parseMemoryMetrics(data map[string]interface{}) proplet.MemoryMetrics {
+func (svc *service) parseMemoryMetrics(data map[string]any) proplet.MemoryMetrics {
 	metrics := proplet.MemoryMetrics{}
 
 	if val, ok := data["rss_bytes"].(float64); ok {

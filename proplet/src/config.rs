@@ -22,7 +22,7 @@ pub struct PropletFileConfig {
 #[derive(Debug, Clone)]
 pub struct PropletConfig {
     pub log_level: String,
-    pub instance_id: Uuid,
+    pub instance_id: String,
     pub mqtt_address: String,
     pub mqtt_timeout: u64,
     pub mqtt_qos: u8,
@@ -45,7 +45,7 @@ impl Default for PropletConfig {
     fn default() -> Self {
         Self {
             log_level: "info".to_string(),
-            instance_id: Uuid::new_v4(),
+            instance_id: Uuid::new_v4().to_string(),
             mqtt_address: "tcp://localhost:1883".to_string(),
             mqtt_timeout: 30,
             mqtt_qos: 2,
@@ -132,9 +132,7 @@ impl PropletConfig {
         }
 
         if let Ok(val) = env::var("PROPLET_INSTANCE_ID") {
-            if let Ok(uuid) = Uuid::parse_str(&val) {
-                config.instance_id = uuid;
-            }
+            config.instance_id = val;
         }
 
         if let Ok(val) = env::var("PROPLET_MQTT_ADDRESS") {
@@ -269,48 +267,60 @@ mod tests {
 
     #[test]
     fn test_proplet_config_qos_at_most_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 0;
+        let config = PropletConfig {
+            mqtt_qos: 0,
+            ..Default::default()
+        };
 
         assert!(matches!(config.qos(), QoS::AtMostOnce));
     }
 
     #[test]
     fn test_proplet_config_qos_at_least_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 1;
+        let config = PropletConfig {
+            mqtt_qos: 1,
+            ..Default::default()
+        };
 
         assert!(matches!(config.qos(), QoS::AtLeastOnce));
     }
 
     #[test]
     fn test_proplet_config_qos_exactly_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 2;
+        let config = PropletConfig {
+            mqtt_qos: 2,
+            ..Default::default()
+        };
 
         assert!(matches!(config.qos(), QoS::ExactlyOnce));
     }
 
     #[test]
     fn test_proplet_config_qos_invalid_defaults_to_exactly_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 99;
+        let config = PropletConfig {
+            mqtt_qos: 99,
+            ..Default::default()
+        };
 
         assert!(matches!(config.qos(), QoS::ExactlyOnce));
     }
 
     #[test]
     fn test_proplet_config_mqtt_timeout() {
-        let mut config = PropletConfig::default();
-        config.mqtt_timeout = 60;
+        let config = PropletConfig {
+            mqtt_timeout: 60,
+            ..Default::default()
+        };
 
         assert_eq!(config.mqtt_timeout(), Duration::from_secs(60));
     }
 
     #[test]
     fn test_proplet_config_liveliness_interval() {
-        let mut config = PropletConfig::default();
-        config.liveliness_interval = 30;
+        let config = PropletConfig {
+            liveliness_interval: 30,
+            ..Default::default()
+        };
 
         assert_eq!(config.liveliness_interval(), Duration::from_secs(30));
     }
@@ -424,17 +434,7 @@ mod tests {
         let config = PropletConfig::from_env();
         env::remove_var("PROPLET_INSTANCE_ID");
 
-        assert_eq!(config.instance_id, uuid);
-    }
-
-    #[test]
-    fn test_proplet_config_from_env_instance_id_invalid() {
-        env::set_var("PROPLET_INSTANCE_ID", "not-a-valid-uuid");
-        let config = PropletConfig::from_env();
-        env::remove_var("PROPLET_INSTANCE_ID");
-
-        // Should keep default UUID when invalid
-        assert_ne!(config.instance_id.to_string(), "not-a-valid-uuid");
+        assert_eq!(config.instance_id, uuid.to_string());
     }
 
     #[test]
