@@ -1,3 +1,4 @@
+use crate::attestation::AttestationConfig;
 use rumqttc::QoS;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -37,6 +38,7 @@ pub struct PropletConfig {
     pub client_key: String,
     pub k8s_namespace: Option<String>,
     pub external_wasm_runtime: Option<String>,
+    pub attestation: AttestationConfig,
 }
 
 impl Default for PropletConfig {
@@ -58,6 +60,7 @@ impl Default for PropletConfig {
             client_key: String::new(),
             k8s_namespace: None,
             external_wasm_runtime: None,
+            attestation: AttestationConfig::default(),
         }
     }
 }
@@ -203,6 +206,25 @@ impl PropletConfig {
             config.external_wasm_runtime = Some(val);
         }
 
+        // Attestation configuration
+        if let Ok(val) = env::var("PROPLET_ATTESTATION_ENABLED") {
+            config.attestation.enabled = val.to_lowercase() == "true" || val == "1";
+        }
+
+        if let Ok(val) = env::var("PROPLET_ATTESTATION_KBS_URL") {
+            config.attestation.kbs_url = val;
+        }
+
+        if let Ok(val) = env::var("PROPLET_ATTESTATION_EVIDENCE_TYPE") {
+            config.attestation.evidence_type = val;
+        }
+
+        if let Ok(val) = env::var("PROPLET_ATTESTATION_TIMEOUT") {
+            if let Ok(timeout) = val.parse() {
+                config.attestation.timeout_secs = timeout;
+            }
+        }
+
         config
     }
 
@@ -251,48 +273,60 @@ mod tests {
 
     #[test]
     fn test_proplet_config_qos_at_most_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 0;
+        let config = PropletConfig {
+            mqtt_qos: 0,
+            ..PropletConfig::default()
+        };
 
         assert!(matches!(config.qos(), QoS::AtMostOnce));
     }
 
     #[test]
     fn test_proplet_config_qos_at_least_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 1;
+        let config = PropletConfig {
+            mqtt_qos: 1,
+            ..PropletConfig::default()
+        };
 
         assert!(matches!(config.qos(), QoS::AtLeastOnce));
     }
 
     #[test]
     fn test_proplet_config_qos_exactly_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 2;
+        let config = PropletConfig {
+            mqtt_qos: 2,
+            ..PropletConfig::default()
+        };
 
         assert!(matches!(config.qos(), QoS::ExactlyOnce));
     }
 
     #[test]
     fn test_proplet_config_qos_invalid_defaults_to_exactly_once() {
-        let mut config = PropletConfig::default();
-        config.mqtt_qos = 99;
+        let config = PropletConfig {
+            mqtt_qos: 99,
+            ..PropletConfig::default()
+        };
 
         assert!(matches!(config.qos(), QoS::ExactlyOnce));
     }
 
     #[test]
     fn test_proplet_config_mqtt_timeout() {
-        let mut config = PropletConfig::default();
-        config.mqtt_timeout = 60;
+        let config = PropletConfig {
+            mqtt_timeout: 60,
+            ..PropletConfig::default()
+        };
 
         assert_eq!(config.mqtt_timeout(), Duration::from_secs(60));
     }
 
     #[test]
     fn test_proplet_config_liveliness_interval() {
-        let mut config = PropletConfig::default();
-        config.liveliness_interval = 30;
+        let config = PropletConfig {
+            liveliness_interval: 30,
+            ..PropletConfig::default()
+        };
 
         assert_eq!(config.liveliness_interval(), Duration::from_secs(30));
     }

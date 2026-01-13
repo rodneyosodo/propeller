@@ -1,6 +1,8 @@
+use crate::attestation::AttestationService;
 use crate::config::PropletConfig;
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
+use crate::tee::{TeeDetector, TeeType};
 use crate::types::*;
 use anyhow::Result;
 use std::collections::{BTreeMap, HashMap};
@@ -49,11 +51,36 @@ pub struct PropletService {
     runtime: Arc<dyn Runtime>,
     chunk_assembly: Arc<Mutex<HashMap<String, ChunkAssemblyState>>>,
     running_tasks: Arc<Mutex<HashMap<String, TaskState>>>,
+    attestation: Option<Arc<AttestationService>>,
+    tee_type: TeeType,
 }
 
 impl PropletService {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
         let proplet = Proplet::new(config.instance_id, "proplet".to_string());
+
+        // Detect TEE environment
+        let tee_type = TeeDetector::detect();
+        info!("TEE Detection: {}", TeeDetector::describe_environment());
+        info!("Detected TEE type: {:?}", tee_type);
+
+        // Initialize attestation service if enabled
+        let attestation = if config.attestation.enabled {
+            info!("Attestation enabled, initializing attestation service");
+            
+            // Warn if attestation is enabled but no TEE detected
+            if !tee_type.is_tee() {
+                warn!(
+                    "Attestation is enabled but no TEE detected. \
+                    This will only work with 'sample' evidence type for testing."
+                );
+            }
+            
+            Some(Arc::new(AttestationService::new(config.attestation.clone())))
+        } else {
+            info!("Attestation disabled");
+            None
+        };
 
         let service = Self {
             config,
@@ -62,6 +89,8 @@ impl PropletService {
             runtime,
             chunk_assembly: Arc::new(Mutex::new(HashMap::new())),
             running_tasks: Arc::new(Mutex::new(HashMap::new())),
+            attestation,
+            tee_type,
         };
 
         service.start_chunk_expiry_task();
@@ -247,8 +276,106 @@ impl PropletService {
         req.validate()?;
 
         info!("Received start command for task: {}", req.id);
+        info!(
+            "Task requirements - Confidential: {}, TEE detected: {}",
+            req.confidential,
+            self.tee_type.is_tee()
+        );
 
-        let wasm_binary = if !req.file.is_empty() {
+        // DECISION MATRIX: Validate TEE and confidential workload requirements
+        // 
+        // Scenario 1: Confidential workload + No TEE = ERROR
+        // Scenario 2: Confidential workload + TEE = Attestation flow
+        // Scenario 3: Non-confidential workload + No TEE = Normal execution
+        // Scenario 4: Non-confidential workload + TEE = Normal execution (TEE unused)
+
+        let encryption_key = if req.confidential {
+            // CONFIDENTIAL WORKLOAD - Requires attestation
+            
+            // Scenario 1: Confidential workload but no TEE detected
+            if !self.tee_type.is_tee() {
+                let error_msg = format!(
+                    "SECURITY ERROR: Task '{}' is marked as confidential but proplet is not running in a TEE. \
+                    Confidential workloads MUST run in a Trusted Execution Environment (TDX/SGX/SNP/etc). \
+                    Current environment: {}. \
+                    To fix: Deploy proplet in a TEE-enabled VM/container, or mark the workload as non-confidential.",
+                    req.id,
+                    TeeDetector::describe_environment()
+                );
+                error!("{}", error_msg);
+                self.running_tasks.lock().await.remove(&req.id);
+                self.publish_result(&req.id, Vec::new(), Some(error_msg.clone()))
+                    .await?;
+                return Err(anyhow::anyhow!("{}", error_msg));
+            }
+
+            // Scenario 2: Confidential workload + TEE detected = Perform attestation
+            info!(
+                "Confidential workload detected in TEE environment ({:?}). Performing attestation...",
+                self.tee_type
+            );
+
+            if let Some(attestation_service) = &self.attestation {
+                let resource_path = format!("default/keys/{}", req.id);
+                let workload_id = req.name.clone();
+
+                match attestation_service.get_resource(&resource_path, &workload_id).await {
+                    Ok(key) => {
+                        info!(
+                            "✓ Attestation successful for task: {} ({} bytes key retrieved)",
+                            req.id,
+                            key.len()
+                        );
+                        Some(key)
+                    }
+                    Err(e) => {
+                        let error_msg = format!(
+                            "Attestation failed for confidential task '{}': {}. \
+                            The workload cannot be executed without successful attestation.",
+                            req.id, e
+                        );
+                        error!("{}", error_msg);
+                        self.running_tasks.lock().await.remove(&req.id);
+                        self.publish_result(&req.id, Vec::new(), Some(error_msg.clone()))
+                            .await?;
+                        return Err(anyhow::anyhow!("{}", error_msg));
+                    }
+                }
+            } else {
+                let error_msg = format!(
+                    "CONFIGURATION ERROR: Task '{}' is confidential but attestation is disabled. \
+                    Enable attestation by setting PROPLET_ATTESTATION_ENABLED=true and configuring KBS URL.",
+                    req.id
+                );
+                error!("{}", error_msg);
+                self.running_tasks.lock().await.remove(&req.id);
+                self.publish_result(&req.id, Vec::new(), Some(error_msg.clone()))
+                    .await?;
+                return Err(anyhow::anyhow!("{}", error_msg));
+            }
+        } else {
+            // NON-CONFIDENTIAL WORKLOAD
+            
+            if self.tee_type.is_tee() {
+                // Scenario 4: Non-confidential workload in TEE
+                info!(
+                    "Non-confidential workload in TEE environment ({:?}). \
+                    Skipping attestation and proceeding with normal execution.",
+                    self.tee_type
+                );
+            } else {
+                // Scenario 3: Non-confidential workload, no TEE
+                debug!(
+                    "Non-confidential workload on regular hardware. \
+                    Proceeding with normal execution."
+                );
+            }
+            
+            None // No encryption key needed
+        };
+
+        // Step 2: Download Wasm binary from OCI or use provided file
+        let mut wasm_binary = if !req.file.is_empty() {
             use base64::{engine::general_purpose::STANDARD, Engine};
             match STANDARD.decode(&req.file) {
                 Ok(decoded) => {
@@ -285,6 +412,34 @@ impl PropletService {
                 .await?;
             return Err(err);
         };
+
+        // Step 3: Decrypt workload if encryption key was provided
+        if let Some(key) = encryption_key {
+            info!(
+                "Confidential workload detected - decrypting {} byte binary with {} byte key",
+                wasm_binary.len(),
+                key.len()
+            );
+
+            // Decrypt using AES-256-GCM
+            match crate::crypto::decrypt_workload(&wasm_binary, &key) {
+                Ok(decrypted) => {
+                    info!(
+                        "Successfully decrypted workload: {} bytes encrypted -> {} bytes decrypted",
+                        wasm_binary.len(),
+                        decrypted.len()
+                    );
+                    wasm_binary = decrypted;
+                }
+                Err(e) => {
+                    let err_msg = format!("Failed to decrypt confidential workload: {}", e);
+                    error!("{}", err_msg);
+                    self.publish_result(&req.id, Vec::new(), Some(err_msg.clone()))
+                        .await?;
+                    return Err(anyhow::anyhow!(err_msg));
+                }
+            }
+        }
 
         let runtime = self.runtime.clone();
         let pubsub = self.pubsub.clone();

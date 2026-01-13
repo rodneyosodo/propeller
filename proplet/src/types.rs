@@ -57,6 +57,8 @@ pub struct StartRequest {
     pub daemon: bool,
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub confidential: bool,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -152,7 +154,7 @@ mod tests {
         assert_eq!(proplet.id, id);
         assert_eq!(proplet.name, "test-proplet");
         assert_eq!(proplet.task_count, 0);
-        assert_eq!(proplet.alive, false);
+        assert!(!proplet.alive);
         assert!(proplet.alive_history.is_empty());
     }
 
@@ -203,6 +205,7 @@ mod tests {
             inputs: vec![1, 2, 3],
             daemon: false,
             env: Some(HashMap::new()),
+            confidential: false,
         };
 
         assert!(req.validate().is_ok());
@@ -220,6 +223,7 @@ mod tests {
             inputs: vec![],
             daemon: true,
             env: None,
+            confidential: false,
         };
 
         assert!(req.validate().is_ok());
@@ -237,6 +241,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: None,
+            confidential: false,
         };
 
         let result = req.validate();
@@ -256,6 +261,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: None,
+            confidential: false,
         };
 
         let result = req.validate();
@@ -275,6 +281,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: None,
+            confidential: false,
         };
 
         let result = req.validate();
@@ -307,7 +314,7 @@ mod tests {
         assert!(req.file.is_empty());
         assert_eq!(req.image_url, "registry.example.com/app:v1");
         assert!(req.inputs.is_empty());
-        assert_eq!(req.daemon, false);
+        assert!(!req.daemon);
         assert!(req.env.is_none());
         assert_eq!(req.state, 1);
     }
@@ -514,6 +521,7 @@ mod tests {
             inputs: vec![],
             daemon: false,
             env: Some(env.clone()),
+            confidential: false,
         };
 
         assert_eq!(req.env.as_ref().unwrap().len(), 2);

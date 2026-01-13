@@ -30,22 +30,25 @@ func (s State) String() string {
 }
 
 type Task struct {
-	ID         string            `json:"id"`
-	Name       string            `json:"name"`
-	State      State             `json:"state"`
-	ImageURL   string            `json:"image_url,omitempty"`
-	File       []byte            `json:"file,omitempty"`
-	CLIArgs    []string          `json:"cli_args"`
-	Inputs     []uint64          `json:"inputs,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	Daemon     bool              `json:"daemon"`
-	PropletID  string            `json:"proplet_id,omitempty"`
-	Results    any               `json:"results,omitempty"`
-	Error      string            `json:"error,omitempty"`
-	StartTime  time.Time         `json:"start_time"`
-	FinishTime time.Time         `json:"finish_time"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
+	ID                      string            `json:"id"`
+	Name                    string            `json:"name"`
+	State                   State             `json:"state"`
+	ImageURL                string            `json:"image_url,omitempty"`
+	File                    []byte            `json:"file,omitempty"`
+	CLIArgs                 []string          `json:"cli_args"`
+	Inputs                  []uint64          `json:"inputs,omitempty"`
+	Env                     map[string]string `json:"env,omitempty"`
+	Daemon                  bool              `json:"daemon"`
+	PropletID               string            `json:"proplet_id,omitempty"`
+	Results                 any               `json:"results,omitempty"`
+	Error                   string            `json:"error,omitempty"`
+	StartTime               time.Time         `json:"start_time"`
+	FinishTime              time.Time         `json:"finish_time"`
+	CreatedAt               time.Time         `json:"created_at"`
+	UpdatedAt               time.Time         `json:"updated_at"`
+	Confidential            bool              `json:"confidential,omitempty"`
+	RequireAttestation      bool              `json:"require_attestation,omitempty"`
+	AttestationEvidenceType string            `json:"attestation_evidence_type,omitempty"`
 }
 
 type TaskPage struct {

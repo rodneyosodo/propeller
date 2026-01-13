@@ -1,7 +1,10 @@
+mod attestation;
 mod config;
+mod crypto;
 mod mqtt;
 mod runtime;
 mod service;
+mod tee;
 mod types;
 
 use crate::config::PropletConfig;

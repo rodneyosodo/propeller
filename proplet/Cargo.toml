@@ -3,6 +3,14 @@ name = "proplet"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "proplet"
+path = "src/lib.rs"
+
+[[bin]]
+name = "proplet"
+path = "src/main.rs"
+
 [dependencies]
 tokio = { version = "1.42", features = ["full"] }
 rumqttc = "0.24"
@@ -20,3 +28,12 @@ config = "0.14"
 async-trait = "0.1"
 base64 = "0.22.1"
 url = "2.5"
+
+# Guest components for attestation
+kbs_protocol = { path = "../guest-components/attestation-agent/kbs_protocol", default-features = false, features = ["rust-crypto", "background_check"] }
+attestation-agent = { path = "../guest-components/attestation-agent/attestation-agent", default-features = false, features = ["rust-crypto", "kbs"] }
+attester = { path = "../guest-components/attestation-agent/attester", default-features = false }
+kbs-types = "0.14.0"
+
+# Encryption/Decryption for confidential workloads
+aes-gcm = "0.10"
