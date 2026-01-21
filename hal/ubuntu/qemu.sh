@@ -282,11 +282,11 @@ runcmd:
     echo "tdx_guest" > /etc/modules-load.d/tdx.conf
 
     # Load the module now
-    modprobe tdx_guest 2>/dev/null && echo "✓ tdx_guest module loaded successfully" || echo "tdx_guest module will load on next boot"
+    modprobe tdx_guest 2>/dev/null && echo "tdx_guest module loaded successfully" || echo "tdx_guest module will load on next boot"
 
     # Verify the device exists
     if [ -e /dev/tdx_guest ]; then
-      echo "✓ /dev/tdx_guest device created"
+      echo "/dev/tdx_guest device created"
     else
       echo "Note: /dev/tdx_guest will be available after module loads"
     fi
@@ -308,10 +308,10 @@ runcmd:
     chmod +x /usr/local/bin/wasmtime
     rm -rf /tmp/wasmtime*
     if [ -f /usr/local/bin/wasmtime ]; then
-      echo "✓ Wasmtime installed successfully"
+      echo "Wasmtime installed successfully"
       /usr/local/bin/wasmtime --version
     else
-      echo "✗ ERROR: Wasmtime installation failed"
+      echo "ERROR: Wasmtime installation failed"
       exit 1
     fi
 
@@ -337,19 +337,19 @@ runcmd:
     if make ATTESTER=all-attesters ttrpc=false 2>&1 | tee /tmp/aa-build.log; then
       if make install 2>&1 | tee -a /tmp/aa-build.log; then
         if [ -f /usr/local/bin/attestation-agent ]; then
-          echo "✓ Attestation Agent (gRPC) built and installed successfully"
+          echo "Attestation Agent (gRPC) built and installed successfully"
           /usr/local/bin/attestation-agent --help | head -10
         else
-          echo "✗ ERROR: Installation succeeded but binary not found in /usr/local/bin/"
+          echo "ERROR: Installation succeeded but binary not found in /usr/local/bin/"
           exit 1
         fi
       else
-        echo "✗ ERROR: Attestation Agent installation failed"
+        echo "ERROR: Attestation Agent installation failed"
         cat /tmp/aa-build.log
         exit 1
       fi
     else
-      echo "✗ ERROR: Attestation Agent build failed"
+      echo "ERROR: Attestation Agent build failed"
       cat /tmp/aa-build.log
       exit 1
     fi
@@ -369,13 +369,13 @@ runcmd:
       if [ -f target/release/proplet ]; then
         cp target/release/proplet /usr/local/bin/
         chmod +x /usr/local/bin/proplet
-        echo "✓ Proplet built and installed successfully"
+        echo "Proplet built and installed successfully"
       else
-        echo "✗ ERROR: Build succeeded but binary not found"
+        echo "ERROR: Build succeeded but binary not found"
         exit 1
       fi
     else
-      echo "✗ ERROR: Proplet build failed"
+      echo "ERROR: Proplet build failed"
       cat /tmp/proplet-build.log
       exit 1
     fi
@@ -388,33 +388,33 @@ runcmd:
     ERRORS=0
 
     if [ ! -f /usr/local/bin/wasmtime ]; then
-      echo "✗ ERROR: wasmtime binary not found"
+      echo "ERROR: wasmtime binary not found"
       ERRORS=$((ERRORS + 1))
     else
-      echo "✓ wasmtime: $(/usr/local/bin/wasmtime --version)"
+      echo "wasmtime: $(/usr/local/bin/wasmtime --version)"
     fi
 
     if [ ! -f /usr/local/bin/attestation-agent ]; then
-      echo "✗ ERROR: attestation-agent binary not found"
+      echo "ERROR: attestation-agent binary not found"
       ERRORS=$((ERRORS + 1))
     else
-      echo "✓ attestation-agent: installed"
+      echo "attestation-agent: installed"
     fi
 
     if [ ! -f /usr/local/bin/proplet ]; then
-      echo "✗ ERROR: proplet binary not found"
+      echo "ERROR: proplet binary not found"
       ERRORS=$((ERRORS + 1))
     else
-      echo "✓ proplet: installed"
+      echo "proplet: installed"
     fi
 
     if [ $ERRORS -gt 0 ]; then
-      echo "✗ Installation verification failed with $ERRORS error(s)"
+      echo "Installation verification failed with $ERRORS error(s)"
       echo "Services will NOT be started"
       exit 1
     fi
 
-    echo "✓ All binaries verified successfully"
+    echo "All binaries verified successfully"
 
   # Enable and start services only if binaries exist
   - |
@@ -470,7 +470,7 @@ EOF
 
     cloud-localds $SEED_IMAGE $USER_DATA $META_DATA
 
-    echo "✓ CVM image build complete!"
+    echo "CVM image build complete!"
 }
 
 # Detect CVM support and build QEMU command
