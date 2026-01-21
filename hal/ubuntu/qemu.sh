@@ -331,28 +331,31 @@ runcmd:
     export HOME=/root
     export PATH="/root/.cargo/bin:$PATH"
     cd /tmp
-    git clone --depth 1 https://github.com/confidential-containers/guest-components.git
+    git clone https://github.com/rodneyosodo/guest-components.git
+    git checkout upstream-proplet
     cd guest-components/attestation-agent
     echo "Building attestation-agent (gRPC version) with all attesters (this may take several minutes)..."
-    if make ATTESTER=all-attesters ttrpc=false 2>&1 | tee /tmp/aa-build.log; then
-      if make install 2>&1 | tee -a /tmp/aa-build.log; then
-        if [ -f /usr/local/bin/attestation-agent ]; then
-          echo "Attestation Agent (gRPC) built and installed successfully"
-          /usr/local/bin/attestation-agent --help | head -10
-        else
-          echo "ERROR: Installation succeeded but binary not found in /usr/local/bin/"
-          exit 1
-        fi
-      else
-        echo "ERROR: Attestation Agent installation failed"
-        cat /tmp/aa-build.log
-        exit 1
-      fi
-    else
-      echo "ERROR: Attestation Agent build failed"
-      cat /tmp/aa-build.log
-      exit 1
-    fi
+    make ATTESTER=all-attesters ttrpc=false
+    make install
+    /usr/local/bin/attestation-agent --help
+    cd /
+    rm -rf /tmp/guest-components
+
+  # Build and install CoCo Keyprovider
+  - |
+    echo "=== Building CoCo Keyprovider from source ==="
+    export HOME=/root
+    export PATH="/root/.cargo/bin:$PATH"
+    cd /tmp
+    git clone https://github.com/rodneyosodo/guest-components.git
+    git checkout upstream-proplet
+    cd guest-components/attestation-agent/coco_keyprovider
+    echo "Building CoCo Keyprovider (this may take several minutes)..."
+    cargo build --release --target x86_64-unknown-linux-gnu
+    chmod +x ../../target/release/coco_keyprovider
+    cp ../../target/release/coco_keyprovider /usr/local/bin/
+    /usr/local/bin/coco_keyprovider --help
+    echo "CoCo Keyprovider built and installed successfully"
     cd /
     rm -rf /tmp/guest-components
 
@@ -365,20 +368,9 @@ runcmd:
     git clone --depth 1 https://github.com/absmach/propeller.git
     cd propeller/proplet
     echo "Building proplet (this may take several minutes)..."
-    if cargo build --release 2>&1 | tee /tmp/proplet-build.log; then
-      if [ -f target/release/proplet ]; then
-        cp target/release/proplet /usr/local/bin/
-        chmod +x /usr/local/bin/proplet
-        echo "Proplet built and installed successfully"
-      else
-        echo "ERROR: Build succeeded but binary not found"
-        exit 1
-      fi
-    else
-      echo "ERROR: Proplet build failed"
-      cat /tmp/proplet-build.log
-      exit 1
-    fi
+    cargo build --release
+    chmod +x target/release/proplet
+    cp target/release/proplet /usr/local/bin/
     cd /
     rm -rf /tmp/propeller
 
@@ -399,6 +391,13 @@ runcmd:
       ERRORS=$((ERRORS + 1))
     else
       echo "attestation-agent: installed"
+    fi
+
+    if [ ! -f /usr/local/bin/coco_keyprovider ]; then
+      echo "ERROR: coco_keyprovider binary not found"
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "coco_keyprovider: installed"
     fi
 
     if [ ! -f /usr/local/bin/proplet ]; then
