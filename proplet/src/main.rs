@@ -18,6 +18,9 @@ use tokio::sync::mpsc;
 use tracing::{info, Level};
 use tracing_subscriber::FmtSubscriber;
 
+#[cfg(feature = "tee")]
+use crate::runtime::tee_runtime::TeeWasmRuntime;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let config =
@@ -78,6 +81,30 @@ async fn main() -> Result<()> {
         Arc::new(WasmtimeRuntime::new()?)
     };
 
+    #[cfg(feature = "tee")]
+    let service = if config.tee_enabled {
+        info!("Initializing TEE runtime support");
+        match TeeWasmRuntime::new(&config).await {
+            Ok(tee_runtime) => {
+                info!("TEE runtime initialized successfully");
+                Arc::new(PropletService::with_tee_runtime(
+                    config.clone(),
+                    pubsub,
+                    runtime,
+                    Arc::new(tee_runtime),
+                ))
+            }
+            Err(e) => {
+                info!("Failed to initialize TEE runtime: {}, falling back to standard runtime", e);
+                Arc::new(PropletService::new(config.clone(), pubsub, runtime))
+            }
+        }
+    } else {
+        info!("TEE support not enabled");
+        Arc::new(PropletService::new(config.clone(), pubsub, runtime))
+    };
+
+    #[cfg(not(feature = "tee"))]
     let service = Arc::new(PropletService::new(config.clone(), pubsub, runtime));
 
     let shutdown_handle = tokio::spawn(async move {

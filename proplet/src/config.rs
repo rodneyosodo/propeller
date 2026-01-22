@@ -39,18 +39,29 @@ pub struct PropletConfig {
     pub k8s_namespace: Option<String>,
     pub external_wasm_runtime: Option<String>,
     pub enable_monitoring: bool,
+    #[cfg(feature = "tee")]
+    pub tee_enabled: bool,
+    #[cfg(feature = "tee")]
+    pub kbs_uri: Option<String>,
+    #[cfg(feature = "tee")]
+    pub kbs_resource_path: String,
+    #[cfg(feature = "tee")]
+    pub aa_config_path: Option<String>,
+    #[cfg(feature = "tee")]
+    pub layer_store_path: String,
 }
 
 impl Default for PropletConfig {
     fn default() -> Self {
-        Self {
+        #[cfg(feature = "tee")]
+        let default_config = Self {
             log_level: "info".to_string(),
             instance_id: Uuid::new_v4().to_string(),
             mqtt_address: "tcp://localhost:1883".to_string(),
             mqtt_timeout: 30,
             mqtt_qos: 2,
             mqtt_keep_alive: 30,
-            mqtt_max_packet_size: 10 * 1024 * 1024, // 10MB
+            mqtt_max_packet_size: 10 * 1024 * 1024,
             mqtt_inflight: 10,
             mqtt_request_channel_capacity: 128,
             liveliness_interval: 10,
@@ -62,7 +73,36 @@ impl Default for PropletConfig {
             k8s_namespace: None,
             external_wasm_runtime: None,
             enable_monitoring: true,
-        }
+            tee_enabled: false,
+            kbs_uri: None,
+            kbs_resource_path: "default/key/encryption-key".to_string(),
+            aa_config_path: None,
+            layer_store_path: "/tmp/proplet/layers".to_string(),
+        };
+
+        #[cfg(not(feature = "tee"))]
+        let default_config = Self {
+            log_level: "info".to_string(),
+            instance_id: Uuid::new_v4().to_string(),
+            mqtt_address: "tcp://localhost:1883".to_string(),
+            mqtt_timeout: 30,
+            mqtt_qos: 2,
+            mqtt_keep_alive: 30,
+            mqtt_max_packet_size: 10 * 1024 * 1024,
+            mqtt_inflight: 10,
+            mqtt_request_channel_capacity: 128,
+            liveliness_interval: 10,
+            metrics_interval: 10,
+            domain_id: String::new(),
+            channel_id: String::new(),
+            client_id: String::new(),
+            client_key: String::new(),
+            k8s_namespace: None,
+            external_wasm_runtime: None,
+            enable_monitoring: true,
+        };
+
+        default_config
     }
 }
 
@@ -215,6 +255,29 @@ impl PropletConfig {
             config.enable_monitoring = val.to_lowercase() == "true" || val == "1";
         }
 
+        #[cfg(feature = "tee")]
+        {
+            if let Ok(val) = env::var("PROPLET_TEE_ENABLED") {
+                config.tee_enabled = val.to_lowercase() == "true" || val == "1";
+            }
+
+            if let Ok(val) = env::var("PROPLET_KBS_URI") {
+                config.kbs_uri = if val.is_empty() { None } else { Some(val) };
+            }
+
+            if let Ok(val) = env::var("PROPLET_KBS_RESOURCE_PATH") {
+                config.kbs_resource_path = val;
+            }
+
+            if let Ok(val) = env::var("PROPLET_AA_CONFIG_PATH") {
+                config.aa_config_path = if val.is_empty() { None } else { Some(val) };
+            }
+
+            if let Ok(val) = env::var("PROPLET_LAYER_STORE_PATH") {
+                config.layer_store_path = val;
+            }
+        }
+
         config
     }
 
@@ -263,6 +326,15 @@ mod tests {
         assert!(config.client_key.is_empty());
         assert!(config.k8s_namespace.is_none());
         assert!(config.external_wasm_runtime.is_none());
+
+        #[cfg(feature = "tee")]
+        {
+            assert!(!config.tee_enabled);
+            assert!(config.kbs_uri.is_none());
+            assert_eq!(config.kbs_resource_path, "default/key/encryption-key");
+            assert!(config.aa_config_path.is_none());
+            assert_eq!(config.layer_store_path, "/tmp/proplet/layers");
+        }
     }
 
     #[test]

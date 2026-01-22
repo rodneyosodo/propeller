@@ -58,6 +58,12 @@ pub struct StartRequest {
     pub env: Option<HashMap<String, String>>,
     #[serde(rename = "monitoringProfile", default)]
     pub monitoring_profile: Option<MonitoringProfile>,
+    #[serde(default)]
+    pub encrypted: bool,
+    #[serde(default, deserialize_with = "deserialize_null_default")]
+    pub oci_reference: String,
+    #[serde(default)]
+    pub kbs_resource_path: Option<String>,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -77,7 +83,14 @@ impl StartRequest {
         if self.name.is_empty() {
             return Err(anyhow::anyhow!("function name is required"));
         }
-        if self.file.is_empty() && self.image_url.is_empty() {
+
+        if self.encrypted {
+            if self.oci_reference.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "oci_reference is required for encrypted workloads"
+                ));
+            }
+        } else if self.file.is_empty() && self.image_url.is_empty() {
             return Err(anyhow::anyhow!("either file or image_url must be provided"));
         }
         Ok(())
