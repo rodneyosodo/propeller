@@ -37,26 +37,81 @@ pub struct TeeWasmRuntime {
 impl TeeWasmRuntime {
     pub async fn new(config: &PropletConfig) -> Result<Self> {
         #[cfg(feature = "tee")]
-        let attestation_agent = if config.tee_enabled {
+        {
             info!("Initializing TEE support");
             let mut agent = AttestationAgent::new(config.aa_config_path.as_deref())
                 .context("Failed to create attestation agent")?;
             agent.init().await?;
             info!("TEE attestation agent initialized");
-            Some(agent)
-        } else {
-            info!("TEE support not enabled");
-            None
-        };
+
+            if config.tee_enabled {
+                if let Err(e) = Self::setup_keyprovider_config() {
+                    warn!("Failed to setup keyprovider config: {}, continuing without it", e);
+                    warn!("Decryption may fail - ensure OCICRYPT_KEYPROVIDER_CONFIG is set");
+                }
+            }
+
+            return Ok(Self {
+                config: config.clone(),
+                attestation_agent: Some(agent),
+            });
+        }
 
         #[cfg(not(feature = "tee"))]
-        let attestation_agent = None;
-
         Ok(Self {
             config: config.clone(),
-            #[cfg(feature = "tee")]
-            attestation_agent,
+            attestation_agent: None,
         })
+    }
+
+    #[cfg(feature = "tee")]
+    fn setup_keyprovider_config() -> Result<()> {
+        info!("Setting up keyprovider configuration");
+        
+        // Check if OCICRYPT_KEYPROVIDER_CONFIG is already set
+        if let Ok(existing_path) = std::env::var("OCICRYPT_KEYPROVIDER_CONFIG") {
+            info!("OCICRYPT_KEYPROVIDER_CONFIG already set to: {}", existing_path);
+            if std::path::Path::new(&existing_path).exists() {
+                info!("Config file exists, using existing configuration");
+                return Ok(());
+            } else {
+                warn!("Config file at {} does not exist, will create new one", existing_path);
+            }
+        }
+        
+        let config_path = PathBuf::from("/tmp/proplet/ocicrypt_keyprovider.conf");
+        let config_dir = config_path.parent().unwrap();
+        
+        std::fs::create_dir_all(&config_dir)
+            .context("Failed to create keyprovider config directory")?;
+
+        // Use TCP address to match coco-keyprovider (listening on 50011)
+        let keyprovider_addr = "127.0.0.1:50011";
+        
+        let config_content = format!(
+            r#"{{
+  "key-providers": {{
+    "attestation-agent": {{
+      "grpc": "{}"
+    }}
+  }}
+}}"#,
+            keyprovider_addr
+        );
+
+        std::fs::write(&config_path, config_content)
+            .context("Failed to write keyprovider config")?;
+
+        info!("Created OCICRYPT_KEYPROVIDER_CONFIG at: {}", config_path.display());
+        info!("Keyprovider address (TCP): {}", keyprovider_addr);
+        info!("This should match coco-keyprovider listening address");
+        warn!("Verify coco-keyprovider is listening on: {}", keyprovider_addr);
+
+        std::env::set_var("OCICRYPT_KEYPROVIDER_CONFIG", config_path);
+
+        info!("Set OCICRYPT_KEYPROVIDER_CONFIG environment variable");
+
+        Ok(())
     }
 
     #[cfg(feature = "tee")]
@@ -118,6 +173,19 @@ impl TeeWasmRuntime {
 
     #[cfg(feature = "tee")]
     async fn pull_and_decrypt_wasm(&self, oci_reference: &str, kbs_resource_path: &str) -> Result<PathBuf> {
+        // Ensure OCICRYPT_KEYPROVIDER_CONFIG is set before any image-rs operations
+        // This is critical because ocicrypt-rs reads it at lazy_static initialization
+        info!("Setting up keyprovider config before image operations");
+        if let Err(e) = Self::setup_keyprovider_config() {
+            warn!("Failed to setup keyprovider config: {}", e);
+        }
+        
+        // Verify the env var is actually set
+        match std::env::var("OCICRYPT_KEYPROVIDER_CONFIG") {
+            Ok(val) => info!("OCICRYPT_KEYPROVIDER_CONFIG is set to: {}", val),
+            Err(_) => warn!("OCICRYPT_KEYPROVIDER_CONFIG is NOT set!"),
+        }
+        
         let image_ref = Reference::try_from(oci_reference.to_string())
             .context("Failed to parse image reference")?;
 
