@@ -43,8 +43,7 @@ PROPLET_CLIENT_ID="${PROPLET_CLIENT_ID:-}"
 PROPLET_CLIENT_KEY="${PROPLET_CLIENT_KEY:-}"
 PROPLET_CHANNEL_ID="${PROPLET_CHANNEL_ID:-}"
 PROPLET_MQTT_ADDRESS="${PROPLET_MQTT_ADDRESS:-tcp://localhost:1883}"
-KBS_URL="${KBS_URL:-https://kbs.example.com}"
-KBS_PORT="${KBS_PORT:-8080}"
+KBS_URL="${KBS_URL:-http://10.0.2.2}"
 
 # Check prerequisites
 check_prerequisites() {
@@ -196,6 +195,14 @@ write_files:
       RUST_LOG=info
     permissions: '0644'
 
+  - path: /etc/default/coco-keyprovider
+    content: |
+      # CoCo Keyprovider Environment Variables
+      COCO_KP_SOCKET=127.0.0.1:50000
+      COCO_KP_KBS_URL=http://10.0.2.2:8080
+      RUST_LOG=info
+    permissions: '0644'
+
   - path: /etc/systemd/system/attestation-agent.service
     content: |
       [Unit]
@@ -219,6 +226,33 @@ write_files:
       ProtectSystem=strict
       ProtectHome=true
       ReadWritePaths=/run/attestation-agent /etc/attestation-agent
+
+      [Install]
+      WantedBy=multi-user.target
+    permissions: '0644'
+
+  - path: /etc/systemd/system/coco-keyprovider.service
+    content: |
+      [Unit]
+      Description=CoCo Keyprovider for Confidential Containers
+      Documentation=https://github.com/confidential-containers/guest-components
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      EnvironmentFile=/etc/default/coco-keyprovider
+      ExecStart=/usr/local/bin/coco_keyprovider --socket ${COCO_KP_SOCKET} --kbs ${COCO_KP_KBS_URL}
+      Restart=on-failure
+      RestartSec=5s
+      StandardOutput=journal
+      StandardError=journal
+
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/run/coco-keyprovider
 
       [Install]
       WantedBy=multi-user.target
@@ -296,6 +330,7 @@ runcmd:
   - mkdir -p /var/lib/proplet
   - mkdir -p /etc/proplet
   - mkdir -p /run/attestation-agent
+  - mkdir -p /run/coco-keyprovider
 
   # Install Wasmtime
   - |
@@ -352,8 +387,8 @@ runcmd:
     cd guest-components/attestation-agent/coco_keyprovider
     echo "Building CoCo Keyprovider (this may take several minutes)..."
     cargo build --release --target x86_64-unknown-linux-gnu
-    chmod +x ../../target/release/coco_keyprovider
-    cp ../../target/release/coco_keyprovider /usr/local/bin/
+    chmod +x ../../target/x86_64-unknown-linux-gnu/release/coco_keyprovider
+    cp ../../target/x86_64-unknown-linux-gnu/release/coco_keyprovider /usr/local/bin/
     /usr/local/bin/coco_keyprovider --help
     echo "CoCo Keyprovider built and installed successfully"
     cd /
@@ -420,14 +455,18 @@ runcmd:
     echo "=== Enabling and starting services ==="
     systemctl daemon-reload
     systemctl enable attestation-agent.service
+    systemctl enable coco-keyprovider.service
     systemctl enable proplet.service
     systemctl start attestation-agent.service
+    sleep 2
+    systemctl start coco-keyprovider.service
     sleep 2
     systemctl start proplet.service
     sleep 2
 
     echo "=== Service status ==="
     systemctl status attestation-agent.service --no-pager || true
+    systemctl status coco-keyprovider.service --no-pager || true
     systemctl status proplet.service --no-pager || true
 
 final_message: |
@@ -437,15 +476,17 @@ final_message: |
 
   Services started:
     - Attestation Agent (port 50002)
+    - CoCo Keyprovider (port 50000)
     - Proplet (MQTT client)
 
   Login: propeller / propeller
 
   Check status:
-    sudo systemctl status attestation-agent proplet
+    sudo systemctl status attestation-agent coco-keyprovider proplet
 
   View logs:
     sudo journalctl -u attestation-agent -f
+    sudo journalctl -u coco-keyprovider -f
     sudo journalctl -u proplet -f
 
   ===================================================================
@@ -459,7 +500,6 @@ EOF
     sed -i "s|CHANNEL_ID_PLACEHOLDER|${PROPLET_CHANNEL_ID}|g" $USER_DATA
     sed -i "s|MQTT_ADDRESS_PLACEHOLDER|${PROPLET_MQTT_ADDRESS}|g" $USER_DATA
     sed -i "s|KBS_URL_PLACEHOLDER|${KBS_URL}|g" $USER_DATA
-    sed -i "s|KBS_PORT_PLACEHOLDER|${KBS_PORT}|g" $USER_DATA
 
     # Create meta-data
     cat <<EOF >$META_DATA
@@ -576,6 +616,7 @@ run_cvm() {
     echo "VM will be accessible via:"
     echo "  SSH: ssh -p 2222 propeller@localhost"
     echo "  Attestation Agent: localhost:50002"
+    echo "  CoCo Keyprovider: localhost:50000"
     echo ""
     $QEMU_CMD $QEMU_OPTS
 }
