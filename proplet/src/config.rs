@@ -272,6 +272,11 @@ impl PropletConfig {
             if let Ok(val) = env::var("PROPLET_LAYER_STORE_PATH") {
                 config.layer_store_path = val;
             }
+
+            // Validate that KBS URI is provided when TEE is enabled
+            if config.tee_enabled && config.kbs_uri.is_none() {
+                panic!("KBS URI must be configured when TEE is enabled. Set PROPLET_KBS_URI environment variable.");
+            }
         }
 
         config
@@ -327,7 +332,7 @@ mod tests {
         {
             assert!(!config.tee_enabled);
             assert!(config.kbs_uri.is_none());
-            assert_eq!(config.kbs_resource_path, "default/key/encryption-key");
+            assert!(config.kbs_resource_path.is_empty());
             assert!(config.aa_config_path.is_none());
             assert_eq!(config.layer_store_path, "/tmp/proplet/layers");
         }

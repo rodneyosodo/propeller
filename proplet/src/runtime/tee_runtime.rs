@@ -18,7 +18,6 @@ use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
-use wasmtime::HeapType;
 
 use crate::config::PropletConfig;
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
@@ -471,12 +470,18 @@ impl TeeWasmRuntime {
             .get_func(&mut store, func_name)
             .ok_or_else(|| anyhow::anyhow!("Function '{}' not found in WASM module", func_name))?;
 
-        let result_count = func.ty(&store).results().len();
-        let mut results = if result_count > 0 {
-            vec![Val::null_any_ref()]
-        } else {
-            vec![]
-        };
+        let results_types: Vec<_> = func.ty(&store).results().collect();
+        let mut results: Vec<Val> = results_types
+            .iter()
+            .map(|ty| match ty {
+                wasmtime::ValType::I32 => Val::I32(0),
+                wasmtime::ValType::I64 => Val::I64(0),
+                wasmtime::ValType::F32 => Val::F32(0),
+                wasmtime::ValType::F64 => Val::F64(0),
+                wasmtime::ValType::V128 => Val::V128(0u128.into()),
+                wasmtime::ValType::Ref(_) => Val::null_any_ref(),
+            })
+            .collect();
 
         func.call(&mut store, &[], &mut results)?;
 
