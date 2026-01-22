@@ -46,7 +46,10 @@ impl TeeWasmRuntime {
 
             if config.tee_enabled {
                 if let Err(e) = Self::setup_keyprovider_config() {
-                    warn!("Failed to setup keyprovider config: {}, continuing without it", e);
+                    warn!(
+                        "Failed to setup keyprovider config: {}, continuing without it",
+                        e
+                    );
                     warn!("Decryption may fail - ensure OCICRYPT_KEYPROVIDER_CONFIG is set");
                 }
             }
@@ -67,27 +70,33 @@ impl TeeWasmRuntime {
     #[cfg(feature = "tee")]
     fn setup_keyprovider_config() -> Result<()> {
         info!("Setting up keyprovider configuration");
-        
+
         // Check if OCICRYPT_KEYPROVIDER_CONFIG is already set
         if let Ok(existing_path) = std::env::var("OCICRYPT_KEYPROVIDER_CONFIG") {
-            info!("OCICRYPT_KEYPROVIDER_CONFIG already set to: {}", existing_path);
+            info!(
+                "OCICRYPT_KEYPROVIDER_CONFIG already set to: {}",
+                existing_path
+            );
             if std::path::Path::new(&existing_path).exists() {
                 info!("Config file exists, using existing configuration");
                 return Ok(());
             } else {
-                warn!("Config file at {} does not exist, will create new one", existing_path);
+                warn!(
+                    "Config file at {} does not exist, will create new one",
+                    existing_path
+                );
             }
         }
-        
+
         let config_path = PathBuf::from("/tmp/proplet/ocicrypt_keyprovider.conf");
         let config_dir = config_path.parent().unwrap();
-        
+
         std::fs::create_dir_all(&config_dir)
             .context("Failed to create keyprovider config directory")?;
 
         // Use TCP address to match coco-keyprovider (listening on 50011)
         let keyprovider_addr = "127.0.0.1:50011";
-        
+
         let config_content = format!(
             r#"{{
   "key-providers": {{
@@ -102,10 +111,16 @@ impl TeeWasmRuntime {
         std::fs::write(&config_path, config_content)
             .context("Failed to write keyprovider config")?;
 
-        info!("Created OCICRYPT_KEYPROVIDER_CONFIG at: {}", config_path.display());
+        info!(
+            "Created OCICRYPT_KEYPROVIDER_CONFIG at: {}",
+            config_path.display()
+        );
         info!("Keyprovider address (TCP): {}", keyprovider_addr);
         info!("This should match coco-keyprovider listening address");
-        warn!("Verify coco-keyprovider is listening on: {}", keyprovider_addr);
+        warn!(
+            "Verify coco-keyprovider is listening on: {}",
+            keyprovider_addr
+        );
 
         std::env::set_var("OCICRYPT_KEYPROVIDER_CONFIG", config_path);
 
@@ -126,13 +141,18 @@ impl TeeWasmRuntime {
 
         let evidence_provider = Box::new(NativeEvidenceProvider::new()?);
 
-        let client = KbsClientBuilder::with_evidence_provider(evidence_provider, kbs_uri).build()?;
+        let client =
+            KbsClientBuilder::with_evidence_provider(evidence_provider, kbs_uri).build()?;
 
         Ok(Box::new(client))
     }
 
     #[cfg(feature = "tee")]
-    async fn get_decryption_key(&self, mut client: Box<dyn KbsClientCapabilities>, kbs_resource_path: &str) -> Result<Vec<u8>> {
+    async fn get_decryption_key(
+        &self,
+        mut client: Box<dyn KbsClientCapabilities>,
+        kbs_resource_path: &str,
+    ) -> Result<Vec<u8>> {
         info!("Using KBS resource path: {}", kbs_resource_path);
 
         let kbs_uri = self
@@ -172,13 +192,17 @@ impl TeeWasmRuntime {
     }
 
     #[cfg(feature = "tee")]
-    async fn pull_and_decrypt_wasm(&self, oci_reference: &str, kbs_resource_path: &str) -> Result<PathBuf> {
+    async fn pull_and_decrypt_wasm(
+        &self,
+        oci_reference: &str,
+        kbs_resource_path: &str,
+    ) -> Result<PathBuf> {
         // Ensure OCICRYPT_KEYPROVIDER_CONFIG is set before any image-rs operations
         // This is critical because ocicrypt-rs reads it at lazy_static initialization
         if let Err(e) = Self::setup_keyprovider_config() {
             warn!("Failed to setup keyprovider config: {}", e);
         }
-        
+
         let image_ref = Reference::try_from(oci_reference.to_string())
             .context("Failed to parse image reference")?;
 
@@ -228,8 +252,7 @@ impl TeeWasmRuntime {
 
             info!(
                 "WASM layer: {} ({})",
-                wasm_layer.digest,
-                wasm_layer.media_type
+                wasm_layer.digest, wasm_layer.media_type
             );
 
             let blob_stream = pull_client
@@ -298,9 +321,7 @@ impl TeeWasmRuntime {
             };
 
             let decrypt_config: Option<String> = if is_encrypted {
-                info!(
-                    "Encrypted image detected - keyprovider will handle decryption via gRPC"
-                );
+                info!("Encrypted image detected - keyprovider will handle decryption via gRPC");
                 info!("Ensure OCICRYPT_KEYPROVIDER_CONFIG is set");
                 Some("provider:attestation-agent".to_string())
             } else {
@@ -374,15 +395,15 @@ impl TeeWasmRuntime {
     }
 
     fn run_wasm(&self, wasm_path: &PathBuf, config: &StartConfig) -> Result<Vec<u8>> {
-        info!("Running WASM from: {:?}", wasm_path);
-        info!("Function: {}", config.function_name);
-
-        let runtime_path = self.config.external_wasm_runtime.as_ref()
+        let runtime_path = self
+            .config
+            .external_wasm_runtime
+            .as_ref()
             .map(|s| s.as_str())
             .unwrap_or("wasmtime");
-        
+
         info!("Using WASM runtime: {}", runtime_path);
-        
+
         let mut cmd = Command::new(runtime_path);
 
         // Add --dir flag for WASI directory access
@@ -409,20 +430,8 @@ impl TeeWasmRuntime {
 
         let output = cmd.output().context("Failed to execute WASM runtime")?;
 
-        info!("WASM exit status: {:?}", output.status);
-        info!("WASM stdout length: {} bytes", output.stdout.len());
-        info!("WASM stderr length: {} bytes", output.stderr.len());
-
-        if !output.stdout.is_empty() {
-            info!("WASM stdout:\n{}", String::from_utf8_lossy(&output.stdout));
-        } else {
-            info!("WASM stdout is empty");
-        }
-
         if !output.stderr.is_empty() {
             warn!("WASM stderr:\n{}", String::from_utf8_lossy(&output.stderr));
-        } else {
-            info!("WASM stderr is empty");
         }
 
         if !output.status.success() {
@@ -431,8 +440,6 @@ impl TeeWasmRuntime {
                 output.status.code()
             ));
         }
-
-        info!("WASM execution completed successfully");
 
         Ok(output.stdout)
     }
@@ -460,7 +467,8 @@ impl TeeWasmRuntime {
             &start_config.function_name
         };
 
-        let func = instance.get_func(&mut store, func_name)
+        let func = instance
+            .get_func(&mut store, func_name)
             .ok_or_else(|| anyhow::anyhow!("Function '{}' not found in WASM module", func_name))?;
 
         let result_count = func.ty(&store).results().len();
@@ -510,20 +518,31 @@ impl Runtime for TeeWasmRuntime {
             if let Some(oci_ref) = config.cli_args.first() {
                 if oci_ref.contains("/") || oci_ref.contains(":") {
                     info!("Pulling WASM from OCI: {}", oci_ref);
-                    let kbs_path: &str = if config.kbs_resource_path.as_ref().map_or(false, |s| !s.is_empty()) {
-                        info!("Using config-level KBS resource path: {}", config.kbs_resource_path.as_ref().unwrap_or(&String::new()));
-                        config.kbs_resource_path.as_ref().map(|s| s.as_str()).unwrap_or("")
+                    let kbs_path: &str = if config
+                        .kbs_resource_path
+                        .as_ref()
+                        .map_or(false, |s| !s.is_empty())
+                    {
+                        info!(
+                            "Using config-level KBS resource path: {}",
+                            config.kbs_resource_path.as_ref().unwrap_or(&String::new())
+                        );
+                        config
+                            .kbs_resource_path
+                            .as_ref()
+                            .map(|s| s.as_str())
+                            .unwrap_or("")
                     } else {
                         info!("No config-level KBS resource path, will use task-level if provided");
                         ""
                     };
                     let wasm_path = self.pull_and_decrypt_wasm(oci_ref, kbs_path).await?;
-                    
+
                     // Remove the OCI reference from cli_args before executing
                     // since it's not needed by wasmtime (we already pulled the image)
                     let mut exec_config = config.clone();
                     exec_config.cli_args.remove(0);
-                    
+
                     return self.run_wasm(&wasm_path, &exec_config);
                 }
             }
