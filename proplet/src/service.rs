@@ -352,8 +352,8 @@ impl PropletService {
         req.validate()?;
 
         info!("Received start command for task: {}", req.id);
-        info!("Request details - encrypted: {}, oci_reference: '{}', image_url: '{}', file: '{}",
-            req.encrypted, req.oci_reference, req.image_url, if req.file.is_empty() { "<empty>" } else { "<provided>" });
+        info!("Request details - encrypted: {}, image_url: '{}', file: '{}",
+            req.encrypted, req.image_url, if req.file.is_empty() { "<empty>" } else { "<provided>" });
 
         #[cfg(feature = "tee")]
         let runtime = if req.encrypted {
@@ -405,22 +405,24 @@ impl PropletService {
                 }
             }
         } else if !req.image_url.is_empty() {
-            info!("Requesting binary from registry: {}", req.image_url);
-            self.request_binary_from_registry(&req.image_url).await?;
+            if req.encrypted {
+                info!("Encrypted workload with image_url: {}", req.image_url);
+                Vec::new()
+            } else {
+                info!("Requesting binary from registry: {}", req.image_url);
+                self.request_binary_from_registry(&req.image_url).await?;
 
-            match self.wait_for_binary(&req.image_url).await {
-                Ok(binary) => binary,
-                Err(e) => {
-                    error!("Failed to get binary for task {}: {}", req.id, e);
-                    self.running_tasks.lock().await.remove(&req.id);
-                    self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
-                        .await?;
-                    return Err(e);
+                match self.wait_for_binary(&req.image_url).await {
+                    Ok(binary) => binary,
+                    Err(e) => {
+                        error!("Failed to get binary for task {}: {}", req.id, e);
+                        self.running_tasks.lock().await.remove(&req.id);
+                        self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
+                            .await?;
+                        return Err(e);
+                    }
                 }
             }
-        } else if req.encrypted && !req.oci_reference.is_empty() {
-            info!("Encrypted workload with OCI reference: {}", req.oci_reference);
-            Vec::new()
         } else {
             let err = anyhow::anyhow!("No wasm binary or image URL provided");
             error!("Validation error for task {}: {}", req.id, err);
@@ -452,8 +454,8 @@ impl PropletService {
         let cli_args = req.cli_args.clone();
         let inputs = req.inputs.clone();
 
-        let oci_reference = if req.encrypted {
-            Some(req.oci_reference.clone())
+        let image_url = if req.encrypted && !req.image_url.is_empty() {
+            Some(req.image_url.clone())
         } else {
             None
         };
@@ -468,8 +470,8 @@ impl PropletService {
             info!("Executing task {} in spawned task", task_id);
 
             let mut cli_args = cli_args;
-            if let Some(ref oci_ref) = oci_reference {
-                cli_args.insert(0, oci_ref.clone());
+            if let Some(ref img_url) = image_url {
+                cli_args.insert(0, img_url.clone());
             }
 
             let config = StartConfig {
@@ -480,6 +482,7 @@ impl PropletService {
                 cli_args,
                 env,
                 args: inputs,
+                kbs_resource_path: req.kbs_resource_path.clone(),
             };
 
             // Start monitoring setup (if enabled)

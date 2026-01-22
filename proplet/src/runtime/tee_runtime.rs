@@ -77,9 +77,8 @@ impl TeeWasmRuntime {
     }
 
     #[cfg(feature = "tee")]
-    async fn get_decryption_key(&self, mut client: Box<dyn KbsClientCapabilities>) -> Result<Vec<u8>> {
-        let resource_path = &self.config.kbs_resource_path;
-        info!("Using KBS resource path: {}", resource_path);
+    async fn get_decryption_key(&self, mut client: Box<dyn KbsClientCapabilities>, kbs_resource_path: &str) -> Result<Vec<u8>> {
+        info!("Using KBS resource path: {}", kbs_resource_path);
 
         let kbs_uri = self
             .config
@@ -91,7 +90,7 @@ impl TeeWasmRuntime {
             .trim_start_matches("http://")
             .trim_start_matches("https://");
 
-        let full_resource_uri = format!("kbs://{}/{}", kbs_host, resource_path);
+        let full_resource_uri = format!("kbs://{}/{}", kbs_host, kbs_resource_path);
         info!("Constructed full KBS resource URI: {}", full_resource_uri);
 
         let resource_uri = ResourceUri::try_from(full_resource_uri.as_str())
@@ -118,7 +117,7 @@ impl TeeWasmRuntime {
     }
 
     #[cfg(feature = "tee")]
-    async fn pull_and_decrypt_wasm(&self, oci_reference: &str) -> Result<PathBuf> {
+    async fn pull_and_decrypt_wasm(&self, oci_reference: &str, kbs_resource_path: &str) -> Result<PathBuf> {
         let image_ref = Reference::try_from(oci_reference.to_string())
             .context("Failed to parse image reference")?;
 
@@ -426,7 +425,14 @@ impl Runtime for TeeWasmRuntime {
             if let Some(oci_ref) = config.cli_args.first() {
                 if oci_ref.contains("/") || oci_ref.contains(":") {
                     info!("Pulling WASM from OCI: {}", oci_ref);
-                    let wasm_path = self.pull_and_decrypt_wasm(oci_ref).await?;
+                    let kbs_path: &str = if config.kbs_resource_path.as_ref().map_or(false, |s| !s.is_empty()) {
+                        info!("Using config-level KBS resource path: {}", config.kbs_resource_path.as_ref().unwrap_or(&String::new()));
+                        config.kbs_resource_path.as_ref().map(|s| s.as_str()).unwrap_or("")
+                    } else {
+                        info!("No config-level KBS resource path, will use task-level if provided");
+                        ""
+                    };
+                    let wasm_path = self.pull_and_decrypt_wasm(oci_ref, kbs_path).await?;
                     return self.run_wasm(&wasm_path, &config);
                 }
             }

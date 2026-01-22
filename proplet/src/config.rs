@@ -75,7 +75,7 @@ impl Default for PropletConfig {
             enable_monitoring: true,
             tee_enabled: false,
             kbs_uri: None,
-            kbs_resource_path: "default/key/encryption-key".to_string(),
+            kbs_resource_path: String::new(),
             aa_config_path: None,
             layer_store_path: "/tmp/proplet/layers".to_string(),
         };
@@ -263,10 +263,6 @@ impl PropletConfig {
 
             if let Ok(val) = env::var("PROPLET_KBS_URI") {
                 config.kbs_uri = if val.is_empty() { None } else { Some(val) };
-            }
-
-            if let Ok(val) = env::var("PROPLET_KBS_RESOURCE_PATH") {
-                config.kbs_resource_path = val;
             }
 
             if let Ok(val) = env::var("PROPLET_AA_CONFIG_PATH") {

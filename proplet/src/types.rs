@@ -60,8 +60,6 @@ pub struct StartRequest {
     pub monitoring_profile: Option<MonitoringProfile>,
     #[serde(default)]
     pub encrypted: bool,
-    #[serde(default, deserialize_with = "deserialize_null_default")]
-    pub oci_reference: String,
     #[serde(default)]
     pub kbs_resource_path: Option<String>,
 }
@@ -85,14 +83,14 @@ impl StartRequest {
         }
 
         if self.encrypted {
-            if self.oci_reference.is_empty() {
+            if self.image_url.is_empty() {
                 return Err(anyhow::anyhow!(
-                    "oci_reference is required for encrypted workloads"
+                    "image_url is required for encrypted workloads"
                 ));
             }
-            if !self.file.is_empty() || !self.image_url.is_empty() {
+            if !self.file.is_empty() {
                 return Err(anyhow::anyhow!(
-                    "encrypted workloads should only use oci_reference, not file or image_url"
+                    "encrypted workloads should only use image_url, not file"
                 ));
             }
         } else if self.file.is_empty() && self.image_url.is_empty() {
