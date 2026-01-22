@@ -377,28 +377,52 @@ impl TeeWasmRuntime {
         info!("Running WASM from: {:?}", wasm_path);
         info!("Function: {}", config.function_name);
 
-        let mut cmd = Command::new("wasmtime");
+        let runtime_path = self.config.external_wasm_runtime.as_ref()
+            .map(|s| s.as_str())
+            .unwrap_or("wasmtime");
+        
+        info!("Using WASM runtime: {}", runtime_path);
+        
+        let mut cmd = Command::new(runtime_path);
 
-        cmd.arg("--dir").arg("/tmp").arg(wasm_path);
+        // Add --dir flag for WASI directory access
+        cmd.arg("--dir").arg("/tmp");
 
+        // Add cli_args (like --invoke add) before the wasm file
         for arg in &config.cli_args {
             cmd.arg(arg);
         }
 
+        // Add the wasm file path
+        cmd.arg(wasm_path);
+
+        // Add function arguments after the wasm file
         for arg in &config.args {
             cmd.arg(arg.to_string());
         }
 
         info!("Executing command: {:?}", cmd);
 
+        // Explicitly set stdout and stderr to be piped
+        cmd.stdout(std::process::Stdio::piped());
+        cmd.stderr(std::process::Stdio::piped());
+
         let output = cmd.output().context("Failed to execute WASM runtime")?;
+
+        info!("WASM exit status: {:?}", output.status);
+        info!("WASM stdout length: {} bytes", output.stdout.len());
+        info!("WASM stderr length: {} bytes", output.stderr.len());
 
         if !output.stdout.is_empty() {
             info!("WASM stdout:\n{}", String::from_utf8_lossy(&output.stdout));
+        } else {
+            info!("WASM stdout is empty");
         }
 
         if !output.stderr.is_empty() {
             warn!("WASM stderr:\n{}", String::from_utf8_lossy(&output.stderr));
+        } else {
+            info!("WASM stderr is empty");
         }
 
         if !output.status.success() {
