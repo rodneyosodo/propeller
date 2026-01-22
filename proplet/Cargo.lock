@@ -262,7 +262,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 [[package]]
 name = "attestation-agent"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -289,7 +289,7 @@ dependencies = [
 [[package]]
 name = "attester"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1328,7 +1328,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "aes-gcm",
  "aes-kw",
@@ -2690,7 +2690,7 @@ dependencies = [
 [[package]]
 name = "image-rs"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "anyhow",
  "astral-tokio-tar",
@@ -3003,7 +3003,7 @@ dependencies = [
 [[package]]
 name = "kbc"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3038,7 +3038,7 @@ dependencies = [
 [[package]]
 name = "kbs_protocol"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3527,7 +3527,7 @@ dependencies = [
 [[package]]
 name = "ocicrypt-rs"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "aes 0.8.4",
  "anyhow",
@@ -4227,7 +4227,7 @@ dependencies = [
 [[package]]
 name = "protos"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "prost",
  "tonic",
@@ -4571,7 +4571,7 @@ dependencies = [
 [[package]]
 name = "resource_uri"
 version = "0.1.0"
-source = "git+https://github.com/confidential-containers/guest-components#54b9a5b4e5a323c3d099940ba0f9a062b5722e42"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#edcb6b90ac523b905948e4a963d34965c237f5f9"
 dependencies = [
  "anyhow",
  "serde",
