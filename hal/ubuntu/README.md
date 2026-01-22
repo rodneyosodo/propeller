@@ -47,7 +47,7 @@ export PROPLET_CLIENT_ID="your-client-id"
 export PROPLET_CLIENT_KEY="your-client-key"
 export PROPLET_CHANNEL_ID="your-channel-id"
 export PROPLET_MQTT_ADDRESS="tcp://mqtt.example.com:1883"
-export KBS_URL="http://10.0.2.2:8080"
+export KBS_URL="http://10.0.2.2:8082"
 
 # Build the CVM image (only needs to be done once)
 sudo ./qemu.sh build
@@ -90,7 +90,7 @@ sudo ENABLE_CVM=none ./qemu.sh
 | Variable               | Description                  | Default                |
 | ---------------------- | ---------------------------- | ---------------------- |
 | `PROPLET_MQTT_ADDRESS` | MQTT broker address          | `tcp://localhost:1883` |
-| `KBS_URL`              | Key Broker Service URL       | `http://10.0.2.2:8080` |
+| `KBS_URL`              | Key Broker Service URL       | `http://10.0.2.2:8082` |
 | `ENABLE_CVM`           | CVM mode (auto/tdx/sev/none) | `auto`                 |
 | `RAM`                  | VM memory                    | `8192M`                |
 | `CPU`                  | CPU cores                    | `4`                    |

@@ -191,16 +191,27 @@ write_files:
     content: |
       # Attestation Agent Environment Variables
       # The attester type (TDX, SEV, etc.) will be auto-detected
-      AA_ATTESTATION_SOCK=127.0.0.1:50002
+      AA_ATTESTATION_SOCK=127.0.0.1:50010
       RUST_LOG=info
     permissions: '0644'
 
   - path: /etc/default/coco-keyprovider
     content: |
       # CoCo Keyprovider Environment Variables
-      COCO_KP_SOCKET=127.0.0.1:50000
-      COCO_KP_KBS_URL=http://10.0.2.2:8080
+      COCO_KP_SOCKET=127.0.0.1:50011
+      COCO_KP_KBS_URL=http://10.0.2.2:8082
       RUST_LOG=info
+    permissions: '0644'
+
+  - path: /etc/ocicrypt_keyprovider.conf
+    content: |
+      {
+        "key-providers": {
+          "attestation-agent": {
+            "grpc": "127.0.0.1:50011"
+          }
+        }
+      }
     permissions: '0644'
 
   - path: /etc/systemd/system/attestation-agent.service
@@ -367,8 +378,9 @@ runcmd:
     export PATH="/root/.cargo/bin:$PATH"
     cd /tmp
     git clone https://github.com/rodneyosodo/guest-components.git
+    cd guest-components
     git checkout upstream-proplet
-    cd guest-components/attestation-agent
+    cd attestation-agent
     echo "Building attestation-agent (gRPC version) with all attesters (this may take several minutes)..."
     make ATTESTER=all-attesters ttrpc=false
     make install
@@ -383,8 +395,9 @@ runcmd:
     export PATH="/root/.cargo/bin:$PATH"
     cd /tmp
     git clone https://github.com/rodneyosodo/guest-components.git
+    cd guest-components
     git checkout upstream-proplet
-    cd guest-components/attestation-agent/coco_keyprovider
+    cd attestation-agent/coco_keyprovider
     echo "Building CoCo Keyprovider (this may take several minutes)..."
     cargo build --release --target x86_64-unknown-linux-gnu
     chmod +x ../../target/x86_64-unknown-linux-gnu/release/coco_keyprovider
@@ -475,8 +488,8 @@ final_message: |
   ===================================================================
 
   Services started:
-    - Attestation Agent (port 50002)
-    - CoCo Keyprovider (port 50000)
+    - Attestation Agent (port 50010)
+    - CoCo Keyprovider (port 50011)
     - Proplet (MQTT client)
 
   Login: propeller / propeller
@@ -571,7 +584,7 @@ run_cvm() {
     QEMU_OPTS="$QEMU_OPTS -smp $CPU"
     QEMU_OPTS="$QEMU_OPTS -enable-kvm"
     QEMU_OPTS="$QEMU_OPTS -boot d"
-    QEMU_OPTS="$QEMU_OPTS -netdev user,id=vmnic,hostfwd=tcp::2222-:22,hostfwd=tcp::50002-:50002"
+    QEMU_OPTS="$QEMU_OPTS -netdev user,id=vmnic,hostfwd=tcp::2222-:22,hostfwd=tcp::50010-:50010"
     QEMU_OPTS="$QEMU_OPTS -nographic"
     QEMU_OPTS="$QEMU_OPTS -no-reboot"
     QEMU_OPTS="$QEMU_OPTS -drive file=$SEED_IMAGE,media=cdrom"
@@ -615,8 +628,8 @@ run_cvm() {
     # Execute QEMU
     echo "VM will be accessible via:"
     echo "  SSH: ssh -p 2222 propeller@localhost"
-    echo "  Attestation Agent: localhost:50002"
-    echo "  CoCo Keyprovider: localhost:50000"
+    echo "  Attestation Agent: localhost:50010"
+    echo "  CoCo Keyprovider: localhost:50011"
     echo ""
     $QEMU_CMD $QEMU_OPTS
 }
