@@ -90,6 +90,11 @@ impl StartRequest {
                     "oci_reference is required for encrypted workloads"
                 ));
             }
+            if !self.file.is_empty() || !self.image_url.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "encrypted workloads should only use oci_reference, not file or image_url"
+                ));
+            }
         } else if self.file.is_empty() && self.image_url.is_empty() {
             return Err(anyhow::anyhow!("either file or image_url must be provided"));
         }

@@ -352,6 +352,8 @@ impl PropletService {
         req.validate()?;
 
         info!("Received start command for task: {}", req.id);
+        info!("Request details - encrypted: {}, oci_reference: '{}', image_url: '{}', file: '{}",
+            req.encrypted, req.oci_reference, req.image_url, if req.file.is_empty() { "<empty>" } else { "<provided>" });
 
         #[cfg(feature = "tee")]
         let runtime = if req.encrypted {
