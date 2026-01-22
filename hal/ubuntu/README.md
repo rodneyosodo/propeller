@@ -147,7 +147,8 @@ sudo journalctl -u proplet -f
 The VM exposes:
 
 - **Port 2222**: SSH (forwarded from guest port 22)
-- **Port 50002**: Attestation Agent API (forwarded from guest port 50002)
+- **Port 50010**: Attestation Agent API (forwarded from guest port 50010)
+- **Port 50011**: CoCo Keyprovider (forwarded from guest port 50011)
 
 ## Files Created
 
@@ -249,7 +250,11 @@ The VM includes:
 │  ┌──────────────┐      ┌────────────────┐   │
 │  │ Attestation  │      │    Wasmtime    │   │
 │  │    Agent     │      │   (Runtime)    │   │
-│  │ (port 50002) │      └────────────────┘   │
+│  │ (port 50010) │      └────────────────┘   │
+│  │              │               ▲           │
+│  │ CoCo         │               │           │
+│  │ Keyprovider  │               │           │
+│  │ (port 50011) │               │           │
 │  └──────────────┘               ▲           │
 │         │                       │           │
 │         │                       │           │

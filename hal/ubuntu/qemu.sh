@@ -455,6 +455,13 @@ runcmd:
       echo "proplet: installed"
     fi
 
+    if [ ! -f /etc/ocicrypt_keyprovider.conf ]; then
+      echo "ERROR: /etc/ocicrypt_keyprovider.conf not found"
+      ERRORS=$((ERRORS + 1))
+    else
+      echo "ocicrypt_keyprovider.conf: created"
+    fi
+
     if [ $ERRORS -gt 0 ]; then
       echo "Installation verification failed with $ERRORS error(s)"
       echo "Services will NOT be started"
