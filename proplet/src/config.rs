@@ -44,11 +44,11 @@ pub struct PropletConfig {
     #[cfg(feature = "tee")]
     pub kbs_uri: Option<String>,
     #[cfg(feature = "tee")]
-    pub kbs_resource_path: String,
-    #[cfg(feature = "tee")]
     pub aa_config_path: Option<String>,
     #[cfg(feature = "tee")]
     pub layer_store_path: String,
+    #[cfg(feature = "tee")]
+    pub pull_concurrent_limit: usize,
 }
 
 impl Default for PropletConfig {
@@ -75,9 +75,9 @@ impl Default for PropletConfig {
             enable_monitoring: true,
             tee_enabled: false,
             kbs_uri: None,
-            kbs_resource_path: String::new(),
             aa_config_path: None,
             layer_store_path: "/tmp/proplet/layers".to_string(),
+            pull_concurrent_limit: 4,
         };
 
         #[cfg(not(feature = "tee"))]
@@ -137,6 +137,15 @@ impl PropletConfig {
                 }
                 Err(e) => {
                     return Err(format!("config file '{config_path}' not accessible: {e}").into());
+                }
+            }
+        }
+
+        #[cfg(feature = "tee")]
+        {
+            if config.tee_enabled {
+                if config.kbs_uri.is_none() {
+                    return Err("KBS URI must be configured when TEE is enabled. Set PROPLET_KBS_URI environment variable.".into());
                 }
             }
         }
@@ -273,9 +282,10 @@ impl PropletConfig {
                 config.layer_store_path = val;
             }
 
-            // Validate that KBS URI is provided when TEE is enabled
-            if config.tee_enabled && config.kbs_uri.is_none() {
-                panic!("KBS URI must be configured when TEE is enabled. Set PROPLET_KBS_URI environment variable.");
+            if let Ok(val) = env::var("PROPLET_PULL_CONCURRENT_LIMIT") {
+                if let Ok(limit) = val.parse() {
+                    config.pull_concurrent_limit = limit;
+                }
             }
         }
 
@@ -332,7 +342,6 @@ mod tests {
         {
             assert!(!config.tee_enabled);
             assert!(config.kbs_uri.is_none());
-            assert!(config.kbs_resource_path.is_empty());
             assert!(config.aa_config_path.is_none());
             assert_eq!(config.layer_store_path, "/tmp/proplet/layers");
         }

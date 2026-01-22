@@ -95,7 +95,10 @@ async fn main() -> Result<()> {
                 ))
             }
             Err(e) => {
-                info!("Failed to initialize TEE runtime: {}, falling back to standard runtime", e);
+                info!(
+                    "Failed to initialize TEE runtime: {}, falling back to standard runtime",
+                    e
+                );
                 Arc::new(PropletService::new(config.clone(), pubsub, runtime))
             }
         }

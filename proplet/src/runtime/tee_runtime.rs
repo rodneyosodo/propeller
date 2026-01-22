@@ -3,21 +3,17 @@ use async_trait::async_trait;
 use image_rs::layer_store::LayerStore;
 use image_rs::meta_store::MetaStore;
 use image_rs::pull::PullClient;
-use kbs_protocol::evidence_provider::NativeEvidenceProvider;
-use kbs_protocol::KbsClientBuilder;
 use kbs_protocol::KbsClientCapabilities;
 use oci_client::client::ClientConfig;
 use oci_client::secrets::RegistryAuth;
 use oci_client::Reference;
 use oci_spec::image::ImageConfiguration;
-use resource_uri::ResourceUri;
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{info, warn};
 
 use crate::config::PropletConfig;
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
@@ -25,6 +21,7 @@ use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 #[cfg(feature = "tee")]
 use attestation_agent::{AttestationAPIs, AttestationAgent};
 
+#[allow(dead_code)]
 type KbsClientType = Box<dyn KbsClientCapabilities>;
 
 pub struct TeeWasmRuntime {
@@ -44,13 +41,8 @@ impl TeeWasmRuntime {
             info!("TEE attestation agent initialized");
 
             if config.tee_enabled {
-                if let Err(e) = Self::setup_keyprovider_config() {
-                    warn!(
-                        "Failed to setup keyprovider config: {}, continuing without it",
-                        e
-                    );
-                    warn!("Decryption may fail - ensure OCICRYPT_KEYPROVIDER_CONFIG is set");
-                }
+                Self::setup_keyprovider_config()
+                    .context("Failed to setup keyprovider config when TEE is enabled. Decryption requires valid keyprovider configuration.")?;
             }
 
             return Ok(Self {
@@ -88,7 +80,9 @@ impl TeeWasmRuntime {
         }
 
         let config_path = PathBuf::from("/tmp/proplet/ocicrypt_keyprovider.conf");
-        let config_dir = config_path.parent().expect("Config path should always have a parent directory");
+        let config_dir = config_path
+            .parent()
+            .expect("Config path should always have a parent directory");
 
         std::fs::create_dir_all(&config_dir)
             .context("Failed to create keyprovider config directory")?;
@@ -129,11 +123,7 @@ impl TeeWasmRuntime {
     }
 
     #[cfg(feature = "tee")]
-    async fn pull_and_decrypt_wasm(
-        &self,
-        oci_reference: &str,
-        kbs_resource_path: &str,
-    ) -> Result<PathBuf> {
+    async fn pull_and_decrypt_wasm(&self, oci_reference: &str) -> Result<PathBuf> {
         // Ensure OCICRYPT_KEYPROVIDER_CONFIG is set before any image-rs operations
         // This is critical because ocicrypt-rs reads it at lazy_static initialization
         if let Err(e) = Self::setup_keyprovider_config() {
@@ -154,7 +144,7 @@ impl TeeWasmRuntime {
             image_ref.clone(),
             layer_store,
             &RegistryAuth::Anonymous,
-            4,
+            self.config.pull_concurrent_limit,
             client_config,
         )?;
 
@@ -391,7 +381,7 @@ impl TeeWasmRuntime {
         config.async_support(false);
 
         let engine = Engine::new(&config)?;
-        let mut linker = Linker::new(&engine);
+        let linker = Linker::new(&engine);
 
         let module = Module::from_binary(&engine, wasm_binary)?;
 
@@ -450,6 +440,7 @@ impl Runtime for TeeWasmRuntime {
                     .await
                     .context("Failed to get TEE evidence")?;
                 info!("TEE evidence obtained: {} bytes", evidence.len());
+                info!("Evidence generation triggers attestation process; validation is handled by remote attestation service");
             }
         }
 
@@ -461,25 +452,7 @@ impl Runtime for TeeWasmRuntime {
             if let Some(oci_ref) = config.cli_args.first() {
                 if oci_ref.contains("/") || oci_ref.contains(":") {
                     info!("Pulling WASM from OCI: {}", oci_ref);
-                    let kbs_path: &str = if config
-                        .kbs_resource_path
-                        .as_ref()
-                        .map_or(false, |s| !s.is_empty())
-                    {
-                        info!(
-                            "Using config-level KBS resource path: {}",
-                            config.kbs_resource_path.as_ref().unwrap_or(&String::new())
-                        );
-                        config
-                            .kbs_resource_path
-                            .as_ref()
-                            .map(|s| s.as_str())
-                            .unwrap_or("")
-                    } else {
-                        info!("No config-level KBS resource path, will use task-level if provided");
-                        ""
-                    };
-                    let wasm_path = self.pull_and_decrypt_wasm(oci_ref, kbs_path).await?;
+                    let wasm_path = self.pull_and_decrypt_wasm(oci_ref).await?;
 
                     // Remove the OCI reference from cli_args before executing
                     // since it's not needed by wasmtime (we already pulled the image)

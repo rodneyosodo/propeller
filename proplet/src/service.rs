@@ -111,6 +111,7 @@ impl PropletService {
     }
 
     #[cfg(feature = "tee")]
+    #[allow(dead_code)]
     pub fn set_tee_runtime(&mut self, tee_runtime: Arc<dyn Runtime>) {
         self.tee_runtime = Some(tee_runtime);
     }
@@ -352,8 +353,16 @@ impl PropletService {
         req.validate()?;
 
         info!("Received start command for task: {}", req.id);
-        info!("Request details - encrypted: {}, image_url: '{}', file: '{}",
-            req.encrypted, req.image_url, if req.file.is_empty() { "<empty>" } else { "<provided>" });
+        info!(
+            "Request details - encrypted: {}, image_url: '{}', file: '{}",
+            req.encrypted,
+            req.image_url,
+            if req.file.is_empty() {
+                "<empty>"
+            } else {
+                "<provided>"
+            }
+        );
 
         #[cfg(feature = "tee")]
         let runtime = if req.encrypted {
@@ -362,8 +371,12 @@ impl PropletService {
                 tee_runtime.clone()
             } else {
                 error!("TEE runtime not available but encrypted workload requested");
-                self.publish_result(&req.id, Vec::new(), Some("TEE runtime not available".to_string()))
-                    .await?;
+                self.publish_result(
+                    &req.id,
+                    Vec::new(),
+                    Some("TEE runtime not available".to_string()),
+                )
+                .await?;
                 return Err(anyhow::anyhow!("TEE runtime not available"));
             }
         } else {
@@ -375,8 +388,12 @@ impl PropletService {
         let runtime = {
             if req.encrypted {
                 error!("TEE support not compiled in but encrypted workload requested");
-                self.publish_result(&req.id, Vec::new(), Some("TEE support not compiled in".to_string()))
-                    .await?;
+                self.publish_result(
+                    &req.id,
+                    Vec::new(),
+                    Some("TEE support not compiled in".to_string()),
+                )
+                .await?;
                 return Err(anyhow::anyhow!("TEE support not compiled in"));
             }
             self.runtime.clone()
@@ -480,7 +497,6 @@ impl PropletService {
                 cli_args,
                 env,
                 args: inputs,
-                kbs_resource_path: req.kbs_resource_path.clone(),
             };
 
             // Start monitoring setup (if enabled)
