@@ -175,15 +175,8 @@ impl TeeWasmRuntime {
     async fn pull_and_decrypt_wasm(&self, oci_reference: &str, kbs_resource_path: &str) -> Result<PathBuf> {
         // Ensure OCICRYPT_KEYPROVIDER_CONFIG is set before any image-rs operations
         // This is critical because ocicrypt-rs reads it at lazy_static initialization
-        info!("Setting up keyprovider config before image operations");
         if let Err(e) = Self::setup_keyprovider_config() {
             warn!("Failed to setup keyprovider config: {}", e);
-        }
-        
-        // Verify the env var is actually set
-        match std::env::var("OCICRYPT_KEYPROVIDER_CONFIG") {
-            Ok(val) => info!("OCICRYPT_KEYPROVIDER_CONFIG is set to: {}", val),
-            Err(_) => warn!("OCICRYPT_KEYPROVIDER_CONFIG is NOT set!"),
         }
         
         let image_ref = Reference::try_from(oci_reference.to_string())
@@ -501,7 +494,13 @@ impl Runtime for TeeWasmRuntime {
                         ""
                     };
                     let wasm_path = self.pull_and_decrypt_wasm(oci_ref, kbs_path).await?;
-                    return self.run_wasm(&wasm_path, &config);
+                    
+                    // Remove the OCI reference from cli_args before executing
+                    // since it's not needed by wasmtime (we already pulled the image)
+                    let mut exec_config = config.clone();
+                    exec_config.cli_args.remove(0);
+                    
+                    return self.run_wasm(&wasm_path, &exec_config);
                 }
             }
         }
