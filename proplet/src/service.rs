@@ -362,7 +362,6 @@ impl PropletService {
                 tee_runtime.clone()
             } else {
                 error!("TEE runtime not available but encrypted workload requested");
-                self.running_tasks.lock().await.remove(&req.id);
                 self.publish_result(&req.id, Vec::new(), Some("TEE runtime not available".to_string()))
                     .await?;
                 return Err(anyhow::anyhow!("TEE runtime not available"));
@@ -376,7 +375,6 @@ impl PropletService {
         let runtime = {
             if req.encrypted {
                 error!("TEE support not compiled in but encrypted workload requested");
-                self.running_tasks.lock().await.remove(&req.id);
                 self.publish_result(&req.id, Vec::new(), Some("TEE support not compiled in".to_string()))
                     .await?;
                 return Err(anyhow::anyhow!("TEE support not compiled in"));

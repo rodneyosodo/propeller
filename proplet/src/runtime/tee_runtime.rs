@@ -88,7 +88,7 @@ impl TeeWasmRuntime {
         }
 
         let config_path = PathBuf::from("/tmp/proplet/ocicrypt_keyprovider.conf");
-        let config_dir = config_path.parent().unwrap();
+        let config_dir = config_path.parent().expect("Config path should always have a parent directory");
 
         std::fs::create_dir_all(&config_dir)
             .context("Failed to create keyprovider config directory")?;
@@ -126,68 +126,6 @@ impl TeeWasmRuntime {
         info!("Set OCICRYPT_KEYPROVIDER_CONFIG environment variable");
 
         Ok(())
-    }
-
-    #[cfg(feature = "tee")]
-    async fn setup_kbs_client(&self) -> Result<KbsClientType> {
-        let kbs_uri = self
-            .config
-            .kbs_uri
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("KBS URI is required for encrypted images"))?;
-
-        info!("Setting up KBS client with URI: {}", kbs_uri);
-
-        let evidence_provider = Box::new(NativeEvidenceProvider::new()?);
-
-        let client =
-            KbsClientBuilder::with_evidence_provider(evidence_provider, kbs_uri).build()?;
-
-        Ok(Box::new(client))
-    }
-
-    #[cfg(feature = "tee")]
-    async fn get_decryption_key(
-        &self,
-        mut client: Box<dyn KbsClientCapabilities>,
-        kbs_resource_path: &str,
-    ) -> Result<Vec<u8>> {
-        info!("Using KBS resource path: {}", kbs_resource_path);
-
-        let kbs_uri = self
-            .config
-            .kbs_uri
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("KBS URI is required for encrypted images"))?;
-
-        let kbs_host = kbs_uri
-            .trim_start_matches("http://")
-            .trim_start_matches("https://");
-
-        let full_resource_uri = format!("kbs://{}/{}", kbs_host, kbs_resource_path);
-        info!("Constructed full KBS resource URI: {}", full_resource_uri);
-
-        let resource_uri = ResourceUri::try_from(full_resource_uri.as_str())
-            .map_err(|e| anyhow::anyhow!("Failed to create resource URI: {}", e))?;
-
-        info!("Fetching resource from KBS: {:?}", resource_uri);
-
-        let key = client
-            .get_resource(resource_uri)
-            .await
-            .map_err(|e| anyhow::anyhow!("Failed to get decryption key from KBS: {}", e))?;
-
-        info!("Received key from KBS: {} bytes", key.len());
-
-        if key.is_empty() {
-            return Err(anyhow::anyhow!(
-                "Invalid decryption key from KBS: Empty key"
-            ));
-        }
-
-        info!("Decryption key from KBS: {} bytes", key.len());
-
-        Ok(key)
     }
 
     #[cfg(feature = "tee")]
