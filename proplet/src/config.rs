@@ -7,6 +7,9 @@ use std::path::Path;
 use std::time::Duration;
 use uuid::Uuid;
 
+#[cfg(feature = "tee")]
+use crate::tee_detection;
+
 const DEFAULT_CONFIG_PATH: &str = "config.toml";
 const DEFAULT_CONFIG_SECTION: &str = "proplet";
 
@@ -143,10 +146,23 @@ impl PropletConfig {
 
         #[cfg(feature = "tee")]
         {
+            let tee_detection = tee_detection::detect_tee();
+
+            config.tee_enabled = tee_detection.is_tee();
+
             if config.tee_enabled {
+                tracing::info!(
+                    "TEE detected automatically: {} (method: {}, details: {:?})",
+                    tee_detection.tee_type.as_str(),
+                    tee_detection.detection_method,
+                    tee_detection.details
+                );
+
                 if config.kbs_uri.is_none() {
-                    return Err("KBS URI must be configured when TEE is enabled. Set PROPLET_KBS_URI environment variable.".into());
+                    return Err("KBS URI must be configured when TEE is detected. Set PROPLET_KBS_URI environment variable.".into());
                 }
+            } else {
+                tracing::info!("No TEE detected, running in standard mode");
             }
         }
 
@@ -266,10 +282,6 @@ impl PropletConfig {
 
         #[cfg(feature = "tee")]
         {
-            if let Ok(val) = env::var("PROPLET_TEE_ENABLED") {
-                config.tee_enabled = val.to_lowercase() == "true" || val == "1";
-            }
-
             if let Ok(val) = env::var("PROPLET_KBS_URI") {
                 config.kbs_uri = if val.is_empty() { None } else { Some(val) };
             }

@@ -283,6 +283,8 @@ mod tests {
             daemon: false,
             env: Some(HashMap::new()),
             monitoring_profile: None,
+            encrypted: false,
+            kbs_resource_path: None,
         };
 
         assert!(req.validate().is_ok());
@@ -301,6 +303,8 @@ mod tests {
             daemon: true,
             env: None,
             monitoring_profile: None,
+            encrypted: false,
+            kbs_resource_path: None,
         };
 
         assert!(req.validate().is_ok());
@@ -319,6 +323,8 @@ mod tests {
             daemon: false,
             env: None,
             monitoring_profile: None,
+            encrypted: false,
+            kbs_resource_path: None,
         };
 
         let result = req.validate();
@@ -339,6 +345,8 @@ mod tests {
             daemon: false,
             env: None,
             monitoring_profile: None,
+            encrypted: false,
+            kbs_resource_path: None,
         };
 
         let result = req.validate();
@@ -359,6 +367,8 @@ mod tests {
             daemon: false,
             env: None,
             monitoring_profile: None,
+            encrypted: false,
+            kbs_resource_path: None,
         };
 
         let result = req.validate();
@@ -366,6 +376,76 @@ mod tests {
         assert_eq!(
             result.unwrap_err().to_string(),
             "either file or image_url must be provided"
+        );
+    }
+
+    #[test]
+    fn test_start_request_validate_encrypted_with_valid_image_url() {
+        let req = StartRequest {
+            id: "task-encrypted-1".to_string(),
+            cli_args: vec![],
+            name: "encrypted_function".to_string(),
+            state: 0,
+            file: String::new(),
+            image_url: "docker.io/user/wasm:encrypted".to_string(),
+            inputs: vec![],
+            daemon: false,
+            env: None,
+            monitoring_profile: None,
+            encrypted: true,
+            kbs_resource_path: Some("default/key1/value".to_string()),
+        };
+
+        assert!(req.validate().is_ok());
+    }
+
+    #[test]
+    fn test_start_request_validate_encrypted_requires_image_url() {
+        let req = StartRequest {
+            id: "task-encrypted-2".to_string(),
+            cli_args: vec![],
+            name: "encrypted_function".to_string(),
+            state: 0,
+            file: String::new(),
+            image_url: String::new(),
+            inputs: vec![],
+            daemon: false,
+            env: None,
+            monitoring_profile: None,
+            encrypted: true,
+            kbs_resource_path: Some("default/key1/value".to_string()),
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "image_url is required for encrypted workloads"
+        );
+    }
+
+    #[test]
+    fn test_start_request_validate_encrypted_rejects_file() {
+        let req = StartRequest {
+            id: "task-encrypted-3".to_string(),
+            cli_args: vec![],
+            name: "encrypted_function".to_string(),
+            state: 0,
+            file: "base64data".to_string(),
+            image_url: "docker.io/user/wasm:encrypted".to_string(),
+            inputs: vec![],
+            daemon: false,
+            env: None,
+            monitoring_profile: None,
+            encrypted: true,
+            kbs_resource_path: Some("default/key1/value".to_string()),
+        };
+
+        let result = req.validate();
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "encrypted workloads should only use image_url, not file"
         );
     }
 
@@ -599,6 +679,8 @@ mod tests {
             daemon: false,
             env: Some(env.clone()),
             monitoring_profile: None,
+            encrypted: false,
+            kbs_resource_path: None,
         };
 
         assert_eq!(req.env.as_ref().unwrap().len(), 2);

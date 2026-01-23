@@ -4,6 +4,8 @@ mod monitoring;
 mod mqtt;
 mod runtime;
 mod service;
+#[cfg(feature = "tee")]
+mod tee_detection;
 mod types;
 
 use crate::config::PropletConfig;
