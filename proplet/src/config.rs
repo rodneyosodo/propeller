@@ -56,15 +56,14 @@ pub struct PropletConfig {
 
 impl Default for PropletConfig {
     fn default() -> Self {
-        #[cfg(feature = "tee")]
-        let default_config = Self {
+        Self {
             log_level: "info".to_string(),
             instance_id: Uuid::new_v4().to_string(),
             mqtt_address: "tcp://localhost:1883".to_string(),
             mqtt_timeout: 30,
             mqtt_qos: 2,
             mqtt_keep_alive: 30,
-            mqtt_max_packet_size: 10 * 1024 * 1024,
+            mqtt_max_packet_size: 10 * 1024 * 1024, // 10MB
             mqtt_inflight: 10,
             mqtt_request_channel_capacity: 128,
             liveliness_interval: 10,
@@ -76,36 +75,17 @@ impl Default for PropletConfig {
             k8s_namespace: None,
             external_wasm_runtime: None,
             enable_monitoring: true,
+            #[cfg(feature = "tee")]
             tee_enabled: false,
+            #[cfg(feature = "tee")]
             kbs_uri: None,
+            #[cfg(feature = "tee")]
             aa_config_path: None,
+            #[cfg(feature = "tee")]
             layer_store_path: "/tmp/proplet/layers".to_string(),
+            #[cfg(feature = "tee")]
             pull_concurrent_limit: 4,
-        };
-
-        #[cfg(not(feature = "tee"))]
-        let default_config = Self {
-            log_level: "info".to_string(),
-            instance_id: Uuid::new_v4().to_string(),
-            mqtt_address: "tcp://localhost:1883".to_string(),
-            mqtt_timeout: 30,
-            mqtt_qos: 2,
-            mqtt_keep_alive: 30,
-            mqtt_max_packet_size: 10 * 1024 * 1024,
-            mqtt_inflight: 10,
-            mqtt_request_channel_capacity: 128,
-            liveliness_interval: 10,
-            metrics_interval: 10,
-            domain_id: String::new(),
-            channel_id: String::new(),
-            client_id: String::new(),
-            client_key: String::new(),
-            k8s_namespace: None,
-            external_wasm_runtime: None,
-            enable_monitoring: true,
-        };
-
-        default_config
+        }
     }
 }
 
@@ -150,19 +130,8 @@ impl PropletConfig {
 
             config.tee_enabled = tee_detection.is_tee();
 
-            if config.tee_enabled {
-                tracing::info!(
-                    "TEE detected automatically: {} (method: {}, details: {:?})",
-                    tee_detection.tee_type.as_str(),
-                    tee_detection.detection_method,
-                    tee_detection.details
-                );
-
-                if config.kbs_uri.is_none() {
-                    return Err("KBS URI must be configured when TEE is detected. Set PROPLET_KBS_URI environment variable.".into());
-                }
-            } else {
-                tracing::info!("No TEE detected, running in standard mode");
+            if config.tee_enabled && config.kbs_uri.is_none() {
+                return Err("KBS URI must be configured when TEE is detected. Set PROPLET_KBS_URI environment variable.".into());
             }
         }
 

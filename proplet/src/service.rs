@@ -353,21 +353,10 @@ impl PropletService {
         req.validate()?;
 
         info!("Received start command for task: {}", req.id);
-        info!(
-            "Request details - encrypted: {}, image_url: '{}', file: '{}",
-            req.encrypted,
-            req.image_url,
-            if req.file.is_empty() {
-                "<empty>"
-            } else {
-                "<provided>"
-            }
-        );
 
         #[cfg(feature = "tee")]
         let runtime = if req.encrypted {
             if let Some(ref tee_runtime) = self.tee_runtime {
-                info!("Using TEE runtime for encrypted workload");
                 tee_runtime.clone()
             } else {
                 error!("TEE runtime not available but encrypted workload requested");
@@ -380,7 +369,6 @@ impl PropletService {
                 return Err(anyhow::anyhow!("TEE runtime not available"));
             }
         } else {
-            info!("Using standard runtime for unencrypted workload");
             self.runtime.clone()
         };
 
@@ -499,7 +487,6 @@ impl PropletService {
                 args: inputs,
             };
 
-            // Start monitoring setup (if enabled)
             if export_metrics {
                 if let Err(e) = monitor
                     .start_monitoring(&task_id, monitoring_profile.clone())
@@ -509,7 +496,6 @@ impl PropletService {
                 }
             }
 
-            // Spawn the monitoring attachment in a separate task to run concurrently
             let monitor_handle = if export_metrics {
                 let monitor_clone = monitor.clone();
                 let runtime_clone = runtime.clone();

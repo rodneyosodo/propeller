@@ -3,7 +3,6 @@ use async_trait::async_trait;
 use image_rs::layer_store::LayerStore;
 use image_rs::meta_store::MetaStore;
 use image_rs::pull::PullClient;
-use kbs_protocol::KbsClientCapabilities;
 use oci_client::client::ClientConfig;
 use oci_client::secrets::RegistryAuth;
 use oci_client::Reference;
@@ -13,16 +12,13 @@ use std::process::Command;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::warn;
 
 use crate::config::PropletConfig;
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 
 #[cfg(feature = "tee")]
 use attestation_agent::{AttestationAPIs, AttestationAgent};
-
-#[allow(dead_code)]
-type KbsClientType = Box<dyn KbsClientCapabilities>;
 
 pub struct TeeWasmRuntime {
     config: PropletConfig,
@@ -34,15 +30,13 @@ impl TeeWasmRuntime {
     pub async fn new(config: &PropletConfig) -> Result<Self> {
         #[cfg(feature = "tee")]
         {
-            info!("Initializing TEE support");
             let mut agent = AttestationAgent::new(config.aa_config_path.as_deref())
                 .context("Failed to create attestation agent")?;
             agent.init().await?;
-            info!("TEE attestation agent initialized");
 
             if config.tee_enabled {
                 Self::setup_keyprovider_config()
-                    .context("Failed to setup keyprovider config when TEE is enabled. Decryption requires valid keyprovider configuration.")?;
+                    .context("Failed to setup keyprovider config when TEE is enabled")?;
             }
 
             return Ok(Self {
@@ -60,22 +54,9 @@ impl TeeWasmRuntime {
 
     #[cfg(feature = "tee")]
     fn setup_keyprovider_config() -> Result<()> {
-        info!("Setting up keyprovider configuration");
-
-        // Check if OCICRYPT_KEYPROVIDER_CONFIG is already set
         if let Ok(existing_path) = std::env::var("OCICRYPT_KEYPROVIDER_CONFIG") {
-            info!(
-                "OCICRYPT_KEYPROVIDER_CONFIG already set to: {}",
-                existing_path
-            );
             if std::path::Path::new(&existing_path).exists() {
-                info!("Config file exists, using existing configuration");
                 return Ok(());
-            } else {
-                warn!(
-                    "Config file at {} does not exist, will create new one",
-                    existing_path
-                );
             }
         }
 
@@ -87,7 +68,6 @@ impl TeeWasmRuntime {
         std::fs::create_dir_all(&config_dir)
             .context("Failed to create keyprovider config directory")?;
 
-        // Use TCP address to match coco-keyprovider (listening on 50011)
         let keyprovider_addr = "127.0.0.1:50011";
 
         let config_content = format!(
@@ -104,36 +84,15 @@ impl TeeWasmRuntime {
         std::fs::write(&config_path, config_content)
             .context("Failed to write keyprovider config")?;
 
-        info!(
-            "Created OCICRYPT_KEYPROVIDER_CONFIG at: {}",
-            config_path.display()
-        );
-        info!("Keyprovider address (TCP): {}", keyprovider_addr);
-        info!("This should match coco-keyprovider listening address");
-        warn!(
-            "Verify coco-keyprovider is listening on: {}",
-            keyprovider_addr
-        );
-
         std::env::set_var("OCICRYPT_KEYPROVIDER_CONFIG", config_path);
-
-        info!("Set OCICRYPT_KEYPROVIDER_CONFIG environment variable");
 
         Ok(())
     }
 
     #[cfg(feature = "tee")]
     async fn pull_and_decrypt_wasm(&self, oci_reference: &str) -> Result<PathBuf> {
-        // Ensure OCICRYPT_KEYPROVIDER_CONFIG is set before any image-rs operations
-        // This is critical because ocicrypt-rs reads it at lazy_static initialization
-        if let Err(e) = Self::setup_keyprovider_config() {
-            warn!("Failed to setup keyprovider config: {}", e);
-        }
-
         let image_ref = Reference::try_from(oci_reference.to_string())
             .context("Failed to parse image reference")?;
-
-        info!("Pulling image: {}", image_ref);
 
         let layer_store = LayerStore::new(PathBuf::from(&self.config.layer_store_path))
             .context("Failed to create layer store")?;
@@ -153,8 +112,6 @@ impl TeeWasmRuntime {
             .await
             .context("Failed to pull manifest")?;
 
-        info!("Successfully pulled manifest for image: {}", image_ref);
-
         let is_wasm_image = manifest.config.media_type.contains("wasm")
             || manifest
                 .layers
@@ -166,21 +123,11 @@ impl TeeWasmRuntime {
             .iter()
             .any(|l| l.media_type.contains("encrypted"));
 
-        info!("Image type: {}", if is_wasm_image { "WASM" } else { "OCI" });
-        info!("Image encrypted: {}", is_encrypted);
-
         if is_wasm_image && !is_encrypted {
-            info!("Pulling WASM blob directly");
-
             let wasm_layer = manifest
                 .layers
                 .first()
                 .ok_or_else(|| anyhow::anyhow!("No layers found in WASM image"))?;
-
-            info!(
-                "WASM layer: {} ({})",
-                wasm_layer.digest, wasm_layer.media_type
-            );
 
             let blob_stream = pull_client
                 .client
@@ -190,8 +137,6 @@ impl TeeWasmRuntime {
 
             let wasm_filename = format!("{}.wasm", wasm_layer.digest.replace("sha256:", ""));
             let wasm_path = PathBuf::from(&self.config.layer_store_path).join(wasm_filename);
-
-            info!("Writing WASM to: {:?}", wasm_path);
 
             let mut file = tokio::fs::File::create(&wasm_path)
                 .await
@@ -208,116 +153,85 @@ impl TeeWasmRuntime {
 
             file.sync_all().await.context("Failed to sync WASM file")?;
 
-            info!("Successfully pulled WASM to: {:?}", wasm_path);
+            return Ok(wasm_path);
+        }
 
-            Ok(wasm_path)
+        let image_config = ImageConfiguration::from_reader(config.as_bytes()).unwrap_or_else(|e| {
+            warn!(
+                "Failed to parse image config (may be minimal WASM config): {}",
+                e
+            );
+            ImageConfiguration::default()
+        });
+
+        let diff_ids = image_config.rootfs().diff_ids();
+
+        let diff_ids_vec: Vec<String> = if diff_ids.is_empty() && !manifest.layers.is_empty() {
+            manifest
+                .layers
+                .iter()
+                .map(|layer| {
+                    if is_encrypted {
+                        String::new()
+                    } else {
+                        layer.digest.clone()
+                    }
+                })
+                .collect()
         } else {
-            info!("Processing with OCI layer handler (for decryption if encrypted)");
+            diff_ids.to_vec()
+        };
 
-            let image_config =
-                ImageConfiguration::from_reader(config.as_bytes()).unwrap_or_else(|e| {
-                    warn!(
-                        "Failed to parse image config (may be minimal WASM config): {}",
-                        e
-                    );
-                    info!("Using default OCI configuration for WASM image");
-                    ImageConfiguration::default()
-                });
+        let decrypt_config: Option<String> = if is_encrypted {
+            Some("provider:attestation-agent".to_string())
+        } else {
+            None
+        };
 
-            let diff_ids = image_config.rootfs().diff_ids();
+        let layer_metas = pull_client
+            .async_pull_layers(
+                manifest.layers.clone(),
+                &diff_ids_vec,
+                &decrypt_config.as_deref(),
+                Arc::new(RwLock::new(MetaStore::default())),
+            )
+            .await
+            .context("Failed to pull and decrypt layers")?;
 
-            let diff_ids_vec: Vec<String> = if diff_ids.is_empty() && !manifest.layers.is_empty() {
-                info!(
-                    "Image config has no diff_ids, generating placeholders for {} layers",
-                    manifest.layers.len()
-                );
-                manifest
-                    .layers
-                    .iter()
-                    .map(|layer| {
-                        if is_encrypted {
-                            info!("Using empty diff_id for encrypted layer (digest validation will be skipped)");
-                            String::new()
-                        } else {
-                            layer.digest.clone()
-                        }
-                    })
-                    .collect()
-            } else {
-                diff_ids.to_vec()
-            };
+        let layer_store_path = layer_metas
+            .first()
+            .map(|m| PathBuf::from(&m.store_path))
+            .ok_or_else(|| anyhow::anyhow!("No layers found in image"))?;
 
-            let decrypt_config: Option<String> = if is_encrypted {
-                info!("Encrypted image detected - keyprovider will handle decryption via gRPC");
-                info!("Ensure OCICRYPT_KEYPROVIDER_CONFIG is set");
-                Some("provider:attestation-agent".to_string())
-            } else {
-                info!("No encrypted layers detected");
-                None
-            };
+        let wasm_path = layer_store_path.join("module.wasm");
 
-            let layer_metas = pull_client
-                .async_pull_layers(
-                    manifest.layers.clone(),
-                    &diff_ids_vec,
-                    &decrypt_config.as_deref(),
-                    Arc::new(RwLock::new(MetaStore::default())),
-                )
-                .await
-                .context("Failed to pull and decrypt layers")?;
+        if wasm_path.exists() && wasm_path.is_file() {
+            return Ok(wasm_path);
+        }
 
-            let layer_store_path = layer_metas
-                .first()
-                .map(|m| PathBuf::from(&m.store_path))
-                .ok_or_else(|| anyhow::anyhow!("No layers found in image"))?;
-
-            info!("Layer store path: {:?}", layer_store_path);
-
-            let wasm_path = layer_store_path.join("module.wasm");
-            info!("Checking for WASM at: {:?}", wasm_path);
-
-            if wasm_path.exists() && wasm_path.is_file() {
-                info!("Found WASM module at: {:?}", wasm_path);
-                return Ok(wasm_path);
-            }
-
-            info!("module.wasm not found, searching directory...");
-
-            if let Ok(entries) = std::fs::read_dir(&layer_store_path) {
-                let files: Vec<_> = entries.filter_map(|e| e.ok()).collect();
-                info!("Directory contents ({} entries):", files.len());
-                for entry in &files {
-                    info!(
-                        "  - {:?} (is_file: {})",
-                        entry.path(),
-                        entry.path().is_file()
-                    );
-                }
-
-                for entry in files {
-                    let path = entry.path();
-                    if path.is_file() {
-                        if let Some(ext) = path.extension() {
-                            if ext == "wasm" {
-                                info!("Found WASM file: {:?}", path);
-                                return Ok(path);
-                            }
+        if let Ok(entries) = std::fs::read_dir(&layer_store_path) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_file() {
+                    if let Some(ext) = path.extension() {
+                        if ext == "wasm" {
+                            return Ok(path);
                         }
                     }
                 }
             }
-
-            Err(anyhow::anyhow!(
-                "No WASM file found in layer store: {:?}",
-                layer_store_path
-            ))
         }
+
+        Err(anyhow::anyhow!(
+            "No WASM file found in layer store: {:?}",
+            layer_store_path
+        ))
     }
 
     #[cfg(not(feature = "tee"))]
     async fn pull_and_decrypt_wasm(&self, _oci_reference: &str) -> Result<PathBuf> {
         Err(anyhow::anyhow!(
-            "TEE support is not enabled. Please compile with the 'tee' feature."
+            "TEE support is not enabled. Please compile with 'tee' feature."
         ))
     }
 
@@ -329,29 +243,20 @@ impl TeeWasmRuntime {
             .map(|s| s.as_str())
             .unwrap_or("wasmtime");
 
-        info!("Using WASM runtime: {}", runtime_path);
-
         let mut cmd = Command::new(runtime_path);
 
-        // Add --dir flag for WASI directory access
         cmd.arg("--dir").arg("/tmp");
 
-        // Add cli_args (like --invoke add) before the wasm file
         for arg in &config.cli_args {
             cmd.arg(arg);
         }
 
-        // Add the wasm file path
         cmd.arg(wasm_path);
 
-        // Add function arguments after the wasm file
         for arg in &config.args {
             cmd.arg(arg.to_string());
         }
 
-        info!("Executing command: {:?}", cmd);
-
-        // Explicitly set stdout and stderr to be piped
         cmd.stdout(std::process::Stdio::piped());
         cmd.stderr(std::process::Stdio::piped());
 
@@ -373,8 +278,6 @@ impl TeeWasmRuntime {
 
     fn run_wasm_embedded(&self, wasm_binary: &[u8], start_config: &StartConfig) -> Result<Vec<u8>> {
         use wasmtime::*;
-
-        info!("Running embedded WASM with wasmtime (without WASI for now)");
 
         let mut config = Config::new();
         config.wasm_component_model(false);
@@ -430,17 +333,13 @@ impl TeeWasmRuntime {
 #[async_trait]
 impl Runtime for TeeWasmRuntime {
     async fn start_app(&self, _ctx: RuntimeContext, config: StartConfig) -> Result<Vec<u8>> {
-        info!("Starting TEE WASM app: {}", config.id);
-
         #[cfg(feature = "tee")]
         {
             if let Some(ref agent) = self.attestation_agent {
-                let evidence = agent
+                let _evidence = agent
                     .get_evidence(b"wasm-runner")
                     .await
                     .context("Failed to get TEE evidence")?;
-                info!("TEE evidence obtained: {} bytes", evidence.len());
-                info!("Evidence generation triggers attestation process; validation is handled by remote attestation service");
             }
         }
 
@@ -451,11 +350,8 @@ impl Runtime for TeeWasmRuntime {
         if !config.cli_args.is_empty() {
             if let Some(oci_ref) = config.cli_args.first() {
                 if oci_ref.contains("/") || oci_ref.contains(":") {
-                    info!("Pulling WASM from OCI: {}", oci_ref);
                     let wasm_path = self.pull_and_decrypt_wasm(oci_ref).await?;
 
-                    // Remove the OCI reference from cli_args before executing
-                    // since it's not needed by wasmtime (we already pulled the image)
                     let mut exec_config = config.clone();
                     exec_config.cli_args.remove(0);
 
@@ -468,7 +364,6 @@ impl Runtime for TeeWasmRuntime {
     }
 
     async fn stop_app(&self, _id: String) -> Result<()> {
-        info!("Stopping TEE WASM app: {}", _id);
         Ok(())
     }
 
