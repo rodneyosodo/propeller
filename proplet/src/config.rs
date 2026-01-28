@@ -45,8 +45,6 @@ pub struct PropletConfig {
     #[cfg(feature = "tee")]
     pub tee_enabled: bool,
     #[cfg(feature = "tee")]
-    pub kbs_uri: Option<String>,
-    #[cfg(feature = "tee")]
     pub aa_config_path: Option<String>,
     #[cfg(feature = "tee")]
     pub layer_store_path: String,
@@ -77,8 +75,6 @@ impl Default for PropletConfig {
             enable_monitoring: true,
             #[cfg(feature = "tee")]
             tee_enabled: false,
-            #[cfg(feature = "tee")]
-            kbs_uri: None,
             #[cfg(feature = "tee")]
             aa_config_path: None,
             #[cfg(feature = "tee")]
@@ -129,10 +125,6 @@ impl PropletConfig {
             let tee_detection = tee_detection::detect_tee();
 
             config.tee_enabled = tee_detection.is_tee();
-
-            if config.tee_enabled && config.kbs_uri.is_none() {
-                return Err("KBS URI must be configured when TEE is detected. Set PROPLET_KBS_URI environment variable.".into());
-            }
         }
 
         Ok(config)
@@ -251,10 +243,6 @@ impl PropletConfig {
 
         #[cfg(feature = "tee")]
         {
-            if let Ok(val) = env::var("PROPLET_KBS_URI") {
-                config.kbs_uri = if val.is_empty() { None } else { Some(val) };
-            }
-
             if let Ok(val) = env::var("PROPLET_AA_CONFIG_PATH") {
                 config.aa_config_path = if val.is_empty() { None } else { Some(val) };
             }
@@ -322,7 +310,6 @@ mod tests {
         #[cfg(feature = "tee")]
         {
             assert!(!config.tee_enabled);
-            assert!(config.kbs_uri.is_none());
             assert!(config.aa_config_path.is_none());
             assert_eq!(config.layer_store_path, "/tmp/proplet/layers");
         }
