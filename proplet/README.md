@@ -8,7 +8,7 @@ Proplet is a lightweight worker service that executes WebAssembly workloads on e
 
 ## Features
 
-- **Dual Runtime Support**:
+- **Multiple Runtime Support**:
   - **Wasmtime Runtime**: In-process WebAssembly execution using Wasmtime
   - **Host Runtime**: External WebAssembly runtime integration via subprocess execution
   - **TeeWasmRuntime (TEE)**: Encrypted WASM execution with TEE attestation and KBS integration
@@ -24,15 +24,6 @@ Proplet is a lightweight worker service that executes WebAssembly workloads on e
 - **Daemon Mode**: Supports both daemon and non-daemon task execution
 
 - **Environment Variables & CLI Args**: Passes configuration to Wasm functions (via Host runtime)
-
-## Architecture
-
-The Rust implementation maintains feature parity with the Go version while leveraging Rust's performance and safety benefits:
-
-- **Async/Await**: Built on Tokio for high-performance async I/O
-- **Type Safety**: Strong typing throughout with comprehensive error handling
-- **Memory Safety**: No garbage collection overhead, zero-cost abstractions
-- **Modular Design**: Clean separation of concerns with runtime trait abstraction
 
 ## Building
 
@@ -84,28 +75,37 @@ export PROPLET_ENABLE_MONITORING=true
 
 ## Running Encrypted WASM Workloads
 
-### Port Migration Notice
+To enable encrypted workloads, you must have a KBS instance running and configured with encryption keys. Proplet will automatically detect if it's running inside a Trusted Execution Environment (TEE). You can use this qemu [config](hal/ubuntu/qemu.sh) to run a TEE VM.
 
-The attestation-agent service now uses port **50010** (previously 50002) and coco_keyprovider uses port **50011**. Existing deployments expecting port 50002 should update their configurations to use the new ports.
+The attestation-agent service uses port **50010** and coco_keyprovider uses port **50011**.
 
 ### Prerequisites
 
-1. **Attestation Agent** must be running as a gRPC keyprovider service:
+1. If the Attestation Agent is not running you can manually run it by executing the following:
 
 ```bash
-# Start attestation-agent as keyprovider
-attestation-agent \
-  --aa-config /path/to/aa-config.toml \
-  --attestation_sock /run/attestation-agent.sock
+sudo attestation-agent --attestation_sock 127.0.0.1:50010
 ```
 
-The attestation-agent will:
+- 50010 is the port that attestation-agent exposes to talk to it using gRPC
 
-- Perform TEE attestation
-- Fetch decryption keys from KBS
-- Provide decryption service to OCI layer handler via gRPC
+The attestation-agent will perform TEE attestation.
 
-2. **KBS** must be running and configured with encryption keys
+2. **KBS** must be running and configured with encryption keys. KBS should be running at the host machine.
+3. If the keyprovider is not running you can manually run it by executing the following:
+
+```bash
+sudo coco_keyprovider --socket 127.0.0.1:50011 --kbs http://10.0.2.2:8082
+```
+
+- 50011 is the port that coco_keyprovider exposes to talk to it using gRPC
+- http://10.0.2.2:8082 is the KBS endpoint
+
+The coco-keyprovider is a standalone gRPC service that handles both attestation and KBS communication. It:
+
+- Runs as a gRPC service listening on a configurable socket address (e.g., 127.0.0.1:50011)
+- Performs attestation using NativeEvidenceProvider to securely retrieve keys from KBS
+- Communicates with KBS to fetch and register Key Encryption Keys (KEKs)
 
 ### TEE Configuration
 
@@ -118,35 +118,35 @@ Proplet automatically detects if it's running inside a Trusted Execution Environ
 **Configuration:**
 
 ```bash
-# KBS endpoint (required when TEE is detected)
-export PROPLET_KBS_URI=http://10.0.2.2:8082
-
 # Optional: Attestation agent config path
 export PROPLET_AA_CONFIG_PATH=/path/to/aa-config.toml
+
+# Coco keyprovider address
+export PROPLET_COCO_KEYPROVIDER_ADDRESS=127.0.0.1:50021
 
 # Optional: Layer store for OCI images (default: /tmp/proplet/layers)
 export PROPLET_LAYER_STORE_PATH=/tmp/proplet/layers
 ```
 
-When Proplet starts, it will automatically detect and log the TEE status:
+The AA config file is used to configure the Attestation Agent. It should contain the following:
 
-```bash
-# If TEE is detected:
-INFO TEE detected automatically: TDX (method: device_file, details: "/dev/tdx_guest exists")
-
-# If no TEE is detected:
-INFO No TEE detected, running in standard mode
+```toml
+[token_configs.kbs]
+url = "http://10.0.2.2:8082"
+[eventlog_config]
+init_pcr = 17
+enable_eventlog = false
 ```
 
 ### Task Manifest for Encrypted Workloads
 
 ```json
 {
-  "name": "my-function",
-  "image_url": "docker.io/user/wasm:encrypted",
+  "name": "add",
+  "image_url": "docker.io/rodneydav/wasm-addition:encrypted",
+  "kbs_resource_path": "default/wasm-keys/my-app",
   "encrypted": true,
-  "kbs_resource_path": "default/key/my-app",
-  "cli_args": ["--invoke", "function_name"],
+  "cli_args": ["--invoke", "add"],
   "inputs": [10, 20]
 }
 ```
@@ -178,39 +178,26 @@ docker-compose up -d
 
 ```bash
 # Generate encryption keys
-openssl genrsa -out private_key.pem 2048
-openssl rsa -in private_key.pem -pubout -out public_key.pem
+openssl rand -base64 32 > encryption.key
 
 # Encrypt WASM image
 skopeo copy \
-  --encryption-key type:jwe:method:pkcs1:pubkey:./public_key.pem \
-  oci:localhost/wasm:latest \
-  oci:localhost/wasm:encrypted
+  --encryption-key type:jwe:method:pkcs1:pubkey:./encryption.key \
+  docker://docker.io/rodneydav/wasm-addition:latest \
+  docker://docker.io/rodneydav/wasm-addition:encrypted
 
 # Push to registry
-skopeo copy oci:localhost/wasm:encrypted \
-  docker://docker.io/user/wasm:encrypted
+skopeo copy dir:./output docker://docker.io/rodneydav/wasm-addition:encrypted
 ```
 
-4. **Start attestation-agent as keyprovider**:
-
-```bash
-attestation-agent \
-  --aa-config /path/to/aa-config.toml \
-  --attestation_sock /run/attestation-agent.sock
-```
-
-5. **Build and run Proplet**:
+4. **Build and run Proplet**:
 
 ```bash
 cd /home/rodneyosodo/code/absmach/propeller/proplet
 cargo build --release --features tee
 
-PROPLET_KBS_URI=http://localhost:8080 \
-./target/release/proplet
+PROPLET_AA_CONFIG_PATH=/tmp/aa-config.toml PROPLET_COCO_KEYPROVIDER_ADDRESS=127.0.0.1:50011 ./target/release/proplet
 ```
-
-**Note**: TEE is auto-detected at runtime. The `PROPLET_TEE_ENABLED` environment variable is **not required** and has no effect. TEE detection is performed by checking for TEE-specific devices (e.g., `/dev/tdx_guest` for Intel TDX, `/dev/sev` for AMD SEV/SNP, `/dev/sgx_enclave` for Intel SGX).
 
 ## Running
 
@@ -268,18 +255,6 @@ Key Rust crates used:
 - **image-rs**: OCI image pulling with encryption support
 - **kbs_protocol**: KBS client protocol
 - **oci-client**: OCI registry client
-
-## Differences from Go Implementation
-
-1. **WASI Support**: The Wasmtime runtime currently uses a simplified setup without full WASI support. CLI args and environment variables are supported via Host runtime.
-
-2. **Error Handling**: Uses Rust's `Result` type and `anyhow` for error propagation instead of Go's error handling.
-
-3. **Concurrency**: Uses Tokio's async/await instead of Go's goroutines and channels.
-
-4. **Memory Management**: No garbage collection; uses Rust's ownership system for memory safety.
-
-5. **TEE Support**: Rust implementation includes encrypted workload support with TEE attestation, not available in Go version.
 
 ## Performance
 

@@ -47,6 +47,8 @@ pub struct PropletConfig {
     #[cfg(feature = "tee")]
     pub aa_config_path: Option<String>,
     #[cfg(feature = "tee")]
+    pub coco_keyprovider_address: String,
+    #[cfg(feature = "tee")]
     pub layer_store_path: String,
     #[cfg(feature = "tee")]
     pub pull_concurrent_limit: usize,
@@ -77,6 +79,8 @@ impl Default for PropletConfig {
             tee_enabled: false,
             #[cfg(feature = "tee")]
             aa_config_path: None,
+            #[cfg(feature = "tee")]
+            coco_keyprovider_address: "127.0.0.1:50011".to_string(),
             #[cfg(feature = "tee")]
             layer_store_path: "/tmp/proplet/layers".to_string(),
             #[cfg(feature = "tee")]
@@ -245,6 +249,10 @@ impl PropletConfig {
         {
             if let Ok(val) = env::var("PROPLET_AA_CONFIG_PATH") {
                 config.aa_config_path = if val.is_empty() { None } else { Some(val) };
+            }
+
+            if let Ok(val) = env::var("PROPLET_COCO_KEYPROVIDER_ADDRESS") {
+                config.coco_keyprovider_address = val;
             }
 
             if let Ok(val) = env::var("PROPLET_LAYER_STORE_PATH") {

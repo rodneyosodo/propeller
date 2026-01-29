@@ -35,7 +35,7 @@ impl TeeWasmRuntime {
             agent.init().await?;
 
             if config.tee_enabled {
-                Self::setup_keyprovider_config()
+                Self::setup_keyprovider_config(config)
                     .context("Failed to setup keyprovider config when TEE is enabled")?;
             }
 
@@ -53,7 +53,7 @@ impl TeeWasmRuntime {
     }
 
     #[cfg(feature = "tee")]
-    fn setup_keyprovider_config() -> Result<()> {
+    fn setup_keyprovider_config(config: &PropletConfig) -> Result<()> {
         if let Ok(existing_path) = std::env::var("OCICRYPT_KEYPROVIDER_CONFIG") {
             if std::path::Path::new(&existing_path).exists() {
                 return Ok(());
@@ -68,8 +68,6 @@ impl TeeWasmRuntime {
         std::fs::create_dir_all(&config_dir)
             .context("Failed to create keyprovider config directory")?;
 
-        let keyprovider_addr = "127.0.0.1:50011";
-
         let config_content = format!(
             r#"{{
   "key-providers": {{
@@ -78,7 +76,7 @@ impl TeeWasmRuntime {
     }}
   }}
 }}"#,
-            keyprovider_addr
+            config.coco_keyprovider_address
         );
 
         std::fs::write(&config_path, config_content)
