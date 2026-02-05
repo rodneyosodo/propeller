@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/0x6flab/namegenerator"
+	"github.com/absmach/propeller/pkg/cron"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/proplet"
@@ -24,6 +25,8 @@ const (
 	defOffset         = 0
 	defLimit          = 100
 	aliveHistoryLimit = 10
+	defaultPriority   = 50
+	defaultTimezone   = "UTC"
 )
 
 var (
@@ -31,12 +34,55 @@ var (
 	namegen   = namegenerator.NewGenerator()
 )
 
+// taskRepositoryAdapter adapts TaskRepository to Storage interface for CronScheduler
+type taskRepositoryAdapter struct {
+	repo storage.TaskRepository
+}
+
+func (a *taskRepositoryAdapter) Create(ctx context.Context, key string, value any) error {
+	t, ok := value.(task.Task)
+	if !ok {
+		return fmt.Errorf("invalid task data")
+	}
+	_, err := a.repo.Create(ctx, t)
+	return err
+}
+
+func (a *taskRepositoryAdapter) Get(ctx context.Context, key string) (any, error) {
+	return a.repo.Get(ctx, key)
+}
+
+func (a *taskRepositoryAdapter) Update(ctx context.Context, key string, value any) error {
+	t, ok := value.(task.Task)
+	if !ok {
+		return fmt.Errorf("invalid task data")
+	}
+	return a.repo.Update(ctx, t)
+}
+
+func (a *taskRepositoryAdapter) List(ctx context.Context, offset, limit uint64) ([]any, uint64, error) {
+	tasks, total, err := a.repo.List(ctx, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	result := make([]any, len(tasks))
+	for i, t := range tasks {
+		result[i] = t
+	}
+	return result, total, nil
+}
+
+func (a *taskRepositoryAdapter) Delete(ctx context.Context, key string) error {
+	return a.repo.Delete(ctx, key)
+}
+
 type service struct {
 	taskRepo         storage.TaskRepository
 	propletRepo      storage.PropletRepository
 	taskPropletRepo  storage.TaskPropletRepository
 	metricsRepo      storage.MetricsRepository
 	scheduler        scheduler.Scheduler
+	cronScheduler    *CronScheduler
 	baseTopic        string
 	pubsub           mqtt.PubSub
 	logger           *slog.Logger
@@ -72,6 +118,9 @@ func NewService(
 		flCoordinatorURL: coordinatorURL,
 		httpClient:       httpClient,
 	}
+
+	taskStorageAdapter := &taskRepositoryAdapter{repo: repos.Tasks}
+	svc.cronScheduler = NewCronScheduler(taskStorageAdapter, svc, logger)
 
 	return svc
 }
@@ -121,9 +170,37 @@ func (svc *service) CreateTask(ctx context.Context, t task.Task) (task.Task, err
 		t.Kind = task.TaskKindStandard
 	}
 
+	if t.Priority == 0 {
+		t.Priority = defaultPriority
+	}
+
+	if t.Schedule != "" {
+		if err := cron.ValidateCronExpression(t.Schedule); err != nil {
+			return task.Task{}, fmt.Errorf("invalid cron expression: %w", err)
+		}
+
+		schedule, err := cron.ParseCronExpression(t.Schedule)
+		if err != nil {
+			return task.Task{}, fmt.Errorf("failed to parse cron expression: %w", err)
+		}
+
+		timezone := t.Timezone
+		if timezone == "" {
+			timezone = defaultTimezone
+		}
+
+		t.NextRun = cron.CalculateNextRun(schedule, time.Now(), timezone)
+	}
+
 	t, err := svc.taskRepo.Create(ctx, t)
 	if err != nil {
 		return task.Task{}, err
+	}
+
+	if t.Schedule != "" && svc.cronScheduler != nil {
+		if err := svc.cronScheduler.ScheduleTask(ctx, t.ID); err != nil {
+			svc.logger.WarnContext(ctx, "failed to schedule task in cron scheduler", "error", err, "task_id", t.ID)
+		}
 	}
 
 	return t, nil
@@ -163,15 +240,68 @@ func (svc *service) UpdateTask(ctx context.Context, t task.Task) (task.Task, err
 	if t.File != nil {
 		dbT.File = t.File
 	}
+	if t.Priority != 0 {
+		dbT.Priority = t.Priority
+	}
+
+	scheduleChanged := false
+	if t.Schedule != "" && t.Schedule != dbT.Schedule {
+		if err := cron.ValidateCronExpression(t.Schedule); err != nil {
+			return task.Task{}, fmt.Errorf("invalid cron expression: %w", err)
+		}
+
+		schedule, err := cron.ParseCronExpression(t.Schedule)
+		if err != nil {
+			return task.Task{}, fmt.Errorf("failed to parse cron expression: %w", err)
+		}
+
+		timezone := t.Timezone
+		if timezone == "" {
+			timezone = defaultTimezone
+		}
+
+		dbT.Schedule = t.Schedule
+		dbT.IsRecurring = t.IsRecurring
+		dbT.Timezone = timezone
+		dbT.NextRun = cron.CalculateNextRun(schedule, time.Now(), timezone)
+		scheduleChanged = true
+	} else if t.Schedule == "" && dbT.Schedule != "" {
+		dbT.Schedule = ""
+		dbT.NextRun = time.Time{}
+		dbT.IsRecurring = false
+		scheduleChanged = true
+	}
 
 	if err := svc.taskRepo.Update(ctx, dbT); err != nil {
 		return task.Task{}, err
+	}
+
+	if !scheduleChanged || svc.cronScheduler == nil {
+		return dbT, nil
+	}
+
+	if dbT.Schedule != "" {
+		if err := svc.cronScheduler.ScheduleTask(ctx, dbT.ID); err != nil {
+			svc.logger.WarnContext(ctx, "failed to reschedule task in cron scheduler", "error", err, "task_id", dbT.ID)
+		}
+
+		return dbT, nil
+	}
+
+	if err := svc.cronScheduler.UnscheduleTask(ctx, dbT.ID); err != nil {
+		svc.logger.WarnContext(ctx, "failed to unschedule task in cron scheduler", "error", err, "task_id", dbT.ID)
 	}
 
 	return dbT, nil
 }
 
 func (svc *service) DeleteTask(ctx context.Context, taskID string) error {
+	if svc.cronScheduler != nil {
+		if err := svc.cronScheduler.UnscheduleTask(ctx, taskID); err != nil {
+			svc.logger.WarnContext(ctx, "failed to unschedule task from cron scheduler", "error", err, "task_id", taskID)
+		}
+	}
+
 	return svc.taskRepo.Delete(ctx, taskID)
 }
 
@@ -320,6 +450,14 @@ func (svc *service) GetPropletMetrics(ctx context.Context, propletID string, off
 		Total:   total,
 		Metrics: metrics,
 	}, nil
+}
+
+func (svc *service) StartCronScheduler(ctx context.Context) error {
+	if svc.cronScheduler == nil {
+		return nil
+	}
+
+	return svc.cronScheduler.Start(ctx)
 }
 
 func (svc *service) handle(ctx context.Context) func(topic string, msg map[string]any) error {
