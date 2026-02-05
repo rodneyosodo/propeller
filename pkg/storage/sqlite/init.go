@@ -92,7 +92,7 @@ type Database struct {
 func NewDatabase(path string) (*Database, error) {
 	db, err := sqlx.Connect("sqlite3", path)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDBConnection, err)
+		return nil, fmt.Errorf("%w: %w", ErrDBConnection, err)
 	}
 
 	db.SetMaxOpenConns(25)
@@ -199,11 +199,11 @@ func (db *Database) Migrate() error {
 
 	n, err := migrate.Exec(db.DB.DB, "sqlite3", migrations, migrate.Up)
 	if err != nil {
-		return fmt.Errorf("database migration error: %v", err)
+		return fmt.Errorf("database migration error: %w", err)
 	}
 
 	if n > 0 {
-		fmt.Printf("Applied %d migrations\n", n)
+		return fmt.Errorf("applied %d migrations", n)
 	}
 
 	return nil

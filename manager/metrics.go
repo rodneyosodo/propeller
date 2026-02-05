@@ -4,8 +4,10 @@ import (
 	"github.com/absmach/propeller/pkg/storage"
 )
 
-type TaskMetrics = storage.TaskMetrics
-type PropletMetrics = storage.PropletMetrics
+type (
+	TaskMetrics    = storage.TaskMetrics
+	PropletMetrics = storage.PropletMetrics
+)
 
 type TaskMetricsPage struct {
 	Offset  uint64        `json:"offset"`

@@ -37,19 +37,18 @@ func (r *metricsRepo) CreateTaskMetrics(ctx context.Context, m TaskMetrics) erro
 
 	metrics, err := jsonBytes(m.Metrics)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	aggregated, err := jsonBytes(m.Aggregated)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	id := fmt.Sprintf("%s:%d", m.TaskID, m.Timestamp.UnixNano())
 
-	_, err = r.db.ExecContext(ctx, query, id, m.TaskID, m.PropletID, metrics, aggregated, m.Timestamp)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+	if _, err = r.db.ExecContext(ctx, query, id, m.TaskID, m.PropletID, metrics, aggregated, m.Timestamp); err != nil {
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
 	return nil
@@ -60,19 +59,18 @@ func (r *metricsRepo) CreatePropletMetrics(ctx context.Context, m PropletMetrics
 
 	cpuMetrics, err := jsonBytes(m.CPU)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	memoryMetrics, err := jsonBytes(m.Memory)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	id := fmt.Sprintf("%s:%d", m.PropletID, m.Timestamp.UnixNano())
 
-	_, err = r.db.ExecContext(ctx, query, id, m.PropletID, m.Namespace, cpuMetrics, memoryMetrics, m.Timestamp)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+	if _, err = r.db.ExecContext(ctx, query, id, m.PropletID, m.Namespace, cpuMetrics, memoryMetrics, m.Timestamp); err != nil {
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
 	return nil
@@ -84,14 +82,14 @@ func (r *metricsRepo) ListTaskMetrics(ctx context.Context, taskID string, offset
 	var total uint64
 	err := r.db.GetContext(ctx, &total, query, taskID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	query = `SELECT id, task_id, proplet_id, metrics, aggregated, timestamp FROM task_metrics WHERE task_id = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3`
 
 	rows, err := r.db.QueryContext(ctx, query, taskID, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 	defer rows.Close()
 
@@ -99,15 +97,19 @@ func (r *metricsRepo) ListTaskMetrics(ctx context.Context, taskID string, offset
 	for rows.Next() {
 		var dbm dbTaskMetrics
 		if err := rows.Scan(&dbm.ID, &dbm.TaskID, &dbm.PropletID, &dbm.Metrics, &dbm.Aggregated, &dbm.Timestamp); err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		m, err := r.toTaskMetrics(dbm)
 		if err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		metrics = append(metrics, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return metrics, total, nil
@@ -119,14 +121,14 @@ func (r *metricsRepo) ListPropletMetrics(ctx context.Context, propletID string, 
 	var total uint64
 	err := r.db.GetContext(ctx, &total, query, propletID)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	query = `SELECT id, proplet_id, namespace, cpu_metrics, memory_metrics, timestamp FROM proplet_metrics WHERE proplet_id = $1 ORDER BY timestamp DESC LIMIT $2 OFFSET $3`
 
 	rows, err := r.db.QueryContext(ctx, query, propletID, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 	defer rows.Close()
 
@@ -134,15 +136,19 @@ func (r *metricsRepo) ListPropletMetrics(ctx context.Context, propletID string, 
 	for rows.Next() {
 		var dbm dbPropletMetrics
 		if err := rows.Scan(&dbm.ID, &dbm.PropletID, &dbm.Namespace, &dbm.CPUMetrics, &dbm.MemoryMetrics, &dbm.Timestamp); err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		m, err := r.toPropletMetrics(dbm)
 		if err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		metrics = append(metrics, m)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return metrics, total, nil

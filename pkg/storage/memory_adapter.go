@@ -21,6 +21,7 @@ func (r *memoryTaskRepo) Create(ctx context.Context, t task.Task) (task.Task, er
 	if err := r.storage.Create(ctx, t.ID, t); err != nil {
 		return task.Task{}, err
 	}
+
 	return t, nil
 }
 
@@ -33,6 +34,7 @@ func (r *memoryTaskRepo) Get(ctx context.Context, id string) (task.Task, error) 
 	if !ok {
 		return task.Task{}, pkgerrors.ErrInvalidData
 	}
+
 	return t, nil
 }
 
@@ -53,6 +55,7 @@ func (r *memoryTaskRepo) List(ctx context.Context, offset, limit uint64) ([]task
 		}
 		tasks[i] = t
 	}
+
 	return tasks, total, nil
 }
 
@@ -81,6 +84,7 @@ func (r *memoryPropletRepo) Get(ctx context.Context, id string) (proplet.Proplet
 	if !ok {
 		return proplet.Proplet{}, pkgerrors.ErrInvalidData
 	}
+
 	return p, nil
 }
 
@@ -101,6 +105,7 @@ func (r *memoryPropletRepo) List(ctx context.Context, offset, limit uint64) ([]p
 		}
 		proplets[i] = p
 	}
+
 	return proplets, total, nil
 }
 
@@ -125,6 +130,7 @@ func (r *memoryTaskPropletRepo) Get(ctx context.Context, taskID string) (string,
 	if !ok {
 		return "", pkgerrors.ErrInvalidData
 	}
+
 	return propletID, nil
 }
 
@@ -142,11 +148,13 @@ func newMemoryMetricsRepository(s Storage) MetricsRepository {
 
 func (r *memoryMetricsRepo) CreateTaskMetrics(ctx context.Context, m TaskMetrics) error {
 	key := fmt.Sprintf("%s:%d", m.TaskID, m.Timestamp.UnixNano())
+
 	return r.storage.Create(ctx, key, m)
 }
 
 func (r *memoryMetricsRepo) CreatePropletMetrics(ctx context.Context, m PropletMetrics) error {
 	key := fmt.Sprintf("%s:%d", m.PropletID, m.Timestamp.UnixNano())
+
 	return r.storage.Create(ctx, key, m)
 }
 

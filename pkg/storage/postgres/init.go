@@ -93,7 +93,7 @@ func NewDatabase(host, port, user, pass, name, sslMode string) (*Database, error
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s", host, port, user, pass, name, sslMode)
 	db, err := sqlx.Connect("pgx", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("database connection error: %v", err)
+		return nil, fmt.Errorf("database connection error: %w", err)
 	}
 
 	db.SetMaxOpenConns(25)
@@ -200,11 +200,11 @@ func (db *Database) Migrate() error {
 
 	n, err := migrate.Exec(db.DB.DB, "postgres", migrations, migrate.Up)
 	if err != nil {
-		return fmt.Errorf("database migration error: %v", err)
+		return fmt.Errorf("database migration error: %w", err)
 	}
 
 	if n > 0 {
-		fmt.Printf("Applied %d migrations\n", n)
+		return fmt.Errorf("applied %d migrations", n)
 	}
 
 	return nil

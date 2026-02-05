@@ -773,7 +773,7 @@ func (svc *service) bumpPropletTaskCount(ctx context.Context, p proplet.Proplet,
 	newCount := max(int64(p.TaskCount)+delta, 0)
 	p.TaskCount = uint64(newCount)
 
-	return svc.propletRepo.Update(ctx,  p)
+	return svc.propletRepo.Update(ctx, p)
 }
 
 func (svc *service) markTaskRunning(ctx context.Context, t *task.Task) error {

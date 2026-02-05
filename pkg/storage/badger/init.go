@@ -92,7 +92,7 @@ func NewDatabase(path string) (*Database, error) {
 	opts.Logger = nil
 	db, err := badger.Open(opts)
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDBConnection, err)
+		return nil, fmt.Errorf("%w: %w", ErrDBConnection, err)
 	}
 
 	return &Database{db: db}, nil
@@ -110,14 +110,17 @@ func (d *Database) get(key []byte) ([]byte, error) {
 			return err
 		}
 		val, err = item.ValueCopy(nil)
+
 		return err
 	})
 	if err != nil {
-		if err == badger.ErrKeyNotFound {
+		if errors.Is(err, badger.ErrKeyNotFound) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("%w: %v", ErrDBQuery, err)
+
+		return nil, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
+
 	return val, nil
 }
 
@@ -126,8 +129,9 @@ func (d *Database) set(key, val []byte) error {
 		return txn.Set(key, val)
 	})
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUpdate, err)
+		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
+
 	return nil
 }
 
@@ -136,8 +140,9 @@ func (d *Database) delete(key []byte) error {
 		return txn.Delete(key)
 	})
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDelete, err)
+		return fmt.Errorf("%w: %w", ErrDelete, err)
 	}
+
 	return nil
 }
 
@@ -155,6 +160,7 @@ func (d *Database) listWithPrefix(prefix []byte, offset, limit uint64) ([][]byte
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			if skipped < offset {
 				skipped++
+
 				continue
 			}
 			if count >= limit {
@@ -169,11 +175,13 @@ func (d *Database) listWithPrefix(prefix []byte, offset, limit uint64) ([][]byte
 			items = append(items, val)
 			count++
 		}
+
 		return nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
+
 	return items, nil
 }
 
@@ -186,10 +194,12 @@ func (d *Database) countWithPrefix(prefix []byte) (uint64, error) {
 		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
 			count++
 		}
+
 		return nil
 	})
 	if err != nil {
-		return 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
+
 	return count, nil
 }

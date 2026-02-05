@@ -3,6 +3,7 @@ package sqlite
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/absmach/propeller/pkg/proplet"
@@ -29,12 +30,12 @@ func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
 
 	aliveHistory, err := jsonBytes(p.AliveHistory)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 
 	_, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
 	return nil
@@ -46,10 +47,11 @@ func (r *propletRepo) Get(ctx context.Context, id string) (proplet.Proplet, erro
 	var dbp dbProplet
 	err := r.db.GetContext(ctx, &dbp, query, id)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return proplet.Proplet{}, ErrPropletNotFound
 		}
-		return proplet.Proplet{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+
+		return proplet.Proplet{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return r.toProplet(dbp)
@@ -60,11 +62,11 @@ func (r *propletRepo) Update(ctx context.Context, p proplet.Proplet) error {
 
 	aliveHistory, err := jsonBytes(p.AliveHistory)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 
 	if _, err = r.db.ExecContext(ctx, query, p.Name, p.TaskCount, p.Alive, aliveHistory, p.ID); err != nil {
-		return fmt.Errorf("%w: %v", ErrUpdate, err)
+		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
 
 	return nil
@@ -74,14 +76,14 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	var total uint64
 	err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM proplets")
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	query := `SELECT id, name, task_count, alive, alive_history FROM proplets LIMIT ? OFFSET ?`
 
 	rows, err := r.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 	defer rows.Close()
 
@@ -89,15 +91,19 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	for rows.Next() {
 		var dbp dbProplet
 		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory); err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		p, err := r.toProplet(dbp)
 		if err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		proplets = append(proplets, p)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return proplets, total, nil

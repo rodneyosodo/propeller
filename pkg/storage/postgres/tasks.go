@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/absmach/propeller/task"
@@ -44,27 +45,27 @@ func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	inputs, err := jsonBytes(t.Inputs)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	env, err := jsonBytes(t.Env)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	results, err := jsonBytes(t.Results)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	monitoringProfile, err := jsonBytes(t.MonitoringProfile)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, query,
@@ -85,7 +86,7 @@ func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 		t.CreatedAt, t.UpdatedAt,
 	)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrCreate, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
 	return t, nil
@@ -96,12 +97,13 @@ func (r *taskRepo) Get(ctx context.Context, id string) (task.Task, error) {
 		FROM tasks WHERE id = $1`
 
 	var dbt dbTask
-	err := r.db.GetContext(ctx, &dbt, query, id)
-	if err != nil {
-		if err == sql.ErrNoRows {
+
+	if err := r.db.GetContext(ctx, &dbt, query, id); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
 			return task.Task{}, ErrTaskNotFound
 		}
-		return task.Task{}, fmt.Errorf("%w: %v", ErrDBQuery, err)
+
+		return task.Task{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return r.toTask(dbt)
@@ -130,27 +132,27 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	inputs, err := jsonBytes(t.Inputs)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	env, err := jsonBytes(t.Env)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	results, err := jsonBytes(t.Results)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	monitoringProfile, err := jsonBytes(t.MonitoringProfile)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	_, err = r.db.ExecContext(ctx, query,
@@ -171,7 +173,7 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 		t.UpdatedAt,
 	)
 	if err != nil {
-		return fmt.Errorf("%w: %v", ErrUpdate, err)
+		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
 
 	return nil
@@ -181,7 +183,7 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 	var total uint64
 	err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM tasks")
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	query := `SELECT id, name, state, image_url, file, cli_args, inputs, env, daemon, encrypted, kbs_resource_path, proplet_id, results, error, monitoring_profile, start_time, finish_time, created_at, updated_at
@@ -189,7 +191,7 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 
 	rows, err := r.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
-		return nil, 0, fmt.Errorf("%w: %v", ErrDBQuery, err)
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 	defer rows.Close()
 
@@ -203,15 +205,19 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 			&dbt.Results, &dbt.Error, &dbt.MonitoringProfile,
 			&dbt.StartTime, &dbt.FinishTime, &dbt.CreatedAt, &dbt.UpdatedAt,
 		); err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		t, err := r.toTask(dbt)
 		if err != nil {
-			return nil, 0, fmt.Errorf("%w: %v", ErrDBScan, err)
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
 		tasks = append(tasks, t)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return tasks, total, nil
@@ -219,10 +225,11 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 
 func (r *taskRepo) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM tasks WHERE id = $1`
-	_, err := r.db.ExecContext(ctx, query, id)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrDelete, err)
+
+	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
+		return fmt.Errorf("%w: %w", ErrDelete, err)
 	}
+
 	return nil
 }
 

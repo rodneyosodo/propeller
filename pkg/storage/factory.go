@@ -62,6 +62,7 @@ func newPostgresRepositories(cfg Config) (*Repositories, error) {
 	}
 
 	repos := postgres.NewRepositories(db)
+
 	return &Repositories{
 		Tasks:        &postgresTaskAdapter{repo: repos.Tasks},
 		Proplets:     &postgresPropletAdapter{repo: repos.Proplets},
@@ -77,6 +78,7 @@ func newSQLiteRepositories(cfg Config) (*Repositories, error) {
 	}
 
 	repos := sqlite.NewRepositories(db)
+
 	return &Repositories{
 		Tasks:        &sqliteTaskAdapter{repo: repos.Tasks},
 		Proplets:     &sqlitePropletAdapter{repo: repos.Proplets},
@@ -92,6 +94,7 @@ func newBadgerRepositories(cfg Config) (*Repositories, error) {
 	}
 
 	repos := badger.NewRepositories(db)
+
 	return &Repositories{
 		Tasks:        &badgerTaskAdapter{repo: repos.Tasks},
 		Proplets:     &badgerPropletAdapter{repo: repos.Proplets},
@@ -186,6 +189,7 @@ func (a *postgresMetricsAdapter) CreateTaskMetrics(ctx context.Context, m TaskMe
 		Aggregated: m.Aggregated,
 		Timestamp:  m.Timestamp,
 	}
+
 	return a.repo.CreateTaskMetrics(ctx, pm)
 }
 
@@ -197,6 +201,7 @@ func (a *postgresMetricsAdapter) CreatePropletMetrics(ctx context.Context, m Pro
 		CPU:       m.CPU,
 		Memory:    m.Memory,
 	}
+
 	return a.repo.CreatePropletMetrics(ctx, pm)
 }
 
@@ -215,6 +220,7 @@ func (a *postgresMetricsAdapter) ListTaskMetrics(ctx context.Context, taskID str
 			Timestamp:  m.Timestamp,
 		}
 	}
+
 	return result, total, nil
 }
 
@@ -224,15 +230,16 @@ func (a *postgresMetricsAdapter) ListPropletMetrics(ctx context.Context, proplet
 		return nil, 0, err
 	}
 	result := make([]PropletMetrics, len(metrics))
-	for i, m := range metrics {
+	for i := range metrics {
 		result[i] = PropletMetrics{
-			PropletID: m.PropletID,
-			Namespace: m.Namespace,
-			Timestamp: m.Timestamp,
-			CPU:       m.CPU,
-			Memory:    m.Memory,
+			PropletID: metrics[i].PropletID,
+			Namespace: metrics[i].Namespace,
+			Timestamp: metrics[i].Timestamp,
+			CPU:       metrics[i].CPU,
+			Memory:    metrics[i].Memory,
 		}
 	}
+
 	return result, total, nil
 }
 
@@ -308,6 +315,7 @@ func (a *sqliteMetricsAdapter) CreateTaskMetrics(ctx context.Context, m TaskMetr
 		Aggregated: m.Aggregated,
 		Timestamp:  m.Timestamp,
 	}
+
 	return a.repo.CreateTaskMetrics(ctx, sm)
 }
 
@@ -319,6 +327,7 @@ func (a *sqliteMetricsAdapter) CreatePropletMetrics(ctx context.Context, m Propl
 		CPU:       m.CPU,
 		Memory:    m.Memory,
 	}
+
 	return a.repo.CreatePropletMetrics(ctx, sm)
 }
 
@@ -337,6 +346,7 @@ func (a *sqliteMetricsAdapter) ListTaskMetrics(ctx context.Context, taskID strin
 			Timestamp:  m.Timestamp,
 		}
 	}
+
 	return result, total, nil
 }
 
@@ -346,15 +356,16 @@ func (a *sqliteMetricsAdapter) ListPropletMetrics(ctx context.Context, propletID
 		return nil, 0, err
 	}
 	result := make([]PropletMetrics, len(metrics))
-	for i, m := range metrics {
+	for i := range metrics {
 		result[i] = PropletMetrics{
-			PropletID: m.PropletID,
-			Namespace: m.Namespace,
-			Timestamp: m.Timestamp,
-			CPU:       m.CPU,
-			Memory:    m.Memory,
+			PropletID: metrics[i].PropletID,
+			Namespace: metrics[i].Namespace,
+			Timestamp: metrics[i].Timestamp,
+			CPU:       metrics[i].CPU,
+			Memory:    metrics[i].Memory,
 		}
 	}
+
 	return result, total, nil
 }
 
@@ -430,6 +441,7 @@ func (a *badgerMetricsAdapter) CreateTaskMetrics(ctx context.Context, m TaskMetr
 		Aggregated: m.Aggregated,
 		Timestamp:  m.Timestamp,
 	}
+
 	return a.repo.CreateTaskMetrics(ctx, bm)
 }
 
@@ -441,6 +453,7 @@ func (a *badgerMetricsAdapter) CreatePropletMetrics(ctx context.Context, m Propl
 		CPU:       m.CPU,
 		Memory:    m.Memory,
 	}
+
 	return a.repo.CreatePropletMetrics(ctx, bm)
 }
 
@@ -459,6 +472,7 @@ func (a *badgerMetricsAdapter) ListTaskMetrics(ctx context.Context, taskID strin
 			Timestamp:  m.Timestamp,
 		}
 	}
+
 	return result, total, nil
 }
 
@@ -468,14 +482,15 @@ func (a *badgerMetricsAdapter) ListPropletMetrics(ctx context.Context, propletID
 		return nil, 0, err
 	}
 	result := make([]PropletMetrics, len(metrics))
-	for i, m := range metrics {
+	for i := range metrics {
 		result[i] = PropletMetrics{
-			PropletID: m.PropletID,
-			Namespace: m.Namespace,
-			Timestamp: m.Timestamp,
-			CPU:       m.CPU,
-			Memory:    m.Memory,
+			PropletID: metrics[i].PropletID,
+			Namespace: metrics[i].Namespace,
+			Timestamp: metrics[i].Timestamp,
+			CPU:       metrics[i].CPU,
+			Memory:    metrics[i].Memory,
 		}
 	}
+
 	return result, total, nil
 }

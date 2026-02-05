@@ -21,11 +21,12 @@ func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 	key := []byte("task:" + t.ID)
 	val, err := json.Marshal(t)
 	if err != nil {
-		return task.Task{}, fmt.Errorf("marshal error: %v", err)
+		return task.Task{}, fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return task.Task{}, fmt.Errorf("%w: %v", ErrCreate, err)
+		return task.Task{}, fmt.Errorf("%w: %w", ErrCreate, err)
 	}
+
 	return t, nil
 }
 
@@ -37,8 +38,9 @@ func (r *taskRepo) Get(ctx context.Context, id string) (task.Task, error) {
 	}
 	var t task.Task
 	if err := json.Unmarshal(val, &t); err != nil {
-		return task.Task{}, fmt.Errorf("unmarshal error: %v", err)
+		return task.Task{}, fmt.Errorf("unmarshal error: %w", err)
 	}
+
 	return t, nil
 }
 
@@ -46,11 +48,12 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 	key := []byte("task:" + t.ID)
 	val, err := json.Marshal(t)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return fmt.Errorf("%w: %v", ErrUpdate, err)
+		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
+
 	return nil
 }
 
@@ -68,15 +71,17 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 	for i, val := range values {
 		var t task.Task
 		if err := json.Unmarshal(val, &t); err != nil {
-			return nil, 0, fmt.Errorf("unmarshal error: %v", err)
+			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
 		}
 		tasks[i] = t
 	}
+
 	return tasks, total, nil
 }
 
 func (r *taskRepo) Delete(ctx context.Context, id string) error {
 	key := []byte("task:" + id)
+
 	return r.db.delete(key)
 }
 
@@ -92,11 +97,12 @@ func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
 	key := []byte("proplet:" + p.ID)
 	val, err := json.Marshal(p)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
+
 	return nil
 }
 
@@ -108,8 +114,9 @@ func (r *propletRepo) Get(ctx context.Context, id string) (proplet.Proplet, erro
 	}
 	var p proplet.Proplet
 	if err := json.Unmarshal(val, &p); err != nil {
-		return proplet.Proplet{}, fmt.Errorf("unmarshal error: %v", err)
+		return proplet.Proplet{}, fmt.Errorf("unmarshal error: %w", err)
 	}
+
 	return p, nil
 }
 
@@ -117,11 +124,12 @@ func (r *propletRepo) Update(ctx context.Context, p proplet.Proplet) error {
 	key := []byte("proplet:" + p.ID)
 	val, err := json.Marshal(p)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return fmt.Errorf("%w: %v", ErrUpdate, err)
+		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
+
 	return nil
 }
 
@@ -139,10 +147,11 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	for i, val := range values {
 		var p proplet.Proplet
 		if err := json.Unmarshal(val, &p); err != nil {
-			return nil, 0, fmt.Errorf("unmarshal error: %v", err)
+			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
 		}
 		proplets[i] = p
 	}
+
 	return proplets, total, nil
 }
 
@@ -157,8 +166,9 @@ func NewTaskPropletRepository(db *Database) TaskPropletRepository {
 func (r *taskPropletRepo) Create(ctx context.Context, taskID, propletID string) error {
 	key := []byte("map:task:" + taskID)
 	if err := r.db.set(key, []byte(propletID)); err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
+
 	return nil
 }
 
@@ -168,11 +178,13 @@ func (r *taskPropletRepo) Get(ctx context.Context, taskID string) (string, error
 	if err != nil {
 		return "", ErrNotFound
 	}
+
 	return string(val), nil
 }
 
 func (r *taskPropletRepo) Delete(ctx context.Context, taskID string) error {
 	key := []byte("map:task:" + taskID)
+
 	return r.db.delete(key)
 }
 
@@ -185,26 +197,28 @@ func NewMetricsRepository(db *Database) MetricsRepository {
 }
 
 func (r *metricsRepo) CreateTaskMetrics(ctx context.Context, m TaskMetrics) error {
-	key := []byte(fmt.Sprintf("tm:%s:%d", m.TaskID, m.Timestamp.UnixNano()))
+	key := fmt.Appendf([]byte{}, "tm:%s:%d", m.TaskID, m.Timestamp.UnixNano())
 	val, err := json.Marshal(m)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
+
 	return nil
 }
 
 func (r *metricsRepo) CreatePropletMetrics(ctx context.Context, m PropletMetrics) error {
-	key := []byte(fmt.Sprintf("pm:%s:%d", m.PropletID, m.Timestamp.UnixNano()))
+	key := fmt.Appendf([]byte{}, "pm:%s:%d", m.PropletID, m.Timestamp.UnixNano())
 	val, err := json.Marshal(m)
 	if err != nil {
-		return fmt.Errorf("marshal error: %v", err)
+		return fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return fmt.Errorf("%w: %v", ErrCreate, err)
+		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
+
 	return nil
 }
 
@@ -222,10 +236,11 @@ func (r *metricsRepo) ListTaskMetrics(ctx context.Context, taskID string, offset
 	for i, val := range values {
 		var m TaskMetrics
 		if err := json.Unmarshal(val, &m); err != nil {
-			return nil, 0, fmt.Errorf("unmarshal error: %v", err)
+			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
 		}
 		metrics[i] = m
 	}
+
 	return metrics, total, nil
 }
 
@@ -243,9 +258,10 @@ func (r *metricsRepo) ListPropletMetrics(ctx context.Context, propletID string, 
 	for i, val := range values {
 		var m PropletMetrics
 		if err := json.Unmarshal(val, &m); err != nil {
-			return nil, 0, fmt.Errorf("unmarshal error: %v", err)
+			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
 		}
 		metrics[i] = m
 	}
+
 	return metrics, total, nil
 }
