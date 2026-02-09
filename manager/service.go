@@ -41,9 +41,10 @@ type taskRepositoryAdapter struct {
 func (a *taskRepositoryAdapter) Create(ctx context.Context, key string, value any) error {
 	t, ok := value.(task.Task)
 	if !ok {
-		return fmt.Errorf("invalid task data")
+		return errors.New("invalid task data")
 	}
 	_, err := a.repo.Create(ctx, t)
+
 	return err
 }
 
@@ -54,20 +55,22 @@ func (a *taskRepositoryAdapter) Get(ctx context.Context, key string) (any, error
 func (a *taskRepositoryAdapter) Update(ctx context.Context, key string, value any) error {
 	t, ok := value.(task.Task)
 	if !ok {
-		return fmt.Errorf("invalid task data")
+		return errors.New("invalid task data")
 	}
+
 	return a.repo.Update(ctx, t)
 }
 
-func (a *taskRepositoryAdapter) List(ctx context.Context, offset, limit uint64) ([]any, uint64, error) {
+func (a *taskRepositoryAdapter) List(ctx context.Context, offset, limit uint64) (result []any, total uint64, err error) {
 	tasks, total, err := a.repo.List(ctx, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	result := make([]any, len(tasks))
-	for i, t := range tasks {
-		result[i] = t
+	result = make([]any, len(tasks))
+	for i := range tasks {
+		result[i] = tasks[i]
 	}
+
 	return result, total, nil
 }
 

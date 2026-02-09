@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -67,7 +68,7 @@ func (s *badgerStorage) Create(ctx context.Context, key string, value any) error
 		if err == nil {
 			return errors.ErrEntityExists
 		}
-		if err != badger.ErrKeyNotFound {
+		if !stderrors.Is(err, badger.ErrKeyNotFound) {
 			return fmt.Errorf("failed to check key existence: %w", err)
 		}
 
@@ -87,7 +88,7 @@ func (s *badgerStorage) Get(ctx context.Context, key string) (any, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key))
 		if err != nil {
-			if err == badger.ErrKeyNotFound {
+			if stderrors.Is(err, badger.ErrKeyNotFound) {
 				return errors.ErrNotFound
 			}
 
@@ -115,7 +116,7 @@ func (s *badgerStorage) Update(ctx context.Context, key string, value any) error
 	return s.db.Update(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(key))
 		if err != nil {
-			if err == badger.ErrKeyNotFound {
+			if stderrors.Is(err, badger.ErrKeyNotFound) {
 				return errors.ErrNotFound
 			}
 
@@ -194,7 +195,7 @@ func (s *badgerStorage) Delete(ctx context.Context, key string) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(key))
 		if err != nil {
-			if err == badger.ErrKeyNotFound {
+			if stderrors.Is(err, badger.ErrKeyNotFound) {
 				return errors.ErrNotFound
 			}
 
