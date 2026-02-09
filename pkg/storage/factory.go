@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/storage/badger"
@@ -46,8 +45,6 @@ func NewRepositories(cfg Config) (*Repositories, error) {
 		return newBadgerRepositories(cfg)
 	case "memory":
 		return newMemoryRepositories()
-	case "file":
-		return newFileRepositories(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported storage type: %s", cfg.Type)
 	}
@@ -113,35 +110,6 @@ func newMemoryRepositories() (*Repositories, error) {
 	propletStorage := NewInMemoryStorage()
 	taskPropletStorage := NewInMemoryStorage()
 	metricsStorage := NewInMemoryStorage()
-
-	return &Repositories{
-		Tasks:        newMemoryTaskRepository(taskStorage),
-		Proplets:     newMemoryPropletRepository(propletStorage),
-		TaskProplets: newMemoryTaskPropletRepository(taskPropletStorage),
-		Metrics:      newMemoryMetricsRepository(metricsStorage),
-	}, nil
-}
-
-func newFileRepositories(cfg Config) (*Repositories, error) {
-	taskStorage, err := NewFileStorage(filepath.Join(cfg.DataDir, "tasks"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize tasks storage: %w", err)
-	}
-
-	propletStorage, err := NewFileStorage(filepath.Join(cfg.DataDir, "proplets"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize proplets storage: %w", err)
-	}
-
-	taskPropletStorage, err := NewFileStorage(filepath.Join(cfg.DataDir, "task_proplet"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize task-proplet storage: %w", err)
-	}
-
-	metricsStorage, err := NewFileStorage(filepath.Join(cfg.DataDir, "metrics"))
-	if err != nil {
-		return nil, fmt.Errorf("failed to initialize metrics storage: %w", err)
-	}
 
 	return &Repositories{
 		Tasks:        newMemoryTaskRepository(taskStorage),

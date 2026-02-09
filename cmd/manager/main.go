@@ -47,7 +47,7 @@ type config struct {
 	Server      server.Config
 	OTELURL     url.URL `env:"MANAGER_OTEL_URL"`
 	TraceRatio  float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
-	StorageType string  `env:"MANAGER_STORAGE_TYPE" envDefault:"file"` // "memory" or "file"
+	StorageType string  `env:"MANAGER_STORAGE_TYPE" envDefault:"badger"` // "memory", "badger", "postgres", or "sqlite"
 	DataDir     string  `env:"MANAGER_DATA_DIR"     envDefault:"./data"`
 }
 
@@ -125,8 +125,6 @@ func main() {
 
 	if cfg.StorageType == "memory" {
 		logger.Info("using in-memory storage")
-	} else if cfg.StorageType == "file" {
-		logger.Info("using file-based persistent storage", slog.String("data_dir", cfg.DataDir))
 	}
 
 	repos, err := storage.NewRepositories(storageCfg)

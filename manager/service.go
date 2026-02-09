@@ -34,7 +34,6 @@ var (
 	namegen   = namegenerator.NewGenerator()
 )
 
-// taskRepositoryAdapter adapts TaskRepository to Storage interface for CronScheduler
 type taskRepositoryAdapter struct {
 	repo storage.TaskRepository
 }
