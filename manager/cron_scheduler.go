@@ -2,7 +2,6 @@ package manager
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -17,14 +16,14 @@ const (
 )
 
 type CronScheduler struct {
-	tasksDB       storage.Storage
+	tasksDB       storage.TaskRepository
 	service       Service
 	logger        *slog.Logger
 	checkInterval time.Duration
 	stopChan      chan struct{}
 }
 
-func NewCronScheduler(tasksDB storage.Storage, service Service, logger *slog.Logger) *CronScheduler {
+func NewCronScheduler(tasksDB storage.TaskRepository, service Service, logger *slog.Logger) *CronScheduler {
 	return &CronScheduler{
 		tasksDB:       tasksDB,
 		service:       service,
@@ -67,14 +66,9 @@ func (cs *CronScheduler) Stop() {
 }
 
 func (cs *CronScheduler) ScheduleTask(ctx context.Context, taskID string) error {
-	data, err := cs.tasksDB.Get(ctx, taskID)
+	t, err := cs.tasksDB.Get(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("failed to get task: %w", err)
-	}
-
-	t, ok := data.(task.Task)
-	if !ok {
-		return errors.New("invalid task data")
 	}
 
 	if t.Schedule == "" {
@@ -85,21 +79,15 @@ func (cs *CronScheduler) ScheduleTask(ctx context.Context, taskID string) error 
 }
 
 func (cs *CronScheduler) UnscheduleTask(ctx context.Context, taskID string) error {
-	data, err := cs.tasksDB.Get(ctx, taskID)
+	t, err := cs.tasksDB.Get(ctx, taskID)
 	if err != nil {
 		return fmt.Errorf("failed to get task: %w", err)
 	}
 
-	t, ok := data.(task.Task)
-	if !ok {
-		return errors.New("invalid task data")
-	}
+	t.Schedule = ""
+	t.NextRun = time.Time{}
 
-	updatedTask := t
-	updatedTask.Schedule = ""
-	updatedTask.NextRun = time.Time{}
-
-	if err := cs.tasksDB.Update(ctx, updatedTask.ID, updatedTask); err != nil {
+	if err := cs.tasksDB.Update(ctx, t); err != nil {
 		return fmt.Errorf("failed to unschedule task: %w", err)
 	}
 
@@ -107,17 +95,14 @@ func (cs *CronScheduler) UnscheduleTask(ctx context.Context, taskID string) erro
 }
 
 func (cs *CronScheduler) processScheduledTasks(ctx context.Context) error {
-	data, _, err := cs.tasksDB.List(ctx, 0, 10000)
+	tasks, _, err := cs.tasksDB.List(ctx, 0, 10000)
 	if err != nil {
 		return fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	now := time.Now()
-	for i := range data {
-		t, ok := data[i].(task.Task)
-		if !ok {
-			continue
-		}
+	for i := range tasks {
+		t := tasks[i]
 
 		if t.Schedule == "" {
 			continue
@@ -142,10 +127,9 @@ func (cs *CronScheduler) processScheduledTasks(ctx context.Context) error {
 					slog.String("error", err.Error()))
 			}
 		} else {
-			updatedTask := t
-			updatedTask.Schedule = ""
-			updatedTask.NextRun = time.Time{}
-			if err := cs.tasksDB.Update(ctx, updatedTask.ID, updatedTask); err != nil {
+			t.Schedule = ""
+			t.NextRun = time.Time{}
+			if err := cs.tasksDB.Update(ctx, t); err != nil {
 				cs.logger.Error("failed to clear schedule for one-time task",
 					slog.String("task_id", t.ID),
 					slog.String("error", err.Error()))
@@ -182,11 +166,10 @@ func (cs *CronScheduler) updateNextRun(ctx context.Context, t task.Task) error {
 	now := time.Now()
 	nextRun := cron.CalculateNextRun(schedule, now, timezone)
 
-	updatedTask := t
-	updatedTask.NextRun = nextRun
-	updatedTask.UpdatedAt = time.Now()
+	t.NextRun = nextRun
+	t.UpdatedAt = time.Now()
 
-	if err := cs.tasksDB.Update(ctx, updatedTask.ID, updatedTask); err != nil {
+	if err := cs.tasksDB.Update(ctx, t); err != nil {
 		return fmt.Errorf("failed to update task next run: %w", err)
 	}
 
@@ -198,17 +181,14 @@ func (cs *CronScheduler) updateNextRun(ctx context.Context, t task.Task) error {
 }
 
 func (cs *CronScheduler) loadScheduledTasks(ctx context.Context) error {
-	data, _, err := cs.tasksDB.List(ctx, 0, 10000)
+	tasks, _, err := cs.tasksDB.List(ctx, 0, 10000)
 	if err != nil {
 		return fmt.Errorf("failed to list tasks: %w", err)
 	}
 
 	loadedCount := 0
-	for i := range data {
-		t, ok := data[i].(task.Task)
-		if !ok {
-			continue
-		}
+	for i := range tasks {
+		t := tasks[i]
 
 		if t.Schedule == "" {
 			continue
