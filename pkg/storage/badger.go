@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -11,7 +11,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/absmach/propeller/pkg/errors"
+	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/task"
 	"github.com/dgraph-io/badger/v4"
@@ -57,7 +57,7 @@ func NewBadgerStorage(dataDir string) (Storage, error) {
 
 func (s *badgerStorage) Create(ctx context.Context, key string, value any) error {
 	if key == "" {
-		return errors.ErrEmptyKey
+		return pkgerrors.ErrEmptyKey
 	}
 
 	s.Lock()
@@ -66,9 +66,9 @@ func (s *badgerStorage) Create(ctx context.Context, key string, value any) error
 	return s.db.Update(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(key))
 		if err == nil {
-			return errors.ErrEntityExists
+			return pkgerrors.ErrEntityExists
 		}
-		if !stderrors.Is(err, badger.ErrKeyNotFound) {
+		if !errors.Is(err, badger.ErrKeyNotFound) {
 			return fmt.Errorf("failed to check key existence: %w", err)
 		}
 
@@ -78,7 +78,7 @@ func (s *badgerStorage) Create(ctx context.Context, key string, value any) error
 
 func (s *badgerStorage) Get(ctx context.Context, key string) (any, error) {
 	if key == "" {
-		return nil, errors.ErrEmptyKey
+		return nil, pkgerrors.ErrEmptyKey
 	}
 
 	s.RLock()
@@ -88,8 +88,8 @@ func (s *badgerStorage) Get(ctx context.Context, key string) (any, error) {
 	err := s.db.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key))
 		if err != nil {
-			if stderrors.Is(err, badger.ErrKeyNotFound) {
-				return errors.ErrNotFound
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return pkgerrors.ErrNotFound
 			}
 
 			return fmt.Errorf("failed to get key: %w", err)
@@ -107,7 +107,7 @@ func (s *badgerStorage) Get(ctx context.Context, key string) (any, error) {
 
 func (s *badgerStorage) Update(ctx context.Context, key string, value any) error {
 	if key == "" {
-		return errors.ErrEmptyKey
+		return pkgerrors.ErrEmptyKey
 	}
 
 	s.Lock()
@@ -116,8 +116,8 @@ func (s *badgerStorage) Update(ctx context.Context, key string, value any) error
 	return s.db.Update(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(key))
 		if err != nil {
-			if stderrors.Is(err, badger.ErrKeyNotFound) {
-				return errors.ErrNotFound
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return pkgerrors.ErrNotFound
 			}
 
 			return fmt.Errorf("failed to check key existence: %w", err)
@@ -186,7 +186,7 @@ func (s *badgerStorage) List(ctx context.Context, offset, limit uint64) (result 
 
 func (s *badgerStorage) Delete(ctx context.Context, key string) error {
 	if key == "" {
-		return errors.ErrEmptyKey
+		return pkgerrors.ErrEmptyKey
 	}
 
 	s.Lock()
@@ -195,8 +195,8 @@ func (s *badgerStorage) Delete(ctx context.Context, key string) error {
 	return s.db.Update(func(txn *badger.Txn) error {
 		_, err := txn.Get([]byte(key))
 		if err != nil {
-			if stderrors.Is(err, badger.ErrKeyNotFound) {
-				return errors.ErrNotFound
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return pkgerrors.ErrNotFound
 			}
 
 			return fmt.Errorf("failed to check key existence: %w", err)
