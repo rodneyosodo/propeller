@@ -78,35 +78,36 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 	return tasks, total, nil
 }
 
-func (r *taskRepo) ListByWorkflowID(_ context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
-	// Badger is a key-value store with no secondary indexes. We scan all tasks
-	// by the "task:" prefix, deserialize each one, and filter by WorkflowID.
-	// This is O(N) over total tasks but is bounded by the per-page limit when
-	// building the response slice.
-	prefix := []byte("task:")
-	allValues, err := r.db.listWithPrefix(prefix, 0, ^uint64(0))
+func (r *taskRepo) ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error) {
+	allTasks, _, err := r.List(ctx, 0, 100000)
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	var filtered []task.Task
-	for _, val := range allValues {
-		var t task.Task
-		if err := json.Unmarshal(val, &t); err != nil {
-			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
-		}
-		if t.WorkflowID == workflowID {
-			filtered = append(filtered, t)
+	tasks := make([]task.Task, 0)
+	for i := range allTasks {
+		if allTasks[i].WorkflowID == workflowID {
+			tasks = append(tasks, allTasks[i])
 		}
 	}
 
-	total := uint64(len(filtered))
-	if offset >= total {
-		return []task.Task{}, total, nil
-	}
-	end := min(offset+limit, total)
+	return tasks, nil
+}
 
-	return filtered[offset:end], total, nil
+func (r *taskRepo) ListByJobID(ctx context.Context, jobID string) ([]task.Task, error) {
+	allTasks, _, err := r.List(ctx, 0, 100000)
+	if err != nil {
+		return nil, err
+	}
+
+	tasks := make([]task.Task, 0)
+	for i := range allTasks {
+		if allTasks[i].JobID == jobID {
+			tasks = append(tasks, allTasks[i])
+		}
+	}
+
+	return tasks, nil
 }
 
 func (r *taskRepo) Delete(ctx context.Context, id string) error {
