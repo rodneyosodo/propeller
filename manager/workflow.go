@@ -76,7 +76,7 @@ func (wc *WorkflowCoordinator) CheckAndStartReadyTasks(ctx context.Context, work
 	completed := make(map[string]task.State)
 	for i := range tasks {
 		t := &tasks[i]
-		if t.State == task.Completed || t.State == task.Failed || t.State == task.Skipped {
+		if t.State.IsTerminal() {
 			completed[t.ID] = t.State
 		}
 	}
@@ -136,17 +136,27 @@ func (wc *WorkflowCoordinator) OnTaskCompletion(ctx context.Context, taskID stri
 }
 
 func (wc *WorkflowCoordinator) getWorkflowTasks(ctx context.Context, workflowID string) ([]task.Task, error) {
-	allTasks, _, err := wc.taskRepo.List(ctx, 0, 10000)
-	if err != nil {
-		return nil, err
-	}
+	const pageSize uint64 = 100
+	var offset uint64
+	workflowTasks := make([]task.Task, 0)
 
-	tasks := make([]task.Task, 0)
-	for i := range allTasks {
-		if allTasks[i].WorkflowID == workflowID {
-			tasks = append(tasks, allTasks[i])
+	for {
+		tasks, total, err := wc.taskRepo.List(ctx, offset, pageSize)
+		if err != nil {
+			return nil, err
+		}
+
+		for i := range tasks {
+			if tasks[i].WorkflowID == workflowID {
+				workflowTasks = append(workflowTasks, tasks[i])
+			}
+		}
+
+		offset += uint64(len(tasks))
+		if offset >= total || len(tasks) == 0 {
+			break
 		}
 	}
 
-	return tasks, nil
+	return workflowTasks, nil
 }
