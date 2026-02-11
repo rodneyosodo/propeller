@@ -100,7 +100,6 @@ func TestListJobsIncludesLegacyTaskOnlyJob(t *testing.T) {
 	_, ok := ids["legacy-job-id"]
 	assert.True(t, ok)
 }
-
 func TestCreateJobPersistsJobEntity(t *testing.T) {
 	t.Parallel()
 	svc := newService(t)
@@ -163,7 +162,7 @@ func TestListJobsPagination(t *testing.T) {
 	t.Parallel()
 	svc := newService(t)
 
-	for range 5 {
+	for i := 0; i < 5; i++ {
 		_, _, err := svc.CreateJob(context.Background(), "job", []task.Task{
 			{Name: "t", State: task.Pending},
 		}, "parallel")

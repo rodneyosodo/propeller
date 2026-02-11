@@ -234,7 +234,6 @@ func (r *taskRepo) Delete(ctx context.Context, id string) error {
 
 	return nil
 }
-
 func (r *taskRepo) scanTasks(ctx context.Context, query string, args ...any) ([]task.Task, error) {
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
