@@ -12,8 +12,8 @@ extern bool mqtt_connected;
 /**
  * @brief Initialize the MQTT client and establish a connection to the broker.
  *
- * Note: This connects using the provided proplet_id as the MQTT username.
- * Password is not used in the current 3-argument API.
+ * Note: This connects using the provided proplet_id as both MQTT client ID and
+ * MQTT username. Password is not used in the current 3-argument API.
  *
  * @param domain_id   Domain ID used for topic generation (e.g., m/<domain>/c/<channel>/...).
  * @param proplet_id  Proplet identity used for manager tracking and alive/metrics payloads.

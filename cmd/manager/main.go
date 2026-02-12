@@ -72,7 +72,7 @@ func main() {
 		cfg.InstanceID = uuid.NewString()
 	}
 
-	if cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
 		_, err := os.Stat(configPath)
 		switch err {
 		case nil:
@@ -93,6 +93,10 @@ func main() {
 
 			return
 		}
+	}
+
+	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
+		log.Fatal("MANAGER_DOMAIN_ID, MANAGER_CHANNEL_ID, MANAGER_CLIENT_ID, and MANAGER_CLIENT_KEY must be set")
 	}
 
 	var level slog.Level
@@ -133,7 +137,7 @@ func main() {
 	}
 	tracer := tp.Tracer(svcName)
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, svcName, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
 	if err != nil {
 		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
 		exitCode = 1

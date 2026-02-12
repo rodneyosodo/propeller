@@ -53,7 +53,6 @@ LOG_MODULE_REGISTER(mqtt_client);
 #define WILL_QOS MQTT_QOS_1_AT_LEAST_ONCE
 #define WILL_RETAIN 1
 
-#define CLIENT_ID "proplet-esp32s3"
 #define DEFAULT_NAMESPACE "embedded"
 
 #define MAX_ID_LEN 64
@@ -344,6 +343,11 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   int ret;
   struct sockaddr_in *broker = (struct sockaddr_in *)&broker_addr;
 
+  if (proplet_id == NULL || proplet_id[0] == '\0') {
+    LOG_ERR("proplet_id must be non-empty and match the SuperMQ client ID");
+    return -EINVAL;
+  }
+
   broker->sin_family = AF_INET;
   broker->sin_port = htons(MQTT_BROKER_PORT);
 
@@ -377,7 +381,10 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
   client_ctx.broker = &broker_addr;
   client_ctx.evt_cb = mqtt_event_handler;
-  client_ctx.client_id = MQTT_UTF8_LITERAL(CLIENT_ID);
+  static struct mqtt_utf8 client_id;
+  client_id.utf8 = (const uint8_t *)g_proplet_id;
+  client_id.size = strlen(g_proplet_id);
+  client_ctx.client_id = client_id;
 
   static struct mqtt_utf8 username;
   username.utf8 = (const uint8_t *)g_proplet_id;
@@ -545,7 +552,7 @@ void handle_start_command(const char *payload) {
   t.model_data[0] = '\0';
   t.dataset_data[0] = '\0';
   
-  const char *pid = (g_proplet_id[0] != '\0') ? g_proplet_id : CLIENT_ID;
+  const char *pid = g_proplet_id;
   strncpy(t.proplet_id, pid, sizeof(t.proplet_id) - 1);
   t.proplet_id[sizeof(t.proplet_id) - 1] = '\0';
 
@@ -1076,7 +1083,7 @@ int handle_registry_response(const char *payload) {
 void publish_alive_message(const char *domain_id, const char *channel_id) {
   char payload[192];
 
-  const char *pid = (g_proplet_id[0] != '\0') ? g_proplet_id : CLIENT_ID;
+  const char *pid = g_proplet_id;
   const char *ns = (g_namespace != NULL) ? g_namespace : DEFAULT_NAMESPACE;
 
   snprintf(payload, sizeof(payload),
@@ -1258,7 +1265,7 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
                                  const char *error_msg) {
   char results_payload[2048];
   char escaped_error[MAX_ERROR_MSG_LEN * 2];
-  const char *pid = (g_proplet_id[0] != '\0') ? g_proplet_id : CLIENT_ID;
+  const char *pid = g_proplet_id;
 
   if (error_msg) {
     json_escape_string(escaped_error, sizeof(escaped_error), error_msg);
@@ -1387,7 +1394,7 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
       update_b64[0] = '\0';
     }
 
-    const char *pid = (g_proplet_id[0] != '\0') ? g_proplet_id : CLIENT_ID;
+    const char *pid = g_proplet_id;
     const char *format = (strlen(g_current_task.fl_format) > 0) ? 
                         g_current_task.fl_format : "f32-delta";
     uint64_t num_samples = strtoull(g_current_task.fl_num_samples_str, NULL, 10);

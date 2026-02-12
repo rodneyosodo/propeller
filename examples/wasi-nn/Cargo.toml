@@ -1,0 +1,16 @@
+[package]
+name = "wasi-nn-example"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "wasi-nn-example"
+path = "src/main.rs"
+
+[dependencies]
+wasi-nn = "0.1.0"
+
+[profile.release]
+opt-level = "s"
+strip = true

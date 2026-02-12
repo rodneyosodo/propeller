@@ -103,7 +103,7 @@ func main() {
 	}
 	mqttClientID := os.Getenv("MQTT_CLIENT_ID")
 	if mqttClientID == "" {
-		mqttClientID = "fl-coordinator"
+		log.Fatal("MQTT_CLIENT_ID environment variable is required and must be a SuperMQ client ID")
 	}
 	mqttUsername := os.Getenv("MQTT_USERNAME")
 	mqttPassword := os.Getenv("MQTT_PASSWORD")

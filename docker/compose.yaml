@@ -145,9 +145,6 @@ services:
       SMQ_AUTH_ADAPTER_INSTANCE_ID: ${SMQ_AUTH_ADAPTER_INSTANCE_ID}
       SMQ_ES_URL: ${SMQ_ES_URL}
       SMQ_AUTH_CACHE_URL: ${SMQ_AUTH_CACHE_URL}
-      SMQ_AUTH_KEYS_ALGORITHM: ${SMQ_AUTH_KEYS_ALGORITHM}
-      SMQ_AUTH_KEYS_ACTIVE_KEY_PATH: ${SMQ_AUTH_KEYS_ACTIVE_KEY_PATH:+/keys/active.key}
-      SMQ_AUTH_KEYS_RETIRING_KEY_PATH: ${SMQ_AUTH_KEYS_RETIRING_KEY_PATH:+/keys/retiring.key}
     ports:
       - ${SMQ_AUTH_HTTP_PORT}:${SMQ_AUTH_HTTP_PORT}
       - ${SMQ_AUTH_GRPC_PORT}:${SMQ_AUTH_GRPC_PORT}
@@ -203,16 +200,6 @@ services:
       - type: bind
         source: ${SMQ_AUTH_CALLOUT_CLIENT_CA_CERTS:-ssl/certs/dummy/client_ca_certs}
         target: /auth-callout-client-ca${SMQ_AUTH_CALLOUT_CLIENT_CA_CERTS:+.crt}
-        bind:
-          create_host_path: true
-      - type: bind
-        source: ${SMQ_AUTH_KEYS_ACTIVE_KEY_PATH:-./keys/active.key}
-        target: /keys/active.key
-        bind:
-          create_host_path: true
-      - type: bind
-        source: ${SMQ_AUTH_KEYS_RETIRING_KEY_PATH:-./keys/retiring.key}
-        target: /keys/retiring.key
         bind:
           create_host_path: true
 
@@ -1550,7 +1537,6 @@ services:
         bind:
           create_host_path: true
 
-
   rabbitmq:
     image: docker.io/rabbitmq:4.1.4-management-alpine
     container_name: supermq-rabbitmq
@@ -1678,7 +1664,6 @@ services:
       COORDINATOR_URL: ${COORDINATOR_URL:-http://coordinator-http:8080}
       MODEL_REGISTRY_URL: ${MODEL_REGISTRY_URL:-http://model-registry:8081}
       DATA_STORE_URL: ${DATA_STORE_URL:-http://local-data-store:8083}
-      DYLD_LIBRARY_PATH: "/opt/homebrew/lib"
     networks:
       - supermq-base-net
     # Uncomment platform for wasi-nn image (OpenVINO requires x86_64)
@@ -1689,7 +1674,7 @@ services:
     # To run wasi-nn examples, uncomment the fixture volume and create the directory with model files.
     # See examples/wasi-nn/README.md for setup instructions.
     # volumes:
-    #   - ../config.toml:/config.toml
+    #   - ./config.toml:/home/proplet/config.toml
     #   - ../fixture:/home/proplet/fixture
 
   proxy:
@@ -1718,5 +1703,5 @@ services:
       - supermq-base-net
     # To use a custom config.toml, uncomment the following line and ensure ./config.toml exists.
     # If you are using environment variables for configuration, leave this commented out.
-  # volumes:
-  #   - ./config.toml:/config.toml
+    # volumes:
+    #   - ./config.toml:/config.toml

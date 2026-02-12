@@ -53,7 +53,7 @@ func main() {
 		cfg.InstanceID = uuid.NewString()
 	}
 
-	if cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
 		_, err := os.Stat(configPath)
 		switch err {
 		case nil:
@@ -70,6 +70,10 @@ func main() {
 		}
 	}
 
+	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
+		log.Fatal("PROXY_DOMAIN_ID, PROXY_CHANNEL_ID, PROXY_CLIENT_ID, and PROXY_CLIENT_KEY must be set")
+	}
+
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
 		log.Fatalf("failed to parse log level: %s", err.Error())
@@ -80,7 +84,7 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.InstanceID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
 	if err != nil {
 		logger.Error("failed to initialize mqtt client", slog.Any("error", err))
 
