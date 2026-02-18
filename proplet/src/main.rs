@@ -103,7 +103,10 @@ async fn main() -> Result<()> {
             }
             Err(e) => {
                 tracing::error!("Failed to initialize TEE runtime: {:#}", e);
-                return Err(anyhow::anyhow!("TEE detected but TEE runtime failed to initialize: {:#}", e));
+                return Err(anyhow::anyhow!(
+                    "TEE detected but TEE runtime failed to initialize: {:#}",
+                    e
+                ));
             }
         }
     } else {
