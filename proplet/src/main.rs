@@ -92,13 +92,19 @@ async fn main() -> Result<()> {
 
     let service = if config.tee_enabled {
         match TeeWasmRuntime::new(&config).await {
-            Ok(tee_runtime) => Arc::new(PropletService::with_tee_runtime(
-                config.clone(),
-                pubsub,
-                runtime,
-                Arc::new(tee_runtime),
-            )),
-            Err(_) => Arc::new(PropletService::new(config.clone(), pubsub, runtime)),
+            Ok(tee_runtime) => {
+                info!("TEE runtime initialized successfully");
+                Arc::new(PropletService::with_tee_runtime(
+                    config.clone(),
+                    pubsub,
+                    runtime,
+                    Arc::new(tee_runtime),
+                ))
+            }
+            Err(e) => {
+                tracing::error!("Failed to initialize TEE runtime: {:#}", e);
+                return Err(anyhow::anyhow!("TEE detected but TEE runtime failed to initialize: {:#}", e));
+            }
         }
     } else {
         Arc::new(PropletService::new(config.clone(), pubsub, runtime))
