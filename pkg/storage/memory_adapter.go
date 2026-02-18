@@ -9,6 +9,8 @@ import (
 	"github.com/absmach/propeller/pkg/task"
 )
 
+const memoryScanPageSize uint64 = 100
+
 type memoryTaskRepo struct {
 	storage Storage
 }
@@ -60,8 +62,6 @@ func (r *memoryTaskRepo) List(ctx context.Context, offset, limit uint64) ([]task
 }
 
 func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
-	const pageSize = 1024
-
 	var (
 		scanOffset uint64
 		total      uint64
@@ -69,7 +69,7 @@ func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string
 	)
 
 	for {
-		data, allTotal, err := r.storage.List(ctx, scanOffset, pageSize)
+		data, allTotal, err := r.storage.List(ctx, scanOffset, memoryScanPageSize)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -209,8 +209,6 @@ func (r *memoryMetricsRepo) CreatePropletMetrics(ctx context.Context, m PropletM
 }
 
 func (r *memoryMetricsRepo) ListTaskMetrics(ctx context.Context, taskID string, offset, limit uint64) ([]TaskMetrics, uint64, error) {
-	const pageSize = 1024
-
 	var (
 		scanOffset uint64
 		total      uint64
@@ -218,7 +216,7 @@ func (r *memoryMetricsRepo) ListTaskMetrics(ctx context.Context, taskID string, 
 	)
 
 	for {
-		data, allTotal, err := r.storage.List(ctx, scanOffset, pageSize)
+		data, allTotal, err := r.storage.List(ctx, scanOffset, memoryScanPageSize)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -255,8 +253,6 @@ func (r *memoryMetricsRepo) ListTaskMetrics(ctx context.Context, taskID string, 
 }
 
 func (r *memoryMetricsRepo) ListPropletMetrics(ctx context.Context, propletID string, offset, limit uint64) ([]PropletMetrics, uint64, error) {
-	const pageSize = 1024
-
 	var (
 		scanOffset uint64
 		total      uint64
@@ -264,7 +260,7 @@ func (r *memoryMetricsRepo) ListPropletMetrics(ctx context.Context, propletID st
 	)
 
 	for {
-		data, allTotal, err := r.storage.List(ctx, scanOffset, pageSize)
+		data, allTotal, err := r.storage.List(ctx, scanOffset, memoryScanPageSize)
 		if err != nil {
 			return nil, 0, err
 		}

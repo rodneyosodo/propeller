@@ -228,13 +228,9 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 }
 
 func (r *taskRepo) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
-	var total uint64
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM tasks WHERE workflow_id = $1", workflowID); err != nil {
-		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
-	}
-
+	baseQuery := `FROM tasks WHERE workflow_id = $1`
 	query := `SELECT id, name, state, image_url, file, cli_args, inputs, env, daemon, encrypted, kbs_resource_path, proplet_id, workflow_id, results, error, monitoring_profile, start_time, finish_time, created_at, updated_at
-		FROM tasks WHERE workflow_id = $1 ORDER BY created_at ASC LIMIT $2 OFFSET $3`
+		` + baseQuery + ` ORDER BY created_at ASC LIMIT $2 OFFSET $3`
 
 	rows, err := r.db.QueryContext(ctx, query, workflowID, limit, offset)
 	if err != nil {
@@ -264,6 +260,11 @@ func (r *taskRepo) ListByWorkflowID(ctx context.Context, workflowID string, offs
 	}
 
 	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+
+	var total uint64
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) "+baseQuery, workflowID); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 

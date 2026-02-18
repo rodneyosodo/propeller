@@ -40,11 +40,10 @@ const (
 )
 
 var (
-	baseTopic = "m/%s/c/%s"
-	namegen   = namegenerator.NewGenerator()
+	baseTopic       = "m/%s/c/%s"
+	namegen         = namegenerator.NewGenerator()
+	errShuttingDown = errors.New("service is shutting down")
 )
-
-var errShuttingDown = errors.New("service is shutting down")
 
 type service struct {
 	taskRepo         storage.TaskRepository
@@ -826,12 +825,8 @@ func (svc *service) Shutdown(ctx context.Context) error {
 		svc.logger.Warn("shutdown timeout waiting for in-flight goroutines")
 	}
 
-	waitCtx := ctx
-	var cancel context.CancelFunc
-	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
-		waitCtx, cancel = context.WithTimeout(ctx, shutdownTaskStopWait)
-		defer cancel()
-	}
+	waitCtx, cancel := context.WithTimeout(ctx, shutdownTaskStopWait)
+	defer cancel()
 
 	if err := svc.waitForActiveTasks(waitCtx); err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 		svc.logger.Warn("failed while waiting for active tasks to settle", slog.Any("error", err))
@@ -850,49 +845,59 @@ func (svc *service) RecoverInterruptedTasks(ctx context.Context) error {
 		return fmt.Errorf("failed to list tasks: %w", err)
 	}
 
-	// First, send stop commands to proplets for all interrupted tasks.
+	now := time.Now()
+	stopTopic := svc.baseTopic + "/control/manager/stop"
+	var (
+		wg        sync.WaitGroup
+		recovered atomic.Int64
+	)
+
 	for i := range allTasks {
-		t := &allTasks[i]
+		t := allTasks[i]
 		if t.State != task.Interrupted {
 			continue
 		}
-		propletID, err := svc.taskPropletRepo.Get(ctx, t.ID)
-		if err != nil {
-			svc.logger.Warn("no proplet mapping for interrupted task, skipping stop", slog.String("task_id", t.ID), slog.Any("error", err))
 
-			continue
-		}
+		wg.Add(1)
+		go func(t task.Task) {
+			defer wg.Done()
 
-		stopPayload := map[string]any{
-			"id":         t.ID,
-			"proplet_id": propletID,
-		}
-		topic := svc.baseTopic + "/control/manager/stop"
-		if err := svc.pubsub.Publish(ctx, topic, stopPayload); err != nil {
-			svc.logger.Warn("failed to send stop command for interrupted task", slog.String("task_id", t.ID), slog.Any("error", err))
-		}
-	}
+			propletID, err := svc.taskPropletRepo.Get(ctx, t.ID)
+			if err != nil {
+				svc.logger.Warn("no proplet mapping for interrupted task, skipping stop", slog.String("task_id", t.ID), slog.Any("error", err))
+			} else {
+				stopPayload := map[string]any{
+					"id":         t.ID,
+					"proplet_id": propletID,
+				}
+				if err := svc.pubsub.Publish(ctx, stopTopic, stopPayload); err != nil {
+					svc.logger.Warn("failed to send stop command for interrupted task", slog.String("task_id", t.ID), slog.Any("error", err))
+				} else {
+					// Give proplets a small window to observe the stop signal before marking failed.
+					timer := time.NewTimer(shutdownTaskStopWait)
+					defer timer.Stop()
+					select {
+					case <-ctx.Done():
+					case <-timer.C:
+					}
+				}
+			}
 
-	// Then mark all interrupted tasks as failed.
-	now := time.Now()
-	recovered := 0
-	for i := range allTasks {
-		t := &allTasks[i]
-		if t.State == task.Interrupted {
 			t.State = task.Failed
 			t.Error = "interrupted by shutdown"
 			t.UpdatedAt = now
-			if err := svc.taskRepo.Update(ctx, *t); err != nil {
+			if err := svc.taskRepo.Update(ctx, t); err != nil {
 				svc.logger.Error("failed to recover interrupted task", slog.String("task_id", t.ID), slog.Any("error", err))
 
-				continue
+				return
 			}
-			recovered++
-		}
+			recovered.Add(1)
+		}(t)
 	}
+	wg.Wait()
 
-	if recovered > 0 {
-		svc.logger.Info("recovered interrupted tasks", slog.Int("count", recovered))
+	if count := recovered.Load(); count > 0 {
+		svc.logger.Info("recovered interrupted tasks", slog.Int64("count", count))
 	}
 
 	return nil
