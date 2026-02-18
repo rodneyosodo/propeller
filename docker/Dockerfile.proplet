@@ -1,18 +1,3 @@
-# Proplet Docker Image
-#
-# Supports two variants via --target build flag:
-#   - base:    Lightweight Alpine image without wasi-nn support
-#   - wasi-nn: Ubuntu image with wasi-nn/OpenVINO support (x86_64 only)
-#
-# Build commands:
-#   Base:    docker build -f docker/Dockerfile.proplet --target base -t ghcr.io/absmach/propeller/proplet:base .
-#   wasi-nn: docker build -f docker/Dockerfile.proplet --target wasi-nn --platform linux/amd64 -t ghcr.io/absmach/propeller/proplet:wasi-nn .
-#
-# For wasi-nn tasks, specify cli_args in the task manifest.
-
-# =============================================================================
-# Builder stage - compiles proplet binary
-# =============================================================================
 FROM rust:1.93.1 AS builder
 
 ARG VERSION
@@ -28,9 +13,6 @@ COPY proplet/ ./
 RUN cargo build --release && \
     upx --best target/release/proplet
 
-# =============================================================================
-# Base variant - lightweight Alpine image
-# =============================================================================
 FROM alpine:3.21 AS base
 
 LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
@@ -57,9 +39,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
 
 ENTRYPOINT ["/usr/local/bin/proplet"]
 
-# =============================================================================
-# wasi-nn variant - Ubuntu with wasmtime and OpenVINO (x86_64 only)
-# =============================================================================
 FROM ubuntu:24.04 AS wasi-nn
 
 LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
@@ -106,7 +85,6 @@ RUN chown proplet:proplet /usr/local/bin/proplet && \
 ENV INTEL_OPENVINO_DIR=/opt/intel/openvino_2025
 ENV LD_LIBRARY_PATH=/opt/intel/openvino_2025/runtime/lib/intel64
 ENV OpenVINO_DIR=/opt/intel/openvino_2025/runtime/cmake
-
 
 USER proplet
 WORKDIR /home/proplet
