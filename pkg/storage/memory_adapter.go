@@ -60,33 +60,49 @@ func (r *memoryTaskRepo) List(ctx context.Context, offset, limit uint64) ([]task
 }
 
 func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
-	// Fetch all items from the in-memory store, then filter by workflowID.
-	// The underlying storage is fully in-process, so this is fast and avoids
-	// duplicating index infrastructure in the generic key-value store.
-	const maxFetch = 100000
-	data, _, err := r.storage.List(ctx, 0, maxFetch)
-	if err != nil {
-		return nil, 0, err
+	const pageSize = 1024
+
+	var (
+		scanOffset uint64
+		total      uint64
+		filtered   []task.Task
+	)
+
+	for {
+		data, allTotal, err := r.storage.List(ctx, scanOffset, pageSize)
+		if err != nil {
+			return nil, 0, err
+		}
+		if len(data) == 0 {
+			break
+		}
+
+		for _, d := range data {
+			t, ok := d.(task.Task)
+			if !ok {
+				return nil, 0, pkgerrors.ErrInvalidData
+			}
+			if t.WorkflowID != workflowID {
+				continue
+			}
+
+			if total >= offset && uint64(len(filtered)) < limit {
+				filtered = append(filtered, t)
+			}
+			total++
+		}
+
+		scanOffset += uint64(len(data))
+		if scanOffset >= allTotal {
+			break
+		}
 	}
 
-	var filtered []task.Task
-	for _, d := range data {
-		t, ok := d.(task.Task)
-		if !ok {
-			return nil, 0, pkgerrors.ErrInvalidData
-		}
-		if t.WorkflowID == workflowID {
-			filtered = append(filtered, t)
-		}
-	}
-
-	total := uint64(len(filtered))
 	if offset >= total {
 		return []task.Task{}, total, nil
 	}
-	end := min(offset+limit, total)
 
-	return filtered[offset:end], total, nil
+	return filtered, total, nil
 }
 
 func (r *memoryTaskRepo) Delete(ctx context.Context, id string) error {
@@ -172,8 +188,6 @@ func (r *memoryTaskPropletRepo) Delete(ctx context.Context, taskID string) error
 	return r.storage.Delete(ctx, taskID)
 }
 
-const maxMemoryFetch = 100000
-
 type memoryMetricsRepo struct {
 	storage Storage
 }
@@ -195,65 +209,93 @@ func (r *memoryMetricsRepo) CreatePropletMetrics(ctx context.Context, m PropletM
 }
 
 func (r *memoryMetricsRepo) ListTaskMetrics(ctx context.Context, taskID string, offset, limit uint64) ([]TaskMetrics, uint64, error) {
-	data, total, err := r.storage.List(ctx, 0, maxMemoryFetch)
-	if err != nil {
-		return nil, 0, err
-	}
+	const pageSize = 1024
 
-	if total >= maxMemoryFetch {
-		return nil, 0, fmt.Errorf("metrics dataset exceeds maximum fetch size of %d, results may be truncated", maxMemoryFetch)
-	}
+	var (
+		scanOffset uint64
+		total      uint64
+		filtered   []TaskMetrics
+	)
 
-	var filtered []TaskMetrics
-	for _, d := range data {
-		m, ok := d.(TaskMetrics)
-		if !ok {
-			continue
+	for {
+		data, allTotal, err := r.storage.List(ctx, scanOffset, pageSize)
+		if err != nil {
+			return nil, 0, err
 		}
-		if m.TaskID == taskID {
-			filtered = append(filtered, m)
+		if len(data) == 0 {
+			break
+		}
+
+		for _, d := range data {
+			m, ok := d.(TaskMetrics)
+			if !ok {
+				continue
+			}
+			if m.TaskID != taskID {
+				continue
+			}
+
+			if total >= offset && uint64(len(filtered)) < limit {
+				filtered = append(filtered, m)
+			}
+			total++
+		}
+
+		scanOffset += uint64(len(data))
+		if scanOffset >= allTotal {
+			break
 		}
 	}
 
-	filteredTotal := uint64(len(filtered))
-	if offset >= filteredTotal {
-		return []TaskMetrics{}, filteredTotal, nil
+	if offset >= total {
+		return []TaskMetrics{}, total, nil
 	}
 
-	start := offset
-	end := min(offset+limit, filteredTotal)
-
-	return filtered[start:end], filteredTotal, nil
+	return filtered, total, nil
 }
 
 func (r *memoryMetricsRepo) ListPropletMetrics(ctx context.Context, propletID string, offset, limit uint64) ([]PropletMetrics, uint64, error) {
-	data, total, err := r.storage.List(ctx, 0, maxMemoryFetch)
-	if err != nil {
-		return nil, 0, err
-	}
+	const pageSize = 1024
 
-	if total >= maxMemoryFetch {
-		return nil, 0, fmt.Errorf("metrics dataset exceeds maximum fetch size of %d, results may be truncated", maxMemoryFetch)
-	}
+	var (
+		scanOffset uint64
+		total      uint64
+		filtered   []PropletMetrics
+	)
 
-	var filtered []PropletMetrics
-	for _, d := range data {
-		m, ok := d.(PropletMetrics)
-		if !ok {
-			continue
+	for {
+		data, allTotal, err := r.storage.List(ctx, scanOffset, pageSize)
+		if err != nil {
+			return nil, 0, err
 		}
-		if m.PropletID == propletID {
-			filtered = append(filtered, m)
+		if len(data) == 0 {
+			break
+		}
+
+		for _, d := range data {
+			m, ok := d.(PropletMetrics)
+			if !ok {
+				continue
+			}
+			if m.PropletID != propletID {
+				continue
+			}
+
+			if total >= offset && uint64(len(filtered)) < limit {
+				filtered = append(filtered, m)
+			}
+			total++
+		}
+
+		scanOffset += uint64(len(data))
+		if scanOffset >= allTotal {
+			break
 		}
 	}
 
-	filteredTotal := uint64(len(filtered))
-	if offset >= filteredTotal {
-		return []PropletMetrics{}, filteredTotal, nil
+	if offset >= total {
+		return []PropletMetrics{}, total, nil
 	}
 
-	start := offset
-	end := min(offset+limit, filteredTotal)
-
-	return filtered[start:end], filteredTotal, nil
+	return filtered, total, nil
 }
