@@ -15,125 +15,39 @@ This walkthrough uses the [wasmtime wasi-nn classification example](https://gith
 
 ### 1. Build the WASM module
 
-```bash
-mkdir -p /tmp/wasi-nn-example/src /tmp/wasi-nn-example/fixture
-```
+The Rust example is checked into this directory:
 
-Create `/tmp/wasi-nn-example/Cargo.toml`:
-
-```toml
-[package]
-name = "wasi-nn-example"
-version = "0.0.0"
-edition = "2021"
-publish = false
-
-[dependencies]
-wasi-nn = "0.1.0"
-
-[workspace]
-```
-
-Create `/tmp/wasi-nn-example/src/main.rs`:
-
-```rust
-use std::convert::TryInto;
-use std::fs;
-
-pub fn main() {
-    let xml = fs::read_to_string("fixture/model.xml").unwrap();
-    println!("Read graph XML, first 50 characters: {}", &xml[..50]);
-
-    let weights = fs::read("fixture/model.bin").unwrap();
-    println!("Read graph weights, size in bytes: {}", weights.len());
-
-    let graph = unsafe {
-        wasi_nn::load(
-            &[&xml.into_bytes(), &weights],
-            wasi_nn::GRAPH_ENCODING_OPENVINO,
-            wasi_nn::EXECUTION_TARGET_CPU,
-        )
-        .unwrap()
-    };
-    println!("Loaded graph into wasi-nn with ID: {graph}");
-
-    let context = unsafe { wasi_nn::init_execution_context(graph).unwrap() };
-    println!("Created wasi-nn execution context with ID: {context}");
-
-    let tensor_data = fs::read("fixture/tensor.bgr").unwrap();
-    println!("Read input tensor, size in bytes: {}", tensor_data.len());
-    let tensor = wasi_nn::Tensor {
-        dimensions: &[1, 3, 224, 224],
-        r#type: wasi_nn::TENSOR_TYPE_F32,
-        data: &tensor_data,
-    };
-    unsafe {
-        wasi_nn::set_input(context, 0, tensor).unwrap();
-    }
-
-    unsafe {
-        wasi_nn::compute(context).unwrap();
-    }
-    println!("Executed graph inference");
-
-    let mut output_buffer = vec![0f32; 1001];
-    unsafe {
-        wasi_nn::get_output(
-            context,
-            0,
-            &mut output_buffer[..] as *mut [f32] as *mut u8,
-            (output_buffer.len() * 4).try_into().unwrap(),
-        )
-        .unwrap();
-    }
-    println!(
-        "Found results, sorted top 5: {:?}",
-        &sort_results(&output_buffer)[..5]
-    )
-}
-
-fn sort_results(buffer: &[f32]) -> Vec<InferenceResult> {
-    let mut results: Vec<InferenceResult> = buffer
-        .iter()
-        .skip(1)
-        .enumerate()
-        .map(|(c, p)| InferenceResult(c, *p))
-        .collect();
-    results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-    results
-}
-
-#[derive(Debug, PartialEq)]
-struct InferenceResult(usize, f32);
-```
+- `examples/wasi-nn/Cargo.toml`
+- `examples/wasi-nn/src/main.rs`
 
 Compile to WASM:
 
 ```bash
-cd /tmp/wasi-nn-example
+cd examples/wasi-nn
 cargo build --target=wasm32-wasip1
+mkdir -p fixture
 ```
 
 Output:
 
 ```text
    Compiling wasi-nn v0.1.0
-   Compiling wasi-nn-example v0.0.0 (/tmp/wasi-nn-example)
+   Compiling wasi-nn-example v0.1.0 (.../examples/wasi-nn)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.21s
 ```
 
 ### 2. Download MobileNet model fixtures
 
 ```bash
-wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/mobilenet.xml -O /tmp/wasi-nn-example/fixture/model.xml
-wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/mobilenet.bin -O /tmp/wasi-nn-example/fixture/model.bin
-wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/tensor-1x224x224x3-f32.bgr -O /tmp/wasi-nn-example/fixture/tensor.bgr
+wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/mobilenet.xml -O fixture/model.xml
+wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/mobilenet.bin -O fixture/model.bin
+wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/tensor-1x224x224x3-f32.bgr -O fixture/tensor.bgr
 ```
 
 Verify:
 
 ```bash
-ls -lh /tmp/wasi-nn-example/fixture/
+ls -lh fixture/
 ```
 
 Output:
@@ -188,8 +102,8 @@ libopenvino_auto_batch_plugin.so
 
 ```bash
 docker run --rm --entrypoint wasmtime \
-  -v /tmp/wasi-nn-example/target/wasm32-wasip1/debug/wasi-nn-example.wasm:/test/wasi-nn-example.wasm \
-  -v /tmp/wasi-nn-example/fixture:/home/proplet/fixture \
+  -v "$(pwd)/target/wasm32-wasip1/debug/wasi-nn-example.wasm:/test/wasi-nn-example.wasm" \
+  -v "$(pwd)/fixture:/home/proplet/fixture" \
   ghcr.io/absmach/propeller/proplet:wasi-nn \
   run -S nn --dir=/home/proplet/fixture::fixture /test/wasi-nn-example.wasm
 ```
@@ -221,7 +135,7 @@ make docker_proplet_wasinn # builds proplet:wasi-nn image
 make cli                  # builds propeller-cli at build/cli
 ```
 
-### 2. Prepare the fixture directory
+### 2. Prepare fixtures and build the WASM module
 
 From the project root:
 
@@ -230,6 +144,8 @@ mkdir -p fixture
 wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/mobilenet.xml -O fixture/model.xml
 wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/mobilenet.bin -O fixture/model.bin
 wget -q https://download.01.org/openvinotoolkit/fixtures/mobilenet/tensor-1x224x224x3-f32.bgr -O fixture/tensor.bgr
+
+cargo build --manifest-path examples/wasi-nn/Cargo.toml --target=wasm32-wasip1
 ```
 
 ### 3. Configure docker compose
@@ -340,7 +256,7 @@ Upload the WASM binary:
 
 ```bash
 curl -X PUT http://localhost:7070/tasks/<task-id>/upload \
-  -F "file=@/tmp/wasi-nn-example/target/wasm32-wasip1/debug/wasi-nn-example.wasm"
+  -F "file=@examples/wasi-nn/target/wasm32-wasip1/debug/wasi-nn-example.wasm"
 ```
 
 Start the task:
