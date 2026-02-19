@@ -1659,7 +1659,7 @@ services:
     # To run wasi-nn examples, uncomment the fixture volume and create the directory with model files.
     # See examples/wasi-nn/README.md for setup instructions.
     # volumes:
-    #   - ../config.toml:/config.toml
+    #   - ./config.toml:/home/proplet/config.toml
     #   - ../fixture:/home/proplet/fixture
 
   proxy:
