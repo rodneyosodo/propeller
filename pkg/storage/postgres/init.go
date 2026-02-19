@@ -251,13 +251,9 @@ func (db *Database) Migrate() error {
 		},
 	}
 
-	n, err := migrate.Exec(db.DB.DB, "postgres", migrations, migrate.Up)
+	_, err := migrate.Exec(db.DB.DB, "postgres", migrations, migrate.Up)
 	if err != nil {
 		return fmt.Errorf("database migration error: %w", err)
-	}
-
-	if n > 0 {
-		return fmt.Errorf("applied %d migrations", n)
 	}
 
 	return nil

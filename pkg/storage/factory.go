@@ -549,16 +549,9 @@ type postgresJobAdapter struct {
 }
 
 func (a *postgresJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
-	pj := postgres.Job{
-		ID: j.ID, Name: j.Name, ExecutionMode: j.ExecutionMode,
-		CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
-	}
-	pj, err := a.repo.Create(ctx, pj)
-	if err != nil {
-		return Job{}, err
-	}
+	pj, err := a.repo.Create(ctx, postgres.Job(j))
 
-	return Job{ID: pj.ID, Name: pj.Name, ExecutionMode: pj.ExecutionMode, CreatedAt: pj.CreatedAt, UpdatedAt: pj.UpdatedAt}, nil
+	return Job(pj), err
 }
 
 func (a *postgresJobAdapter) Get(ctx context.Context, id string) (Job, error) {
@@ -592,16 +585,9 @@ type sqliteJobAdapter struct {
 }
 
 func (a *sqliteJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
-	sj := sqlite.Job{
-		ID: j.ID, Name: j.Name, ExecutionMode: j.ExecutionMode,
-		CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
-	}
-	sj, err := a.repo.Create(ctx, sj)
-	if err != nil {
-		return Job{}, err
-	}
+	sj, err := a.repo.Create(ctx, sqlite.Job(j))
 
-	return Job{ID: sj.ID, Name: sj.Name, ExecutionMode: sj.ExecutionMode, CreatedAt: sj.CreatedAt, UpdatedAt: sj.UpdatedAt}, nil
+	return Job(sj), err
 }
 
 func (a *sqliteJobAdapter) Get(ctx context.Context, id string) (Job, error) {
@@ -635,16 +621,9 @@ type badgerJobAdapter struct {
 }
 
 func (a *badgerJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
-	bj := badger.Job{
-		ID: j.ID, Name: j.Name, ExecutionMode: j.ExecutionMode,
-		CreatedAt: j.CreatedAt, UpdatedAt: j.UpdatedAt,
-	}
-	bj, err := a.repo.Create(ctx, bj)
-	if err != nil {
-		return Job{}, err
-	}
+	bj, err := a.repo.Create(ctx, badger.Job(j))
 
-	return Job{ID: bj.ID, Name: bj.Name, ExecutionMode: bj.ExecutionMode, CreatedAt: bj.CreatedAt, UpdatedAt: bj.UpdatedAt}, nil
+	return Job(bj), err
 }
 
 func (a *badgerJobAdapter) Get(ctx context.Context, id string) (Job, error) {

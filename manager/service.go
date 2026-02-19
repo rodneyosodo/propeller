@@ -337,13 +337,16 @@ func (svc *service) GetJob(ctx context.Context, jobID string) ([]task.Task, erro
 }
 
 func (svc *service) ListJobs(ctx context.Context, offset, limit uint64) (JobPage, error) {
+	jobs := make([]JobSummary, 0)
+	seen := make(map[string]struct{})
+
 	if svc.jobRepo != nil {
-		storedJobs, total, err := svc.jobRepo.List(ctx, offset, limit)
+		storedJobs, err := svc.listAllStoredJobs(ctx)
 		if err != nil {
 			return JobPage{}, err
 		}
 
-		jobs := make([]JobSummary, 0, len(storedJobs))
+		jobs = make([]JobSummary, 0, len(storedJobs))
 		for _, sj := range storedJobs {
 			tasks, err := svc.taskRepo.ListByJobID(ctx, sj.ID)
 			if err != nil {
@@ -353,14 +356,8 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64) (JobPage
 			summary := computeJobSummary(sj.ID, tasks)
 			summary.Name = sj.Name
 			jobs = append(jobs, summary)
+			seen[sj.ID] = struct{}{}
 		}
-
-		return JobPage{
-			Offset: offset,
-			Limit:  limit,
-			Total:  total,
-			Jobs:   jobs,
-		}, nil
 	}
 
 	allTasks, err := svc.listAllTasks(ctx)
@@ -375,11 +372,25 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64) (JobPage
 		}
 	}
 
-	jobs := make([]JobSummary, 0, len(jobMap))
 	for jobID, tasks := range jobMap {
+		if _, ok := seen[jobID]; ok {
+			continue
+		}
 		summary := computeJobSummary(jobID, tasks)
 		jobs = append(jobs, summary)
 	}
+
+	slices.SortFunc(jobs, func(a, b JobSummary) int {
+		switch {
+		case a.CreatedAt.After(b.CreatedAt):
+			return -1
+		case a.CreatedAt.Before(b.CreatedAt):
+			return 1
+		default:
+			return strings.Compare(a.JobID, b.JobID)
+		}
+	})
+
 	total := uint64(len(jobs))
 	if offset >= total {
 		return JobPage{
@@ -929,6 +940,28 @@ func (svc *service) RecoverInterruptedTasks(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (svc *service) listAllStoredJobs(ctx context.Context) ([]storage.Job, error) {
+	if svc.jobRepo == nil {
+		return nil, nil
+	}
+
+	const pageLimit = uint64(1000)
+	jobs := make([]storage.Job, 0)
+	for offset := uint64(0); ; offset += pageLimit {
+		page, total, err := svc.jobRepo.List(ctx, offset, pageLimit)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, page...)
+
+		if len(page) == 0 || offset+uint64(len(page)) >= total {
+			break
+		}
+	}
+
+	return jobs, nil
 }
 
 func (svc *service) checkTaskDependencies(ctx context.Context, taskID string, t task.Task) error {

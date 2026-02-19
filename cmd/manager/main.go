@@ -53,6 +53,13 @@ type config struct {
 }
 
 func main() {
+	exitCode := 0
+	defer func() {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+	}()
+
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to load configuration : %s", err.Error())
@@ -101,6 +108,7 @@ func main() {
 		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
 		if err != nil {
 			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+			exitCode = 1
 
 			return
 		}
@@ -116,6 +124,7 @@ func main() {
 	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, svcName, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
 	if err != nil {
 		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -123,6 +132,7 @@ func main() {
 	storageCfg := storage.Config{}
 	if err := env.Parse(&storageCfg); err != nil {
 		logger.Error("failed to load storage configuration", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -130,6 +140,7 @@ func main() {
 	repos, err := storage.NewRepositories(storageCfg)
 	if err != nil {
 		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -154,12 +165,25 @@ func main() {
 	counter, latency := prometheus.MakeMetrics(svcName, "api")
 	svc = middleware.Metrics(counter, latency, svc)
 
-	if err := svc.RecoverInterruptedTasks(ctx); err != nil {
-		logger.Error("failed to recover interrupted tasks", slog.String("error", err.Error()))
+	const (
+		subscribeMaxRetries = 10
+		subscribeRetryDelay = 3 * time.Second
+	)
+	var subscribeErr error
+	for i := range subscribeMaxRetries {
+		if subscribeErr = svc.Subscribe(ctx); subscribeErr == nil {
+			break
+		}
+		logger.Warn("failed to subscribe to manager channel, retrying",
+			slog.String("error", subscribeErr.Error()),
+			slog.Int("attempt", i+1),
+			slog.Int("max_retries", subscribeMaxRetries),
+		)
+		time.Sleep(subscribeRetryDelay)
 	}
-
-	if err := svc.Subscribe(ctx); err != nil {
-		logger.Error("failed to subscribe to manager channel", slog.String("error", err.Error()))
+	if subscribeErr != nil {
+		logger.Error("failed to subscribe to manager channel after retries", slog.String("error", subscribeErr.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -171,6 +195,7 @@ func main() {
 	httpServerConfig := server.Config{Port: defHTTPPort}
 	if err := env.ParseWithOptions(&httpServerConfig, env.Options{Prefix: envPrefixHTTP}); err != nil {
 		logger.Error(fmt.Sprintf("failed to load %s HTTP server configuration : %s", svcName, err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -187,6 +212,7 @@ func main() {
 
 	if err := g.Wait(); err != nil {
 		logger.Error(fmt.Sprintf("%s service exited with error: %s", svcName, err))
+		exitCode = 1
 	}
 
 	// Coordinated shutdown: use a fresh background context because the parent ctx

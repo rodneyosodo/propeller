@@ -72,6 +72,35 @@ func TestListJobs(t *testing.T) {
 	assert.Len(t, page.Jobs, 2)
 }
 
+func TestListJobsIncludesLegacyTaskOnlyJob(t *testing.T) {
+	t.Parallel()
+	svc := newService(t)
+
+	_, _, err := svc.CreateJob(context.Background(), "stored-job", []task.Task{
+		{Name: "stored-task", State: task.Pending},
+	}, "parallel")
+	require.NoError(t, err)
+
+	_, err = svc.CreateTask(context.Background(), task.Task{
+		Name:  "legacy-task",
+		JobID: "legacy-job-id",
+		State: task.Pending,
+	})
+	require.NoError(t, err)
+
+	page, err := svc.ListJobs(context.Background(), 0, 100)
+	require.NoError(t, err)
+	assert.Equal(t, uint64(2), page.Total)
+
+	ids := make(map[string]struct{}, len(page.Jobs))
+	for _, j := range page.Jobs {
+		ids[j.JobID] = struct{}{}
+	}
+
+	_, ok := ids["legacy-job-id"]
+	assert.True(t, ok)
+}
+
 func TestCreateJobPersistsJobEntity(t *testing.T) {
 	t.Parallel()
 	svc := newService(t)
