@@ -103,17 +103,45 @@ func TestListJobsIncludesLegacyTaskOnlyJob(t *testing.T) {
 
 func TestCreateJobPersistsJobEntity(t *testing.T) {
 	t.Parallel()
-	svc := newService(t)
 
-	jobID, _, err := svc.CreateJob(context.Background(), "persisted-job", []task.Task{
-		{Name: "task1", State: task.Pending},
-	}, "sequential")
-	require.NoError(t, err)
+	cases := []struct {
+		desc          string
+		name          string
+		executionMode string
+	}{
+		{
+			desc:          "persist job in sequential mode",
+			name:          "persisted-job-sequential",
+			executionMode: "sequential",
+		},
+		{
+			desc:          "persist job in parallel mode",
+			name:          "persisted-job-parallel",
+			executionMode: "parallel",
+		},
+		{
+			desc:          "persist job in configurable mode",
+			name:          "persisted-job-configurable",
+			executionMode: "configurable",
+		},
+	}
 
-	jobTasks, err := svc.GetJob(context.Background(), jobID)
-	require.NoError(t, err)
-	assert.Len(t, jobTasks, 1)
-	assert.Equal(t, jobID, jobTasks[0].JobID)
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			svc := newService(t)
+
+			jobID, _, err := svc.CreateJob(context.Background(), tc.name, []task.Task{
+				{Name: "task1", State: task.Pending},
+			}, tc.executionMode)
+			require.NoError(t, err)
+
+			jobTasks, err := svc.GetJob(context.Background(), jobID)
+			require.NoError(t, err)
+			require.Len(t, jobTasks, 1)
+			assert.Equal(t, jobID, jobTasks[0].JobID)
+		})
+	}
 }
 
 func TestCreateJobWithDependencies(t *testing.T) {

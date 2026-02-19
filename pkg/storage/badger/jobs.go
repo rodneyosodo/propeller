@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/absmach/propeller/job"
+	"github.com/absmach/propeller/pkg/job"
 )
 
 type jobRepo struct {

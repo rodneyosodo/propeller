@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/absmach/propeller/job"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 )

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/absmach/propeller/job"
+	"github.com/absmach/propeller/pkg/job"
 )
 
 type jobRepo struct {
@@ -18,10 +18,15 @@ func NewJobRepository(db *Database) JobRepository {
 }
 
 func (r *jobRepo) Create(ctx context.Context, j job.Job) (job.Job, error) {
-	query := `INSERT INTO jobs (id, name, execution_mode, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)`
-
-	_, err := r.db.ExecContext(ctx, query, j.ID, j.Name, j.ExecutionMode, j.CreatedAt, j.UpdatedAt)
+	_, err := r.db.ExecContext(
+		ctx,
+		`INSERT INTO jobs (id, name, execution_mode, created_at, updated_at) VALUES (?, ?, ?, ?, ?)`,
+		j.ID,
+		j.Name,
+		j.ExecutionMode,
+		j.CreatedAt,
+		j.UpdatedAt,
+	)
 	if err != nil {
 		return job.Job{}, fmt.Errorf("%w: %w", ErrCreate, err)
 	}
@@ -30,10 +35,8 @@ func (r *jobRepo) Create(ctx context.Context, j job.Job) (job.Job, error) {
 }
 
 func (r *jobRepo) Get(ctx context.Context, id string) (job.Job, error) {
-	query := `SELECT id, name, execution_mode, created_at, updated_at FROM jobs WHERE id = ?`
-
 	var j job.Job
-	if err := r.db.GetContext(ctx, &j, query, id); err != nil {
+	if err := r.db.GetContext(ctx, &j, `SELECT id, name, execution_mode, created_at, updated_at FROM jobs WHERE id = ?`, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return job.Job{}, ErrNotFound
 		}
@@ -44,13 +47,20 @@ func (r *jobRepo) Get(ctx context.Context, id string) (job.Job, error) {
 	return j, nil
 }
 
-func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []job.Job, total uint64, err error) {
-	if err = r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM jobs"); err != nil {
+func (r *jobRepo) List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error) {
+	var total uint64
+	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM jobs"); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
-	query := `SELECT id, name, execution_mode, created_at, updated_at FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?`
-	if err = r.db.SelectContext(ctx, &jobs, query, limit, offset); err != nil {
+	var jobs []job.Job
+	if err := r.db.SelectContext(
+		ctx,
+		&jobs,
+		`SELECT id, name, execution_mode, created_at, updated_at FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+		limit,
+		offset,
+	); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
@@ -62,9 +72,7 @@ func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []job.Jo
 }
 
 func (r *jobRepo) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM jobs WHERE id = ?`
-
-	if _, err := r.db.ExecContext(ctx, query, id); err != nil {
+	if _, err := r.db.ExecContext(ctx, `DELETE FROM jobs WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("%w: %w", ErrDelete, err)
 	}
 

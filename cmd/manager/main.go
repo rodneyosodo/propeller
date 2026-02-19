@@ -165,24 +165,8 @@ func main() {
 	counter, latency := prometheus.MakeMetrics(svcName, "api")
 	svc = middleware.Metrics(counter, latency, svc)
 
-	const (
-		subscribeMaxRetries = 10
-		subscribeRetryDelay = 3 * time.Second
-	)
-	var subscribeErr error
-	for i := range subscribeMaxRetries {
-		if subscribeErr = svc.Subscribe(ctx); subscribeErr == nil {
-			break
-		}
-		logger.Warn("failed to subscribe to manager channel, retrying",
-			slog.String("error", subscribeErr.Error()),
-			slog.Int("attempt", i+1),
-			slog.Int("max_retries", subscribeMaxRetries),
-		)
-		time.Sleep(subscribeRetryDelay)
-	}
-	if subscribeErr != nil {
-		logger.Error("failed to subscribe to manager channel after retries", slog.String("error", subscribeErr.Error()))
+	if err := svc.Subscribe(ctx); err != nil {
+		logger.Error("failed to subscribe to manager channel", slog.String("error", err.Error()))
 		exitCode = 1
 
 		return

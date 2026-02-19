@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/absmach/propeller/job"
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 	"github.com/jmoiron/sqlx"

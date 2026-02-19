@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	"github.com/absmach/propeller/job"
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 )

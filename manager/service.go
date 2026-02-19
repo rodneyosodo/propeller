@@ -15,10 +15,10 @@ import (
 	"time"
 
 	"github.com/0x6flab/namegenerator"
-	"github.com/absmach/propeller/job"
 	"github.com/absmach/propeller/pkg/cron"
 	"github.com/absmach/propeller/pkg/dag"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/scheduler"
