@@ -8,7 +8,6 @@ import (
 var (
 	defOffset uint64 = 0
 	defLimit  uint64 = 10
-	cliArgs   []string
 )
 
 var psdk sdk.SDK
@@ -42,6 +41,13 @@ Examples:
 				return
 			}
 
+			cliArgs, err := cmd.Flags().GetStringSlice("cli-args")
+			if err != nil {
+				logErrorCmd(*cmd, err)
+
+				return
+			}
+
 			t, err := psdk.CreateTask(sdk.Task{
 				Name:    args[0],
 				CLIArgs: cliArgs,
@@ -55,8 +61,7 @@ Examples:
 		},
 	}
 
-	createCmd.Flags().StringSliceVar(
-		&cliArgs,
+	createCmd.Flags().StringSlice(
 		"cli-args",
 		[]string{},
 		"CLI arguments to pass to wasmtime (comma-separated, e.g., -S,nn,--dir=/path::guest)",

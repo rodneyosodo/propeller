@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"log/slog"
@@ -72,31 +73,11 @@ func main() {
 		cfg.InstanceID = uuid.NewString()
 	}
 
-	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
-		_, err := os.Stat(configPath)
-		switch err {
-		case nil:
-			conf, err := propeller.LoadConfig(configPath)
-			if err != nil {
-				log.Printf("failed to load TOML configuration: %s", err.Error())
-				exitCode = 1
+	if err := ensureManagerCredentials(&cfg); err != nil {
+		log.Printf("%s", err.Error())
+		exitCode = 1
 
-				return
-			}
-			cfg.DomainID = conf.Manager.DomainID
-			cfg.ClientID = conf.Manager.ClientID
-			cfg.ClientKey = conf.Manager.ClientKey
-			cfg.ChannelID = conf.Manager.ChannelID
-		default:
-			log.Printf("failed to load TOML configuration: %s", err.Error())
-			exitCode = 1
-
-			return
-		}
-	}
-
-	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
-		log.Fatal("MANAGER_DOMAIN_ID, MANAGER_CHANNEL_ID, MANAGER_CLIENT_ID, and MANAGER_CLIENT_KEY must be set")
+		return
 	}
 
 	var level slog.Level
@@ -231,4 +212,29 @@ func main() {
 	}
 
 	logger.Info("graceful shutdown complete")
+}
+
+func ensureManagerCredentials(cfg *config) error {
+	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+		_, err := os.Stat(configPath)
+		switch err {
+		case nil:
+			conf, err := propeller.LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load TOML configuration: %w", err)
+			}
+			cfg.DomainID = conf.Manager.DomainID
+			cfg.ClientID = conf.Manager.ClientID
+			cfg.ClientKey = conf.Manager.ClientKey
+			cfg.ChannelID = conf.Manager.ChannelID
+		default:
+			return fmt.Errorf("failed to load TOML configuration: %w", err)
+		}
+	}
+
+	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
+		return errors.New("MANAGER_DOMAIN_ID, MANAGER_CHANNEL_ID, MANAGER_CLIENT_ID, and MANAGER_CLIENT_KEY must be set")
+	}
+
+	return nil
 }
