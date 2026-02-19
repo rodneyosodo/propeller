@@ -6,7 +6,7 @@ ARG TIME
 
 WORKDIR /build
 
-RUN apt-get update && apt-get install -y --no-install-recommends clang libclang-dev upx && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y clang libclang-dev upx
 
 COPY proplet/ ./
 
@@ -14,7 +14,7 @@ RUN cargo build --release && \
     strip target/release/proplet && \
     upx --best target/release/proplet
 
-FROM ubuntu:24.04
+FROM ubuntu:25.10
 
 LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
 LABEL org.opencontainers.image.licenses=Apache-2.0
