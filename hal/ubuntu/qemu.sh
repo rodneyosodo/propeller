@@ -5,6 +5,11 @@
 
 set -e
 
+# Re-exec with sudo -E to preserve environment variables if not already root
+if [[ $EUID -ne 0 ]]; then
+    exec sudo -E bash "$0" "$@"
+fi
+
 # Parse command line arguments
 TARGET="${1:-all}"
 
@@ -62,10 +67,6 @@ check_prerequisites() {
         exit 1
     fi
 
-    if [[ $EUID -ne 0 ]]; then
-        echo "This script must be run as root" 1>&2
-        exit 1
-    fi
 }
 
 # Build CVM image and cloud-init configuration
@@ -147,44 +148,18 @@ write_files:
       PROPLET_MQTT_QOS=2
       PROPLET_EXTERNAL_WASM_RUNTIME=/usr/local/bin/wasmtime
       PROPLET_LIVELINESS_INTERVAL=10
+      PROPLET_ENABLE_MONITORING=true
       PROPLET_MANAGER_K8S_NAMESPACE=default
-      PROPLET_CONFIG_FILE=/etc/proplet/config.toml
-      PROPLET_CONFIG_SECTION=proplet1
+      PROPLET_KBS_URI=KBS_URI_PLACEHOLDER
+      PROPLET_AA_CONFIG_PATH=/etc/default/proplet.toml
+      PROPLET_LAYER_STORE_PATH=/tmp/proplet/layers
     permissions: '0644'
 
-  - path: /etc/proplet/config.toml
+  - path: /etc/default/proplet.toml
     content: |
-      # SuperMQ Configuration
-
-      [manager]
-      domain_id = "4bae1a76-afc4-4054-976c-5427c49fbbf3"
-      client_id = "cdaccb11-7209-4fb9-8df1-3c52e9d64284"
-      client_key = "507d687d-51f8-4c71-8599-4273a5d75429"
-      channel_id = "34a616c3-8817-4995-aade-a383e64766a8"
-
-      [proplet1]
-      domain_id = "4bae1a76-afc4-4054-976c-5427c49fbbf3"
-      client_id = "0deb859f-973d-4e2e-93cf-ec756f4fc3c8"
-      client_key = "17c03d05-b55d-4a05-88ec-cadecb2130c4"
-      channel_id = "34a616c3-8817-4995-aade-a383e64766a8"
-
-      [proplet2]
-      domain_id = "4bae1a76-afc4-4054-976c-5427c49fbbf3"
-      client_id = "3dfb6fa7-8e8f-4a2b-a462-8afc59898686"
-      client_key = "06244015-8286-4dd6-89bd-e2ba7d7a9637"
-      channel_id = "34a616c3-8817-4995-aade-a383e64766a8"
-
-      [proplet3]
-      domain_id = "4bae1a76-afc4-4054-976c-5427c49fbbf3"
-      client_id = "f869bde7-8b1a-483e-9837-b621309af55a"
-      client_key = "316ba339-76f5-4149-acd7-8d6f3f7c9276"
-      channel_id = "34a616c3-8817-4995-aade-a383e64766a8"
-
-      [proxy]
-      domain_id = "4bae1a76-afc4-4054-976c-5427c49fbbf3"
-      client_id = "0deb859f-973d-4e2e-93cf-ec756f4fc3c8"
-      client_key = "17c03d05-b55d-4a05-88ec-cadecb2130c4"
-      channel_id = "34a616c3-8817-4995-aade-a383e64766a8"
+      [token_configs]
+      [token_configs.coco_kbs]
+      url = "KBS_URI_PLACEHOLDER"
     permissions: '0644'
 
   - path: /etc/default/attestation-agent
@@ -199,7 +174,7 @@ write_files:
     content: |
       # CoCo Keyprovider Environment Variables
       COCO_KP_SOCKET=127.0.0.1:50011
-      COCO_KP_KBS_URL=http://10.0.2.2:8082
+      COCO_KP_KBS_URL=KBS_URI_PLACEHOLDER
       RUST_LOG=info
     permissions: '0644'
 
@@ -219,24 +194,26 @@ write_files:
       [Unit]
       Description=Attestation Agent for Confidential Containers
       Documentation=https://github.com/confidential-containers/guest-components
-      After=network-online.target
+      After=network-online.target systemd-modules-load.service
       Wants=network-online.target
 
       [Service]
       Type=simple
       EnvironmentFile=/etc/default/attestation-agent
       ExecStartPre=/bin/mkdir -p /run/attestation-agent
+      ExecStartPre=modprobe tdx_guest
       ExecStart=/usr/local/bin/attestation-agent --attestation_sock ${AA_ATTESTATION_SOCK}
       Restart=on-failure
       RestartSec=5s
       StandardOutput=journal
       StandardError=journal
 
-      NoNewPrivileges=true
       PrivateTmp=true
       ProtectSystem=strict
       ProtectHome=true
       ReadWritePaths=/run/attestation-agent /etc/attestation-agent
+      DeviceAllow=/dev/tdx_guest rw
+      SupplementaryGroups=
 
       [Install]
       WantedBy=multi-user.target
@@ -274,12 +251,16 @@ write_files:
       [Unit]
       Description=Proplet WebAssembly Workload Orchestrator
       Documentation=https://github.com/absmach/propeller
-      After=network-online.target attestation-agent.service
+      After=network-online.target attestation-agent.service coco-keyprovider.service
       Wants=network-online.target
+      Requires=attestation-agent.service coco-keyprovider.service
 
       [Service]
       Type=simple
       EnvironmentFile=/etc/default/proplet
+      Environment=WASMTIME_HOME=/var/lib/proplet
+      ExecStartPre=/bin/mkdir -p /var/lib/proplet/cache
+      ExecStartPre=/bin/sh -c 'until nc -z 127.0.0.1 50010 && nc -z 127.0.0.1 50011; do sleep 1; done'
       ExecStart=/usr/local/bin/proplet
       Restart=on-failure
       RestartSec=5s
@@ -413,7 +394,7 @@ runcmd:
     export HOME=/root
     export PATH="/root/.cargo/bin:$PATH"
     cd /tmp
-    git clone --depth 1 https://github.com/absmach/propeller.git
+    git clone https://github.com/absmach/propeller.git
     cd propeller/proplet
     echo "Building proplet (this may take several minutes)..."
     cargo build --release
@@ -519,7 +500,7 @@ EOF
     sed -i "s|CLIENT_KEY_PLACEHOLDER|${PROPLET_CLIENT_KEY}|g" $USER_DATA
     sed -i "s|CHANNEL_ID_PLACEHOLDER|${PROPLET_CHANNEL_ID}|g" $USER_DATA
     sed -i "s|MQTT_ADDRESS_PLACEHOLDER|${PROPLET_MQTT_ADDRESS}|g" $USER_DATA
-    sed -i "s|KBS_URL_PLACEHOLDER|${KBS_URL}|g" $USER_DATA
+    sed -i "s|KBS_URI_PLACEHOLDER|${KBS_URL}|g" $USER_DATA
 
     # Create meta-data
     cat <<EOF >$META_DATA
