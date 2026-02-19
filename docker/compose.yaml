@@ -97,7 +97,6 @@ services:
       - supermq-auth-redis-volume:/data
 
   auth:
-    platform: linux/amd64
     image: docker.io/supermq/auth:${SMQ_RELEASE_TAG}
     container_name: supermq-auth
     depends_on:
@@ -146,9 +145,6 @@ services:
       SMQ_AUTH_ADAPTER_INSTANCE_ID: ${SMQ_AUTH_ADAPTER_INSTANCE_ID}
       SMQ_ES_URL: ${SMQ_ES_URL}
       SMQ_AUTH_CACHE_URL: ${SMQ_AUTH_CACHE_URL}
-      SMQ_AUTH_KEYS_ALGORITHM: ${SMQ_AUTH_KEYS_ALGORITHM}
-      SMQ_AUTH_KEYS_ACTIVE_KEY_PATH: ${SMQ_AUTH_KEYS_ACTIVE_KEY_PATH:+/keys/active.key}
-      SMQ_AUTH_KEYS_RETIRING_KEY_PATH: ${SMQ_AUTH_KEYS_RETIRING_KEY_PATH:+/keys/retiring.key}
     ports:
       - ${SMQ_AUTH_HTTP_PORT}:${SMQ_AUTH_HTTP_PORT}
       - ${SMQ_AUTH_GRPC_PORT}:${SMQ_AUTH_GRPC_PORT}
@@ -206,16 +202,6 @@ services:
         target: /auth-callout-client-ca${SMQ_AUTH_CALLOUT_CLIENT_CA_CERTS:+.crt}
         bind:
           create_host_path: true
-      - type: bind
-        source: ${SMQ_AUTH_KEYS_ACTIVE_KEY_PATH:-./keys/active.key}
-        target: /keys/active.key
-        bind:
-          create_host_path: true
-      - type: bind
-        source: ${SMQ_AUTH_KEYS_RETIRING_KEY_PATH:-./keys/retiring.key}
-        target: /keys/retiring.key
-        bind:
-          create_host_path: true
 
   domains-db:
     image: docker.io/postgres:18.0-alpine3.22
@@ -242,7 +228,6 @@ services:
       - supermq-domains-redis-volume:/data
 
   domains:
-    platform: linux/amd64
     image: docker.io/supermq/domains:${SMQ_RELEASE_TAG}
     container_name: supermq-domains
     depends_on:
@@ -480,7 +465,6 @@ services:
       - supermq-clients-redis-volume:/data
 
   clients:
-    platform: linux/amd64
     image: docker.io/supermq/clients:${SMQ_RELEASE_TAG}
     container_name: supermq-clients
     depends_on:
@@ -676,7 +660,6 @@ services:
       - supermq-channels-redis-volume:/data
 
   channels:
-    platform: linux/amd64
     image: docker.io/supermq/channels:${SMQ_RELEASE_TAG}
     container_name: supermq-channels
     depends_on:
@@ -861,7 +844,6 @@ services:
       - supermq-users-db-volume:/var/lib/postgresql/data
 
   users:
-    platform: linux/amd64
     image: docker.io/supermq/users:${SMQ_RELEASE_TAG}
     container_name: supermq-users
     depends_on:
@@ -982,7 +964,6 @@ services:
           create_host_path: true
 
   notifications:
-    platform: linux/amd64
     image: docker.io/supermq/notifications:${SMQ_RELEASE_TAG}
     container_name: supermq-notifications
     depends_on:
@@ -1050,7 +1031,6 @@ services:
       - supermq-groups-db-volume:/var/lib/postgresql/data
 
   groups:
-    platform: linux/amd64
     image: docker.io/supermq/groups:${SMQ_RELEASE_TAG}
     container_name: supermq-groups
     depends_on:
@@ -1228,7 +1208,6 @@ services:
       - supermq-base-net
 
   mqtt-adapter:
-    platform: linux/amd64
     image: docker.io/supermq/mqtt:${SMQ_RELEASE_TAG}
     container_name: supermq-mqtt
     depends_on:
@@ -1328,7 +1307,6 @@ services:
           create_host_path: true
 
   http-adapter:
-    platform: linux/amd64
     image: docker.io/supermq/http:${SMQ_RELEASE_TAG}
     container_name: supermq-http
     depends_on:
@@ -1442,7 +1420,6 @@ services:
           create_host_path: true
 
   coap-adapter:
-    platform: linux/amd64
     image: docker.io/supermq/coap:${SMQ_RELEASE_TAG}
     container_name: supermq-coap
     depends_on:
@@ -1560,7 +1537,6 @@ services:
         bind:
           create_host_path: true
 
-
   rabbitmq:
     image: docker.io/rabbitmq:4.1.4-management-alpine
     container_name: supermq-rabbitmq
@@ -1631,6 +1607,8 @@ services:
       - supermq-base-net
     # To use a custom config.toml, uncomment the following line and ensure ./config.toml exists.
     # If you are using environment variables for configuration, leave this commented out.
+    # volumes:
+    #   - ./config.toml:/config.toml
 
   # Proplet - WebAssembly edge runtime
   # Available images:
@@ -1710,3 +1688,5 @@ services:
       - supermq-base-net
     # To use a custom config.toml, uncomment the following line and ensure ./config.toml exists.
     # If you are using environment variables for configuration, leave this commented out.
+    # volumes:
+    #   - ./config.toml:/config.toml
