@@ -720,9 +720,9 @@ func (svc *service) StartJob(ctx context.Context, jobID string) error {
 
 	var executionMode string
 	if svc.jobRepo != nil {
-		job, err := svc.jobRepo.Get(ctx, jobID)
+		storedJob, err := svc.jobRepo.Get(ctx, jobID)
 		if err == nil {
-			executionMode = strings.TrimSpace(job.ExecutionMode)
+			executionMode = strings.TrimSpace(storedJob.ExecutionMode)
 		}
 	}
 	if executionMode == "" {
