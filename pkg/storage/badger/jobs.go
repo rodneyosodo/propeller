@@ -41,9 +41,9 @@ func (r *jobRepo) Get(ctx context.Context, id string) (Job, error) {
 	return j, nil
 }
 
-func (r *jobRepo) List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error) {
+func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
 	prefix := []byte("job:")
-	total, err := r.db.countWithPrefix(prefix)
+	total, err = r.db.countWithPrefix(prefix)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -51,7 +51,7 @@ func (r *jobRepo) List(ctx context.Context, offset, limit uint64) ([]Job, uint64
 	if err != nil {
 		return nil, 0, err
 	}
-	jobs := make([]Job, len(values))
+	jobs = make([]Job, len(values))
 	for i, val := range values {
 		var j Job
 		if err := json.Unmarshal(val, &j); err != nil {

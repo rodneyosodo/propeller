@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/absmach/propeller/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 	"github.com/dgraph-io/badger/v4"
@@ -49,13 +50,7 @@ type TaskRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-type Job struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	ExecutionMode string    `json:"execution_mode"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-}
+type Job = job.Job
 
 type JobRepository interface {
 	Create(ctx context.Context, j Job) (Job, error)

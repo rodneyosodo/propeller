@@ -549,31 +549,15 @@ type postgresJobAdapter struct {
 }
 
 func (a *postgresJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
-	pj, err := a.repo.Create(ctx, postgres.Job(j))
-
-	return Job(pj), err
+	return a.repo.Create(ctx, j)
 }
 
 func (a *postgresJobAdapter) Get(ctx context.Context, id string) (Job, error) {
-	pj, err := a.repo.Get(ctx, id)
-	if err != nil {
-		return Job{}, err
-	}
-
-	return Job{ID: pj.ID, Name: pj.Name, ExecutionMode: pj.ExecutionMode, CreatedAt: pj.CreatedAt, UpdatedAt: pj.UpdatedAt}, nil
+	return a.repo.Get(ctx, id)
 }
 
-func (a *postgresJobAdapter) List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error) {
-	pjobs, total, err := a.repo.List(ctx, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	jobs := make([]Job, len(pjobs))
-	for i, pj := range pjobs {
-		jobs[i] = Job{ID: pj.ID, Name: pj.Name, ExecutionMode: pj.ExecutionMode, CreatedAt: pj.CreatedAt, UpdatedAt: pj.UpdatedAt}
-	}
-
-	return jobs, total, nil
+func (a *postgresJobAdapter) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+	return a.repo.List(ctx, offset, limit)
 }
 
 func (a *postgresJobAdapter) Delete(ctx context.Context, id string) error {
@@ -585,31 +569,15 @@ type sqliteJobAdapter struct {
 }
 
 func (a *sqliteJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
-	sj, err := a.repo.Create(ctx, sqlite.Job(j))
-
-	return Job(sj), err
+	return a.repo.Create(ctx, j)
 }
 
 func (a *sqliteJobAdapter) Get(ctx context.Context, id string) (Job, error) {
-	sj, err := a.repo.Get(ctx, id)
-	if err != nil {
-		return Job{}, err
-	}
-
-	return Job{ID: sj.ID, Name: sj.Name, ExecutionMode: sj.ExecutionMode, CreatedAt: sj.CreatedAt, UpdatedAt: sj.UpdatedAt}, nil
+	return a.repo.Get(ctx, id)
 }
 
-func (a *sqliteJobAdapter) List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error) {
-	sjobs, total, err := a.repo.List(ctx, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	jobs := make([]Job, len(sjobs))
-	for i, sj := range sjobs {
-		jobs[i] = Job{ID: sj.ID, Name: sj.Name, ExecutionMode: sj.ExecutionMode, CreatedAt: sj.CreatedAt, UpdatedAt: sj.UpdatedAt}
-	}
-
-	return jobs, total, nil
+func (a *sqliteJobAdapter) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+	return a.repo.List(ctx, offset, limit)
 }
 
 func (a *sqliteJobAdapter) Delete(ctx context.Context, id string) error {
@@ -621,31 +589,15 @@ type badgerJobAdapter struct {
 }
 
 func (a *badgerJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
-	bj, err := a.repo.Create(ctx, badger.Job(j))
-
-	return Job(bj), err
+	return a.repo.Create(ctx, j)
 }
 
 func (a *badgerJobAdapter) Get(ctx context.Context, id string) (Job, error) {
-	bj, err := a.repo.Get(ctx, id)
-	if err != nil {
-		return Job{}, err
-	}
-
-	return Job{ID: bj.ID, Name: bj.Name, ExecutionMode: bj.ExecutionMode, CreatedAt: bj.CreatedAt, UpdatedAt: bj.UpdatedAt}, nil
+	return a.repo.Get(ctx, id)
 }
 
-func (a *badgerJobAdapter) List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error) {
-	bjobs, total, err := a.repo.List(ctx, offset, limit)
-	if err != nil {
-		return nil, 0, err
-	}
-	jobs := make([]Job, len(bjobs))
-	for i, bj := range bjobs {
-		jobs[i] = Job{ID: bj.ID, Name: bj.Name, ExecutionMode: bj.ExecutionMode, CreatedAt: bj.CreatedAt, UpdatedAt: bj.UpdatedAt}
-	}
-
-	return jobs, total, nil
+func (a *badgerJobAdapter) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+	return a.repo.List(ctx, offset, limit)
 }
 
 func (a *badgerJobAdapter) Delete(ctx context.Context, id string) error {

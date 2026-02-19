@@ -2,21 +2,13 @@ package storage
 
 import (
 	"context"
-	"time"
 
+	"github.com/absmach/propeller/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 )
 
-// Job represents a logical grouping of tasks that work together as a cohesive unit.
-// A Job aggregates one or more Tasks (e.g., an API server + reverse proxy).
-type Job struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	ExecutionMode string    `json:"execution_mode"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-}
+type Job = job.Job
 
 type TaskRepository interface {
 	Create(ctx context.Context, t task.Task) (task.Task, error)

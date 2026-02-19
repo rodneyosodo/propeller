@@ -213,12 +213,12 @@ func (r *memoryJobRepo) Get(ctx context.Context, id string) (Job, error) {
 	return j, nil
 }
 
-func (r *memoryJobRepo) List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error) {
+func (r *memoryJobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
 	data, total, err := r.storage.List(ctx, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	jobs := make([]Job, 0, len(data))
+	jobs = make([]Job, 0, len(data))
 	for _, d := range data {
 		j, ok := d.(Job)
 		if !ok {

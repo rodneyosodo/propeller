@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/absmach/propeller/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -51,13 +52,7 @@ type TaskRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-type Job struct {
-	ID            string    `db:"id"`
-	Name          string    `db:"name"`
-	ExecutionMode string    `db:"execution_mode"`
-	CreatedAt     time.Time `db:"created_at"`
-	UpdatedAt     time.Time `db:"updated_at"`
-}
+type Job = job.Job
 
 type JobRepository interface {
 	Create(ctx context.Context, j Job) (Job, error)

@@ -217,7 +217,7 @@ var provisionCmd = &cobra.Command{
 		}
 
 		var configContent strings.Builder
-		configContent.WriteString(fmt.Sprintf(`# SuperMQ Configuration
+		fmt.Fprintf(&configContent, `# SuperMQ Configuration
 
 [manager]
 domain_id = "%s"
@@ -229,7 +229,7 @@ channel_id = "%s"
 			managerClient.ID,
 			managerClient.Credentials.Secret,
 			managerChannel.ID,
-		))
+		)
 
 		for i, propletClient := range propletClients {
 			var sectionName string

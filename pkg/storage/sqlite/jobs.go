@@ -42,16 +42,13 @@ func (r *jobRepo) Get(ctx context.Context, id string) (Job, error) {
 	return j, nil
 }
 
-func (r *jobRepo) List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error) {
-	var total uint64
-	if err := r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM jobs"); err != nil {
+func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+	if err = r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM jobs"); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	query := `SELECT id, name, execution_mode, created_at, updated_at FROM jobs ORDER BY created_at DESC LIMIT ? OFFSET ?`
-
-	var jobs []Job
-	if err := r.db.SelectContext(ctx, &jobs, query, limit, offset); err != nil {
+	if err = r.db.SelectContext(ctx, &jobs, query, limit, offset); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
