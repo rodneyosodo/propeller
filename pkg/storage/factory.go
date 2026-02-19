@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/storage/badger"
@@ -31,6 +32,9 @@ type Repositories struct {
 	Proplets     PropletRepository
 	TaskProplets TaskPropletRepository
 	Metrics      MetricsRepository
+	// Closer closes the underlying persistent storage connection.
+	// It is nil for the in-memory backend.
+	Closer io.Closer
 }
 
 func NewRepositories(cfg Config) (*Repositories, error) {
@@ -68,6 +72,7 @@ func newPostgresRepositories(cfg Config) (*Repositories, error) {
 		Proplets:     &postgresPropletAdapter{repo: repos.Proplets},
 		TaskProplets: &postgresTaskPropletAdapter{repo: repos.TaskProplets},
 		Metrics:      &postgresMetricsAdapter{repo: repos.Metrics},
+		Closer:       db,
 	}, nil
 }
 
@@ -84,6 +89,7 @@ func newSQLiteRepositories(cfg Config) (*Repositories, error) {
 		Proplets:     &sqlitePropletAdapter{repo: repos.Proplets},
 		TaskProplets: &sqliteTaskPropletAdapter{repo: repos.TaskProplets},
 		Metrics:      &sqliteMetricsAdapter{repo: repos.Metrics},
+		Closer:       db,
 	}, nil
 }
 
@@ -100,6 +106,7 @@ func newBadgerRepositories(cfg Config) (*Repositories, error) {
 		Proplets:     &badgerPropletAdapter{repo: repos.Proplets},
 		TaskProplets: &badgerTaskPropletAdapter{repo: repos.TaskProplets},
 		Metrics:      &badgerMetricsAdapter{repo: repos.Metrics},
+		Closer:       db,
 	}, nil
 }
 
@@ -135,6 +142,10 @@ func (a *postgresTaskAdapter) Update(ctx context.Context, t task.Task) error {
 
 func (a *postgresTaskAdapter) List(ctx context.Context, offset, limit uint64) ([]task.Task, uint64, error) {
 	return a.repo.List(ctx, offset, limit)
+}
+
+func (a *postgresTaskAdapter) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
+	return a.repo.ListByWorkflowID(ctx, workflowID, offset, limit)
 }
 
 func (a *postgresTaskAdapter) Delete(ctx context.Context, id string) error {
@@ -267,6 +278,10 @@ func (a *sqliteTaskAdapter) List(ctx context.Context, offset, limit uint64) ([]t
 	return a.repo.List(ctx, offset, limit)
 }
 
+func (a *sqliteTaskAdapter) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
+	return a.repo.ListByWorkflowID(ctx, workflowID, offset, limit)
+}
+
 func (a *sqliteTaskAdapter) Delete(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, id)
 }
@@ -395,6 +410,10 @@ func (a *badgerTaskAdapter) Update(ctx context.Context, t task.Task) error {
 
 func (a *badgerTaskAdapter) List(ctx context.Context, offset, limit uint64) ([]task.Task, uint64, error) {
 	return a.repo.List(ctx, offset, limit)
+}
+
+func (a *badgerTaskAdapter) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
+	return a.repo.ListByWorkflowID(ctx, workflowID, offset, limit)
 }
 
 func (a *badgerTaskAdapter) Delete(ctx context.Context, id string) error {

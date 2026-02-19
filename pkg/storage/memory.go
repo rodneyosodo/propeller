@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"sort"
 	"sync"
 
 	"github.com/absmach/propeller/pkg/errors"
@@ -72,14 +73,15 @@ func (s *inMemoryStorage) List(_ context.Context, offset, limit uint64) (result 
 	s.Lock()
 	defer s.Unlock()
 
-	keys := make([]string, 0)
+	keys := make([]string, 0, len(s.data))
 	for k := range s.data {
 		keys = append(keys, k)
 	}
+	sort.Strings(keys)
 
 	total = uint64(len(keys))
 	if offset >= total {
-		return nil, 0, nil
+		return []any{}, total, nil
 	}
 
 	end := min(offset+limit, total)
