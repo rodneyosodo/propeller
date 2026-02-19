@@ -8,8 +8,6 @@ import (
 	"github.com/absmach/propeller/pkg/task"
 )
 
-type Job = job.Job
-
 type TaskRepository interface {
 	Create(ctx context.Context, t task.Task) (task.Task, error)
 	Get(ctx context.Context, id string) (task.Task, error)
@@ -35,9 +33,9 @@ type TaskPropletRepository interface {
 }
 
 type JobRepository interface {
-	Create(ctx context.Context, j Job) (Job, error)
-	Get(ctx context.Context, id string) (Job, error)
-	List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error)
+	Create(ctx context.Context, j job.Job) (job.Job, error)
+	Get(ctx context.Context, id string) (job.Job, error)
+	List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error)
 	Delete(ctx context.Context, id string) error
 }
 

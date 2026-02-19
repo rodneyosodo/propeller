@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/absmach/propeller/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/storage/badger"
 	"github.com/absmach/propeller/pkg/storage/postgres"
@@ -548,15 +549,15 @@ type postgresJobAdapter struct {
 	repo postgres.JobRepository
 }
 
-func (a *postgresJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
+func (a *postgresJobAdapter) Create(ctx context.Context, j job.Job) (job.Job, error) {
 	return a.repo.Create(ctx, j)
 }
 
-func (a *postgresJobAdapter) Get(ctx context.Context, id string) (Job, error) {
+func (a *postgresJobAdapter) Get(ctx context.Context, id string) (job.Job, error) {
 	return a.repo.Get(ctx, id)
 }
 
-func (a *postgresJobAdapter) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+func (a *postgresJobAdapter) List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error) {
 	return a.repo.List(ctx, offset, limit)
 }
 
@@ -568,15 +569,15 @@ type sqliteJobAdapter struct {
 	repo sqlite.JobRepository
 }
 
-func (a *sqliteJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
+func (a *sqliteJobAdapter) Create(ctx context.Context, j job.Job) (job.Job, error) {
 	return a.repo.Create(ctx, j)
 }
 
-func (a *sqliteJobAdapter) Get(ctx context.Context, id string) (Job, error) {
+func (a *sqliteJobAdapter) Get(ctx context.Context, id string) (job.Job, error) {
 	return a.repo.Get(ctx, id)
 }
 
-func (a *sqliteJobAdapter) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+func (a *sqliteJobAdapter) List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error) {
 	return a.repo.List(ctx, offset, limit)
 }
 
@@ -588,15 +589,15 @@ type badgerJobAdapter struct {
 	repo badger.JobRepository
 }
 
-func (a *badgerJobAdapter) Create(ctx context.Context, j Job) (Job, error) {
+func (a *badgerJobAdapter) Create(ctx context.Context, j job.Job) (job.Job, error) {
 	return a.repo.Create(ctx, j)
 }
 
-func (a *badgerJobAdapter) Get(ctx context.Context, id string) (Job, error) {
+func (a *badgerJobAdapter) Get(ctx context.Context, id string) (job.Job, error) {
 	return a.repo.Get(ctx, id)
 }
 
-func (a *badgerJobAdapter) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+func (a *badgerJobAdapter) List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error) {
 	return a.repo.List(ctx, offset, limit)
 }
 

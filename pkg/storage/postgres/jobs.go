@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/absmach/propeller/job"
 )
 
 type jobRepo struct {
@@ -15,34 +17,34 @@ func NewJobRepository(db *Database) JobRepository {
 	return &jobRepo{db: db}
 }
 
-func (r *jobRepo) Create(ctx context.Context, j Job) (Job, error) {
+func (r *jobRepo) Create(ctx context.Context, j job.Job) (job.Job, error) {
 	query := `INSERT INTO jobs (id, name, execution_mode, created_at, updated_at)
 		VALUES ($1, $2, $3, $4, $5)`
 
 	_, err := r.db.ExecContext(ctx, query, j.ID, j.Name, j.ExecutionMode, j.CreatedAt, j.UpdatedAt)
 	if err != nil {
-		return Job{}, fmt.Errorf("%w: %w", ErrCreate, err)
+		return job.Job{}, fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
 	return j, nil
 }
 
-func (r *jobRepo) Get(ctx context.Context, id string) (Job, error) {
+func (r *jobRepo) Get(ctx context.Context, id string) (job.Job, error) {
 	query := `SELECT id, name, execution_mode, created_at, updated_at FROM jobs WHERE id = $1`
 
-	var j Job
+	var j job.Job
 	if err := r.db.GetContext(ctx, &j, query, id); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return Job{}, ErrNotFound
+			return job.Job{}, ErrNotFound
 		}
 
-		return Job{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
+		return job.Job{}, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	return j, nil
 }
 
-func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []job.Job, total uint64, err error) {
 	if err = r.db.GetContext(ctx, &total, "SELECT COUNT(*) FROM jobs"); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
@@ -53,7 +55,7 @@ func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, t
 	}
 
 	if jobs == nil {
-		jobs = []Job{}
+		jobs = []job.Job{}
 	}
 
 	return jobs, total, nil

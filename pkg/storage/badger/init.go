@@ -50,12 +50,10 @@ type TaskRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-type Job = job.Job
-
 type JobRepository interface {
-	Create(ctx context.Context, j Job) (Job, error)
-	Get(ctx context.Context, id string) (Job, error)
-	List(ctx context.Context, offset, limit uint64) ([]Job, uint64, error)
+	Create(ctx context.Context, j job.Job) (job.Job, error)
+	Get(ctx context.Context, id string) (job.Job, error)
+	List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error)
 	Delete(ctx context.Context, id string) error
 }
 

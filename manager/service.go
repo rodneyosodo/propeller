@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/0x6flab/namegenerator"
+	"github.com/absmach/propeller/job"
 	"github.com/absmach/propeller/pkg/cron"
 	"github.com/absmach/propeller/pkg/dag"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
@@ -299,14 +300,14 @@ func (svc *service) CreateJob(ctx context.Context, name string, tasks []task.Tas
 	}
 
 	if svc.jobRepo != nil {
-		job := storage.Job{
+		storedJob := job.Job{
 			ID:            jobID,
 			Name:          name,
 			ExecutionMode: executionMode,
 			CreatedAt:     now,
 			UpdatedAt:     now,
 		}
-		if _, err := svc.jobRepo.Create(ctx, job); err != nil {
+		if _, err := svc.jobRepo.Create(ctx, storedJob); err != nil {
 			return "", nil, fmt.Errorf("failed to create job: %w", err)
 		}
 	}
@@ -943,13 +944,13 @@ func (svc *service) RecoverInterruptedTasks(ctx context.Context) error {
 	return nil
 }
 
-func (svc *service) listAllStoredJobs(ctx context.Context) ([]storage.Job, error) {
+func (svc *service) listAllStoredJobs(ctx context.Context) ([]job.Job, error) {
 	if svc.jobRepo == nil {
 		return nil, nil
 	}
 
 	const pageLimit = uint64(1000)
-	jobs := make([]storage.Job, 0)
+	jobs := make([]job.Job, 0)
 	for offset := uint64(0); ; offset += pageLimit {
 		page, total, err := svc.jobRepo.List(ctx, offset, pageLimit)
 		if err != nil {

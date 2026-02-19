@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
+	"github.com/absmach/propeller/job"
 )
 
 type jobRepo struct {
@@ -14,34 +16,34 @@ func NewJobRepository(db *Database) JobRepository {
 	return &jobRepo{db: db}
 }
 
-func (r *jobRepo) Create(ctx context.Context, j Job) (Job, error) {
+func (r *jobRepo) Create(ctx context.Context, j job.Job) (job.Job, error) {
 	key := []byte("job:" + j.ID)
 	val, err := json.Marshal(j)
 	if err != nil {
-		return Job{}, fmt.Errorf("marshal error: %w", err)
+		return job.Job{}, fmt.Errorf("marshal error: %w", err)
 	}
 	if err := r.db.set(key, val); err != nil {
-		return Job{}, fmt.Errorf("%w: %w", ErrCreate, err)
+		return job.Job{}, fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
 	return j, nil
 }
 
-func (r *jobRepo) Get(ctx context.Context, id string) (Job, error) {
+func (r *jobRepo) Get(ctx context.Context, id string) (job.Job, error) {
 	key := []byte("job:" + id)
 	val, err := r.db.get(key)
 	if err != nil {
-		return Job{}, ErrNotFound
+		return job.Job{}, ErrNotFound
 	}
-	var j Job
+	var j job.Job
 	if err := json.Unmarshal(val, &j); err != nil {
-		return Job{}, fmt.Errorf("unmarshal error: %w", err)
+		return job.Job{}, fmt.Errorf("unmarshal error: %w", err)
 	}
 
 	return j, nil
 }
 
-func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []job.Job, total uint64, err error) {
 	prefix := []byte("job:")
 	total, err = r.db.countWithPrefix(prefix)
 	if err != nil {
@@ -51,9 +53,9 @@ func (r *jobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, t
 	if err != nil {
 		return nil, 0, err
 	}
-	jobs = make([]Job, len(values))
+	jobs = make([]job.Job, len(values))
 	for i, val := range values {
-		var j Job
+		var j job.Job
 		if err := json.Unmarshal(val, &j); err != nil {
 			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
 		}

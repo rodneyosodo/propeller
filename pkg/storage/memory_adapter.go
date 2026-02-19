@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/absmach/propeller/job"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
@@ -192,35 +193,35 @@ func newMemoryJobRepository(s Storage) JobRepository {
 	return &memoryJobRepo{storage: s}
 }
 
-func (r *memoryJobRepo) Create(ctx context.Context, j Job) (Job, error) {
+func (r *memoryJobRepo) Create(ctx context.Context, j job.Job) (job.Job, error) {
 	if err := r.storage.Create(ctx, j.ID, j); err != nil {
-		return Job{}, err
+		return job.Job{}, err
 	}
 
 	return j, nil
 }
 
-func (r *memoryJobRepo) Get(ctx context.Context, id string) (Job, error) {
+func (r *memoryJobRepo) Get(ctx context.Context, id string) (job.Job, error) {
 	data, err := r.storage.Get(ctx, id)
 	if err != nil {
-		return Job{}, err
+		return job.Job{}, err
 	}
-	j, ok := data.(Job)
+	j, ok := data.(job.Job)
 	if !ok {
-		return Job{}, pkgerrors.ErrInvalidData
+		return job.Job{}, pkgerrors.ErrInvalidData
 	}
 
 	return j, nil
 }
 
-func (r *memoryJobRepo) List(ctx context.Context, offset, limit uint64) (jobs []Job, total uint64, err error) {
+func (r *memoryJobRepo) List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error) {
 	data, total, err := r.storage.List(ctx, offset, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	jobs = make([]Job, 0, len(data))
+	jobs := make([]job.Job, 0, len(data))
 	for _, d := range data {
-		j, ok := d.(Job)
+		j, ok := d.(job.Job)
 		if !ok {
 			continue
 		}
