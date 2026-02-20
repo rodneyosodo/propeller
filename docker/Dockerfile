@@ -9,7 +9,7 @@ ARG TIME
 WORKDIR /go/src/github.com/absmach/propeller
 COPY . .
 RUN apk update \
-    && apk add make upx\
+    && apk add make upx \
     && make $SVC \
     && upx --best build/$SVC \
     && mv build/$SVC /exe

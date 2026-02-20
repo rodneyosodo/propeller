@@ -111,11 +111,25 @@ dockers_rust_dev: $(DOCKERS_RUST_DEV)
 latest: dockers dockers_rust
 		$(call docker_push,latest)
 
+docker_proplet_wasinn:
+	docker build \
+		--no-cache \
+		--platform linux/amd64 \
+		--build-arg VERSION=$(VERSION) \
+		--build-arg COMMIT=$(COMMIT) \
+		--build-arg TIME=$(TIME) \
+		--build-arg WASMTIME_VERSION=$(WASMTIME_VERSION) \
+		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/proplet:wasi-nn \
+		-f docker/Dockerfile.proplet-wasinn .
+
+push_proplet_wasinn:
+	docker push $(DOCKER_IMAGE_NAME_PREFIX)/proplet:wasi-nn
+
 # Install all non-WASM executables from the build directory to GOBIN with 'propeller-' prefix
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) mocks
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) docker_proplet_wasinn push_proplet_wasinn mocks
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES)
 
 clean:
@@ -185,6 +199,8 @@ help:
 	@echo "  dockers_dev:      build all Go service dev Docker images"
 	@echo "  dockers_rust:     build all Rust service Docker images"
 	@echo "  dockers_rust_dev: build all Rust service dev Docker images"
+	@echo "  docker_proplet_wasinn: build proplet wasi-nn Docker image"
+	@echo "  push_proplet_wasinn:   push proplet:wasi-nn Docker image"
 	@echo "  latest:           build and push all Go service Docker images"
 	@echo "  start-supermq:    start the supermq docker compose"
 	@echo "  stop-supermq:     stop the supermq docker compose"

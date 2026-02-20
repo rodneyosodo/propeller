@@ -44,3 +44,6 @@ elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", defaul
 
 [features]
 default = []
+
+[profile.release]
+strip = "symbols"
