@@ -62,7 +62,10 @@ func main() {
 
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("failed to load configuration : %s", err.Error())
+		log.Printf("failed to load configuration : %s", err.Error())
+		exitCode = 1
+
+		return
 	}
 
 	if cfg.InstanceID == "" {
@@ -75,20 +78,29 @@ func main() {
 		case nil:
 			conf, err := propeller.LoadConfig(configPath)
 			if err != nil {
-				log.Fatalf("failed to load TOML configuration: %s", err.Error())
+				log.Printf("failed to load TOML configuration: %s", err.Error())
+				exitCode = 1
+
+				return
 			}
 			cfg.DomainID = conf.Manager.DomainID
 			cfg.ClientID = conf.Manager.ClientID
 			cfg.ClientKey = conf.Manager.ClientKey
 			cfg.ChannelID = conf.Manager.ChannelID
 		default:
-			log.Fatalf("failed to load TOML configuration: %s", err.Error())
+			log.Printf("failed to load TOML configuration: %s", err.Error())
+			exitCode = 1
+
+			return
 		}
 	}
 
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
-		log.Fatalf("failed to parse log level: %s", err.Error())
+		log.Printf("failed to parse log level: %s", err.Error())
+		exitCode = 1
+
+		return
 	}
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
