@@ -136,21 +136,5 @@ func (wc *WorkflowCoordinator) OnTaskCompletion(ctx context.Context, taskID stri
 }
 
 func (wc *WorkflowCoordinator) getWorkflowTasks(ctx context.Context, workflowID string) ([]task.Task, error) {
-	const pageSize uint64 = 100
-	var offset uint64
-	var workflowTasks []task.Task
-
-	for {
-		tasks, total, err := wc.taskRepo.ListByWorkflowID(ctx, workflowID, offset, pageSize)
-		if err != nil {
-			return nil, err
-		}
-		workflowTasks = append(workflowTasks, tasks...)
-		offset += uint64(len(tasks))
-		if offset >= total || len(tasks) == 0 {
-			break
-		}
-	}
-
-	return workflowTasks, nil
+	return wc.taskRepo.ListByWorkflowID(ctx, workflowID)
 }

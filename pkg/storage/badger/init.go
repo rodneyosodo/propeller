@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 	"github.com/dgraph-io/badger/v4"
@@ -44,7 +45,15 @@ type TaskRepository interface {
 	Get(ctx context.Context, id string) (task.Task, error)
 	Update(ctx context.Context, t task.Task) error
 	List(ctx context.Context, offset, limit uint64) ([]task.Task, uint64, error)
-	ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error)
+	ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error)
+	ListByJobID(ctx context.Context, jobID string) ([]task.Task, error)
+	Delete(ctx context.Context, id string) error
+}
+
+type JobRepository interface {
+	Create(ctx context.Context, j job.Job) (job.Job, error)
+	Get(ctx context.Context, id string) (job.Job, error)
+	List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -73,6 +82,7 @@ type Repositories struct {
 	Tasks        TaskRepository
 	Proplets     PropletRepository
 	TaskProplets TaskPropletRepository
+	Jobs         JobRepository
 	Metrics      MetricsRepository
 }
 
@@ -81,6 +91,7 @@ func NewRepositories(db *Database) *Repositories {
 		Tasks:        NewTaskRepository(db),
 		Proplets:     NewPropletRepository(db),
 		TaskProplets: NewTaskPropletRepository(db),
+		Jobs:         NewJobRepository(db),
 		Metrics:      NewMetricsRepository(db),
 	}
 }

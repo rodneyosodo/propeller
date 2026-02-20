@@ -1601,6 +1601,15 @@ services:
       MANAGER_OTEL_URL: ${MANAGER_OTEL_URL}
       MANAGER_TRACE_RATIO: ${MANAGER_TRACE_RATIO}
       JOB_EXECUTION_MODE: ${JOB_EXECUTION_MODE}
+      MANAGER_STORAGE_TYPE: ${MANAGER_STORAGE_TYPE:-badger}
+      MANAGER_BADGER_PATH: ${MANAGER_BADGER_PATH:-/tmp/badger}
+      MANAGER_SQLITE_PATH: ${MANAGER_SQLITE_PATH:-/tmp/propeller.db}
+      MANAGER_POSTGRES_HOST: ${MANAGER_POSTGRES_HOST:-localhost}
+      MANAGER_POSTGRES_PORT: ${MANAGER_POSTGRES_PORT:-5432}
+      MANAGER_POSTGRES_USER: ${MANAGER_POSTGRES_USER:-propeller}
+      MANAGER_POSTGRES_PASS: ${MANAGER_POSTGRES_PASS:-propeller}
+      MANAGER_POSTGRES_DB: ${MANAGER_POSTGRES_DB:-propeller}
+      MANAGER_POSTGRES_SSLMODE: ${MANAGER_POSTGRES_SSLMODE:-disable}
     ports:
       - ${MANAGER_HTTP_PORT}:${MANAGER_HTTP_PORT}
     networks:
@@ -1616,6 +1625,12 @@ services:
     restart: on-failure
     depends_on:
       - mqtt-adapter
+    healthcheck:
+      test: ["CMD", "pgrep", "-x", "proplet"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
     expose:
       - 8081
     ports:

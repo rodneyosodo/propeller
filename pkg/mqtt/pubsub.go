@@ -15,6 +15,9 @@ const (
 	connTimeout    = 10
 	reconnTimeout  = 1
 	disconnTimeout = 250
+
+	subscribeMaxRetries = 10
+	subscribeRetryDelay = 3 * time.Second
 )
 
 var (
@@ -89,15 +92,44 @@ func (ps *pubsub) Subscribe(ctx context.Context, topic string, handler Handler) 
 		return errEmptyTopic
 	}
 
-	token := ps.client.Subscribe(topic, ps.qos, ps.mqttHandler(handler))
-	if token.Error() != nil {
-		return token.Error()
-	}
-	if ok := token.WaitTimeout(ps.timeout); !ok {
-		return errSubscribeTimeout
+	var subscribeErr error
+	for attempt := range subscribeMaxRetries {
+		token := ps.client.Subscribe(topic, ps.qos, ps.mqttHandler(handler))
+		if ok := token.WaitTimeout(ps.timeout); !ok {
+			subscribeErr = errSubscribeTimeout
+		} else {
+			subscribeErr = token.Error()
+		}
+
+		if subscribeErr == nil {
+			return nil
+		}
+
+		if attempt == subscribeMaxRetries-1 {
+			break
+		}
+
+		if ps.logger != nil {
+			ps.logger.Warn(
+				"failed to subscribe to topic, retrying",
+				slog.String("topic", topic),
+				slog.Int("attempt", attempt+1),
+				slog.Int("max_retries", subscribeMaxRetries),
+				slog.String("error", subscribeErr.Error()),
+			)
+		}
+
+		timer := time.NewTimer(subscribeRetryDelay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+
+			return ctx.Err()
+		case <-timer.C:
+		}
 	}
 
-	return nil
+	return subscribeErr
 }
 
 func (ps *pubsub) Unsubscribe(ctx context.Context, topic string) error {

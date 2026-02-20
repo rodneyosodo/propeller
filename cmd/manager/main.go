@@ -53,9 +53,19 @@ type config struct {
 }
 
 func main() {
+	exitCode := 0
+	defer func() {
+		if exitCode != 0 {
+			os.Exit(exitCode)
+		}
+	}()
+
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
-		log.Fatalf("failed to load configuration : %s", err.Error())
+		log.Printf("failed to load configuration : %s", err.Error())
+		exitCode = 1
+
+		return
 	}
 
 	if cfg.InstanceID == "" {
@@ -68,20 +78,29 @@ func main() {
 		case nil:
 			conf, err := propeller.LoadConfig(configPath)
 			if err != nil {
-				log.Fatalf("failed to load TOML configuration: %s", err.Error())
+				log.Printf("failed to load TOML configuration: %s", err.Error())
+				exitCode = 1
+
+				return
 			}
 			cfg.DomainID = conf.Manager.DomainID
 			cfg.ClientID = conf.Manager.ClientID
 			cfg.ClientKey = conf.Manager.ClientKey
 			cfg.ChannelID = conf.Manager.ChannelID
 		default:
-			log.Fatalf("failed to load TOML configuration: %s", err.Error())
+			log.Printf("failed to load TOML configuration: %s", err.Error())
+			exitCode = 1
+
+			return
 		}
 	}
 
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(cfg.LogLevel)); err != nil {
-		log.Fatalf("failed to parse log level: %s", err.Error())
+		log.Printf("failed to parse log level: %s", err.Error())
+		exitCode = 1
+
+		return
 	}
 	logHandler := slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
 		Level: level,
@@ -101,6 +120,7 @@ func main() {
 		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
 		if err != nil {
 			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+			exitCode = 1
 
 			return
 		}
@@ -116,6 +136,7 @@ func main() {
 	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, svcName, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
 	if err != nil {
 		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -123,6 +144,7 @@ func main() {
 	storageCfg := storage.Config{}
 	if err := env.Parse(&storageCfg); err != nil {
 		logger.Error("failed to load storage configuration", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -130,6 +152,7 @@ func main() {
 	repos, err := storage.NewRepositories(storageCfg)
 	if err != nil {
 		logger.Error("failed to initialize storage", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -154,12 +177,9 @@ func main() {
 	counter, latency := prometheus.MakeMetrics(svcName, "api")
 	svc = middleware.Metrics(counter, latency, svc)
 
-	if err := svc.RecoverInterruptedTasks(ctx); err != nil {
-		logger.Error("failed to recover interrupted tasks", slog.String("error", err.Error()))
-	}
-
 	if err := svc.Subscribe(ctx); err != nil {
 		logger.Error("failed to subscribe to manager channel", slog.String("error", err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -171,6 +191,7 @@ func main() {
 	httpServerConfig := server.Config{Port: defHTTPPort}
 	if err := env.ParseWithOptions(&httpServerConfig, env.Options{Prefix: envPrefixHTTP}); err != nil {
 		logger.Error(fmt.Sprintf("failed to load %s HTTP server configuration : %s", svcName, err.Error()))
+		exitCode = 1
 
 		return
 	}
@@ -187,6 +208,7 @@ func main() {
 
 	if err := g.Wait(); err != nil {
 		logger.Error(fmt.Sprintf("%s service exited with error: %s", svcName, err))
+		exitCode = 1
 	}
 
 	// Coordinated shutdown: use a fresh background context because the parent ctx

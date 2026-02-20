@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 	"github.com/jmoiron/sqlx"
@@ -46,7 +47,15 @@ type TaskRepository interface {
 	Get(ctx context.Context, id string) (task.Task, error)
 	Update(ctx context.Context, t task.Task) error
 	List(ctx context.Context, offset, limit uint64) ([]task.Task, uint64, error)
-	ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error)
+	ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error)
+	ListByJobID(ctx context.Context, jobID string) ([]task.Task, error)
+	Delete(ctx context.Context, id string) error
+}
+
+type JobRepository interface {
+	Create(ctx context.Context, j job.Job) (job.Job, error)
+	Get(ctx context.Context, id string) (job.Job, error)
+	List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error)
 	Delete(ctx context.Context, id string) error
 }
 
@@ -75,6 +84,7 @@ type Repositories struct {
 	Tasks        TaskRepository
 	Proplets     PropletRepository
 	TaskProplets TaskPropletRepository
+	Jobs         JobRepository
 	Metrics      MetricsRepository
 }
 
@@ -83,6 +93,7 @@ func NewRepositories(db *Database) *Repositories {
 		Tasks:        NewTaskRepository(db),
 		Proplets:     NewPropletRepository(db),
 		TaskProplets: NewTaskPropletRepository(db),
+		Jobs:         NewJobRepository(db),
 		Metrics:      NewMetricsRepository(db),
 	}
 }
@@ -197,25 +208,38 @@ func (db *Database) Migrate() error {
 				},
 			},
 			{
-				Id: "2_add_workflow_id",
+				Id: "2_add_workflow_job_columns",
 				Up: []string{
 					`ALTER TABLE tasks ADD COLUMN workflow_id TEXT`,
+					`ALTER TABLE tasks ADD COLUMN job_id TEXT`,
+					`ALTER TABLE tasks ADD COLUMN depends_on TEXT`,
+					`ALTER TABLE tasks ADD COLUMN run_if TEXT`,
+					`ALTER TABLE tasks ADD COLUMN kind TEXT`,
+					`ALTER TABLE tasks ADD COLUMN mode TEXT`,
 					`CREATE INDEX IF NOT EXISTS idx_tasks_workflow_id ON tasks(workflow_id)`,
+					`CREATE INDEX IF NOT EXISTS idx_tasks_job_id ON tasks(job_id)`,
+					`CREATE TABLE IF NOT EXISTS jobs (
+						id TEXT PRIMARY KEY,
+						name TEXT NOT NULL DEFAULT '',
+						execution_mode TEXT NOT NULL DEFAULT '',
+						created_at TIMESTAMP NOT NULL,
+						updated_at TIMESTAMP NOT NULL
+					)`,
+					`CREATE INDEX IF NOT EXISTS idx_jobs_created_at ON jobs(created_at DESC)`,
 				},
 				Down: []string{
+					`DROP INDEX IF EXISTS idx_jobs_created_at`,
+					`DROP TABLE IF EXISTS jobs`,
+					`DROP INDEX IF EXISTS idx_tasks_job_id`,
 					`DROP INDEX IF EXISTS idx_tasks_workflow_id`,
 				},
 			},
 		},
 	}
 
-	n, err := migrate.Exec(db.DB.DB, "sqlite3", migrations, migrate.Up)
+	_, err := migrate.Exec(db.DB.DB, "sqlite3", migrations, migrate.Up)
 	if err != nil {
 		return fmt.Errorf("database migration error: %w", err)
-	}
-
-	if n > 0 {
-		return fmt.Errorf("applied %d migrations", n)
 	}
 
 	return nil

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
+	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
 )
@@ -61,48 +62,44 @@ func (r *memoryTaskRepo) List(ctx context.Context, offset, limit uint64) ([]task
 	return tasks, total, nil
 }
 
-func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
-	var (
-		scanOffset uint64
-		total      uint64
-		filtered   []task.Task
-	)
+func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error) {
+	data, _, err := r.storage.List(ctx, 0, maxMemoryFetch)
+	if err != nil {
+		return nil, err
+	}
 
-	for {
-		data, allTotal, err := r.storage.List(ctx, scanOffset, memoryScanPageSize)
-		if err != nil {
-			return nil, 0, err
+	tasks := make([]task.Task, 0)
+	for _, d := range data {
+		t, ok := d.(task.Task)
+		if !ok {
+			continue
 		}
-		if len(data) == 0 {
-			break
-		}
-
-		for _, d := range data {
-			t, ok := d.(task.Task)
-			if !ok {
-				return nil, 0, pkgerrors.ErrInvalidData
-			}
-			if t.WorkflowID != workflowID {
-				continue
-			}
-
-			if total >= offset && uint64(len(filtered)) < limit {
-				filtered = append(filtered, t)
-			}
-			total++
-		}
-
-		scanOffset += uint64(len(data))
-		if scanOffset >= allTotal {
-			break
+		if t.WorkflowID == workflowID {
+			tasks = append(tasks, t)
 		}
 	}
 
-	if offset >= total {
-		return []task.Task{}, total, nil
+	return tasks, nil
+}
+
+func (r *memoryTaskRepo) ListByJobID(ctx context.Context, jobID string) ([]task.Task, error) {
+	data, _, err := r.storage.List(ctx, 0, maxMemoryFetch)
+	if err != nil {
+		return nil, err
 	}
 
-	return filtered, total, nil
+	tasks := make([]task.Task, 0)
+	for _, d := range data {
+		t, ok := d.(task.Task)
+		if !ok {
+			continue
+		}
+		if t.JobID == jobID {
+			tasks = append(tasks, t)
+		}
+	}
+
+	return tasks, nil
 }
 
 func (r *memoryTaskRepo) Delete(ctx context.Context, id string) error {
@@ -187,6 +184,58 @@ func (r *memoryTaskPropletRepo) Get(ctx context.Context, taskID string) (string,
 func (r *memoryTaskPropletRepo) Delete(ctx context.Context, taskID string) error {
 	return r.storage.Delete(ctx, taskID)
 }
+
+type memoryJobRepo struct {
+	storage Storage
+}
+
+func newMemoryJobRepository(s Storage) JobRepository {
+	return &memoryJobRepo{storage: s}
+}
+
+func (r *memoryJobRepo) Create(ctx context.Context, j job.Job) (job.Job, error) {
+	if err := r.storage.Create(ctx, j.ID, j); err != nil {
+		return job.Job{}, err
+	}
+
+	return j, nil
+}
+
+func (r *memoryJobRepo) Get(ctx context.Context, id string) (job.Job, error) {
+	data, err := r.storage.Get(ctx, id)
+	if err != nil {
+		return job.Job{}, err
+	}
+	j, ok := data.(job.Job)
+	if !ok {
+		return job.Job{}, pkgerrors.ErrInvalidData
+	}
+
+	return j, nil
+}
+
+func (r *memoryJobRepo) List(ctx context.Context, offset, limit uint64) ([]job.Job, uint64, error) {
+	data, total, err := r.storage.List(ctx, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	jobs := make([]job.Job, 0, len(data))
+	for _, d := range data {
+		j, ok := d.(job.Job)
+		if !ok {
+			continue
+		}
+		jobs = append(jobs, j)
+	}
+
+	return jobs, total, nil
+}
+
+func (r *memoryJobRepo) Delete(ctx context.Context, id string) error {
+	return r.storage.Delete(ctx, id)
+}
+
+const maxMemoryFetch = 100000
 
 type memoryMetricsRepo struct {
 	storage Storage

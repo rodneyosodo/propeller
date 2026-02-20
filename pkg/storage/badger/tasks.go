@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/absmach/propeller/pkg/task"
+	badgerdb "github.com/dgraph-io/badger/v4"
 )
 
 type taskRepo struct {
@@ -78,39 +79,63 @@ func (r *taskRepo) List(ctx context.Context, offset, limit uint64) ([]task.Task,
 	return tasks, total, nil
 }
 
-func (r *taskRepo) ListByWorkflowID(_ context.Context, workflowID string, offset, limit uint64) ([]task.Task, uint64, error) {
-	// Badger is a key-value store with no secondary indexes. We scan all tasks
-	// by the "task:" prefix, deserialize each one, and filter by WorkflowID.
-	// This is O(N) over total tasks but is bounded by the per-page limit when
-	// building the response slice.
-	prefix := []byte("task:")
-	allValues, err := r.db.listWithPrefix(prefix, 0, ^uint64(0))
-	if err != nil {
-		return nil, 0, err
-	}
+func (r *taskRepo) ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error) {
+	return r.listBy(ctx, func(t task.Task) bool {
+		return t.WorkflowID == workflowID
+	})
+}
 
-	var filtered []task.Task
-	for _, val := range allValues {
-		var t task.Task
-		if err := json.Unmarshal(val, &t); err != nil {
-			return nil, 0, fmt.Errorf("unmarshal error: %w", err)
-		}
-		if t.WorkflowID == workflowID {
-			filtered = append(filtered, t)
-		}
-	}
-
-	total := uint64(len(filtered))
-	if offset >= total {
-		return []task.Task{}, total, nil
-	}
-	end := min(offset+limit, total)
-
-	return filtered[offset:end], total, nil
+func (r *taskRepo) ListByJobID(ctx context.Context, jobID string) ([]task.Task, error) {
+	return r.listBy(ctx, func(t task.Task) bool {
+		return t.JobID == jobID
+	})
 }
 
 func (r *taskRepo) Delete(ctx context.Context, id string) error {
 	key := []byte("task:" + id)
 
 	return r.db.delete(key)
+}
+
+func (r *taskRepo) listBy(ctx context.Context, match func(task.Task) bool) ([]task.Task, error) {
+	prefix := []byte("task:")
+	tasks := make([]task.Task, 0)
+
+	err := r.db.db.View(func(txn *badgerdb.Txn) error {
+		it := txn.NewIterator(badgerdb.DefaultIteratorOptions)
+		defer it.Close()
+
+		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			val, err := it.Item().ValueCopy(nil)
+			if err != nil {
+				return err
+			}
+
+			var t task.Task
+			if err := json.Unmarshal(val, &t); err != nil {
+				return fmt.Errorf("unmarshal error: %w", err)
+			}
+
+			if match(t) {
+				tasks = append(tasks, t)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+
+		return nil, fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+
+	return tasks, nil
 }
