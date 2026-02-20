@@ -1628,8 +1628,6 @@ services:
   # For wasi-nn support, set in .env:
   #   1. PROPLET_IMAGE_TAG=wasi-nn
   #   2. PROPLET_EXTERNAL_WASM_RUNTIME=wasmtime
-  # Then uncomment platform: linux/amd64 below
-  #   4. Uncomment fixture volume mount
   proplet:
     image: ghcr.io/absmach/propeller/proplet:${PROPLET_IMAGE_TAG}
     container_name: propeller-proplet

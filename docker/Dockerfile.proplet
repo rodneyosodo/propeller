@@ -11,7 +11,6 @@ RUN apt update && apt install -y clang libclang-dev upx
 COPY proplet/ ./
 
 RUN cargo build --release && \
-    strip target/release/proplet && \
     upx --best target/release/proplet
 
 FROM ubuntu:25.10
