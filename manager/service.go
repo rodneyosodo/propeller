@@ -358,7 +358,6 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64) (JobPage
 			summary.Name = sj.Name
 			jobs = append(jobs, summary)
 			seen[sj.ID] = struct{}{}
-			seen[sj.ID] = struct{}{}
 		}
 	}
 

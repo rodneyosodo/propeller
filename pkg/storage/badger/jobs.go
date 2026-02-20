@@ -12,6 +12,9 @@ type jobRepo struct {
 	db *Database
 }
 
+var _ JobRepository = (*jobRepo)(nil)
+
+// NewJobRepository returns a Badger-backed job repository.
 func NewJobRepository(db *Database) JobRepository {
 	return &jobRepo{db: db}
 }

@@ -13,6 +13,9 @@ type jobRepo struct {
 	db *Database
 }
 
+var _ JobRepository = (*jobRepo)(nil)
+
+// NewJobRepository returns a PostgreSQL-backed job repository.
 func NewJobRepository(db *Database) JobRepository {
 	return &jobRepo{db: db}
 }
