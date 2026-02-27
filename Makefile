@@ -159,7 +159,7 @@ stop-supermq:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
 $(EXAMPLES):
-	GOTOOLCHAIN=go1.25.5 GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasip2 examples/$@/$@.go
+	GOTOOLCHAIN=go1.23.5 GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasip2 examples/$@/$@.go
 
 addition-wat:
 	@wat2wasm examples/addition-wat/addition.wat -o build/addition-wat.wasm
