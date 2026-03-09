@@ -13,7 +13,6 @@ import (
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
-	"github.com/google/uuid"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -24,7 +23,6 @@ const (
 
 type config struct {
 	LogLevel    string        `env:"PROXY_LOG_LEVEL"    envDefault:"info"`
-	InstanceID  string        `env:"PROXY_INSTANCE_ID"`
 	MQTTAddress string        `env:"PROXY_MQTT_ADDRESS" envDefault:"tcp://localhost:1883"`
 	MQTTTimeout time.Duration `env:"PROXY_MQTT_TIMEOUT" envDefault:"30s"`
 	MQTTQoS     byte          `env:"PROXY_MQTT_QOS"     envDefault:"2"`
@@ -47,10 +45,6 @@ func main() {
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to load configuration : %s", err.Error())
-	}
-
-	if cfg.InstanceID == "" {
-		cfg.InstanceID = uuid.NewString()
 	}
 
 	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
