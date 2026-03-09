@@ -173,7 +173,7 @@ func newClient(address, id, username, password, domainID, channelID string, time
 
 	if channelID != "" {
 		topic := fmt.Sprintf(aliveTopicTemplate, domainID, channelID)
-		lwtPayload := fmt.Sprintf(lwtPayloadTemplate, username)
+		lwtPayload := fmt.Sprintf(lwtPayloadTemplate, id)
 		opts.SetWill(topic, lwtPayload, 0, false)
 	}
 

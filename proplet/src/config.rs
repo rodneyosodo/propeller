@@ -5,8 +5,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
-use uuid::Uuid;
-
 use crate::tee_detection;
 
 const DEFAULT_CONFIG_PATH: &str = "config.toml";
@@ -24,7 +22,6 @@ pub struct PropletFileConfig {
 #[derive(Debug, Clone)]
 pub struct PropletConfig {
     pub log_level: String,
-    pub instance_id: String,
     pub mqtt_address: String,
     pub mqtt_timeout: u64,
     pub mqtt_qos: u8,
@@ -56,7 +53,6 @@ impl Default for PropletConfig {
     fn default() -> Self {
         Self {
             log_level: "info".to_string(),
-            instance_id: Uuid::new_v4().to_string(),
             mqtt_address: "tcp://localhost:1883".to_string(),
             mqtt_timeout: 30,
             mqtt_qos: 2,
@@ -182,14 +178,6 @@ impl PropletConfig {
             if !val.is_empty() {
                 config.log_level = val;
             }
-        }
-
-        if let Ok(val) = env::var("PROPLET_INSTANCE_ID") {
-            config.instance_id = if val.is_empty() {
-                Uuid::new_v4().to_string()
-            } else {
-                val
-            };
         }
 
         if let Ok(val) = env::var("PROPLET_MQTT_ADDRESS") {
@@ -545,16 +533,6 @@ mod tests {
             config.external_wasm_runtime,
             Some("/usr/local/bin/wasmtime".to_string())
         );
-    }
-
-    #[test]
-    fn test_proplet_config_from_env_instance_id_valid() {
-        let uuid = Uuid::new_v4();
-        env::set_var("PROPLET_INSTANCE_ID", uuid.to_string());
-        let config = PropletConfig::from_env();
-        env::remove_var("PROPLET_INSTANCE_ID");
-
-        assert_eq!(config.instance_id, uuid.to_string());
     }
 
     #[test]

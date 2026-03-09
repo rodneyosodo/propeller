@@ -61,7 +61,7 @@ pub struct PropletService {
 
 impl PropletService {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
-        let proplet = Proplet::new(config.instance_id.clone(), "proplet".to_string());
+        let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
         let http_client = HttpClient::builder()
@@ -96,7 +96,7 @@ impl PropletService {
         runtime: Arc<dyn Runtime>,
         tee_runtime: Arc<dyn Runtime>,
     ) -> Self {
-        let proplet = Proplet::new(config.instance_id.clone(), "proplet".to_string());
+        let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
         let http_client = HttpClient::builder()
