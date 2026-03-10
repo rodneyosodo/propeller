@@ -251,8 +251,7 @@ impl PropletService {
                 contents.lines().find_map(|line| {
                     let line = line.trim();
                     if let Some(rest) = line.strip_prefix("MemTotal:") {
-                        rest.trim()
-                            .split_whitespace()
+                        rest.split_whitespace()
                             .next()
                             .and_then(|kb| kb.parse::<u64>().ok())
                             .map(|kb| kb * 1024)
