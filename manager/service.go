@@ -1128,6 +1128,7 @@ func msgUint64(msg map[string]any, key string) uint64 {
 		if err != nil {
 			return 0
 		}
+
 		return uint64(n)
 	}
 
