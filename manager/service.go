@@ -1087,6 +1087,7 @@ func (svc *service) handle(ctx context.Context) func(topic string, msg map[strin
 
 func msgString(msg map[string]any, key string) string {
 	v, _ := msg[key].(string)
+
 	return v
 }
 
@@ -1105,8 +1106,10 @@ func msgStringSlice(msg map[string]any, key string) []string {
 				result = append(result, s)
 			}
 		}
+
 		return result
 	}
+
 	return nil
 }
 
@@ -1127,6 +1130,7 @@ func msgUint64(msg map[string]any, key string) uint64 {
 		}
 		return uint64(n)
 	}
+
 	return 0
 }
 

@@ -1,3 +1,4 @@
+use crate::tee_detection;
 use rumqttc::QoS;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -5,7 +6,6 @@ use std::env;
 use std::fs;
 use std::path::Path;
 use std::time::Duration;
-use crate::tee_detection;
 
 const DEFAULT_CONFIG_PATH: &str = "config.toml";
 const DEFAULT_CONFIG_SECTION: &str = "proplet";
