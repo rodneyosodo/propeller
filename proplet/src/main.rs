@@ -49,10 +49,7 @@ async fn main() -> Result<()> {
 
     debug!("Proplet configuration: {:?}", config);
 
-    info!(
-        "Starting Proplet (Rust) - Client ID: {}",
-        config.client_id
-    );
+    info!("Starting Proplet (Rust) - Client ID: {}", config.client_id);
 
     let mqtt_config = MqttConfig {
         address: config.mqtt_address.clone(),
