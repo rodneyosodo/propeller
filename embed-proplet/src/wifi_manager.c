@@ -2,13 +2,14 @@
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/net/dhcpv4_server.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/wifi_mgmt.h>
 
 LOG_MODULE_REGISTER(wifi_manager);
 
 static struct net_if *ap_iface;
 static struct net_if *sta_iface;
-static struct net_mgmt_event_callback cb;
-static struct k_sem wifi_connected_sem;
+static struct net_mgmt_event_callback wifi_cb;
 
 #define MACSTR "%02X:%02X:%02X:%02X:%02X:%02X"
 #define MAC2STR(mac) mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
@@ -19,32 +20,30 @@ static void wifi_event_handler(struct net_mgmt_event_callback *cb,
   switch (mgmt_event)
   {
   case NET_EVENT_WIFI_CONNECT_RESULT:
-    LOG_INF("Connected to Wi-Fi");
-    k_sem_give(&wifi_connected_sem);
+    LOG_INF("Wi-Fi connected");
     break;
   case NET_EVENT_WIFI_DISCONNECT_RESULT:
-    LOG_INF("Disconnected from Wi-Fi");
+    LOG_INF("Wi-Fi disconnected");
     break;
   case NET_EVENT_WIFI_AP_ENABLE_RESULT:
-    LOG_INF("AP Mode enabled");
+    LOG_INF("AP mode enabled");
     break;
   case NET_EVENT_WIFI_AP_DISABLE_RESULT:
-    LOG_INF("AP Mode disabled");
+    LOG_INF("AP mode disabled");
     break;
   case NET_EVENT_WIFI_AP_STA_CONNECTED:
   {
-    struct wifi_ap_sta_info *sta_info = (struct wifi_ap_sta_info *)cb->info;
-    LOG_INF("Station " MACSTR " connected", MAC2STR(sta_info->mac));
+    struct wifi_ap_sta_info *sta = (struct wifi_ap_sta_info *)cb->info;
+    LOG_INF("Station " MACSTR " connected", MAC2STR(sta->mac));
     break;
   }
   case NET_EVENT_WIFI_AP_STA_DISCONNECTED:
   {
-    struct wifi_ap_sta_info *sta_info = (struct wifi_ap_sta_info *)cb->info;
-    LOG_INF("Station " MACSTR " disconnected", MAC2STR(sta_info->mac));
+    struct wifi_ap_sta_info *sta = (struct wifi_ap_sta_info *)cb->info;
+    LOG_INF("Station " MACSTR " disconnected", MAC2STR(sta->mac));
     break;
   }
   default:
-    LOG_DBG("Unhandled Wi-Fi event: %u", mgmt_event);
     break;
   }
 }
@@ -69,7 +68,7 @@ static void enable_dhcpv4_server(const char *ip_address, const char *netmask)
   net_if_ipv4_addr_add(ap_iface, &addr, NET_ADDR_MANUAL, 0);
   net_if_ipv4_set_netmask(ap_iface, &netmask_addr);
 
-  addr.s4_addr[3] += 10; /* Adjust DHCP pool starting address */
+  addr.s4_addr[3] += 10;
   if (net_dhcpv4_server_start(ap_iface, &addr) != 0)
   {
     LOG_ERR("Failed to start DHCPv4 server");
@@ -80,14 +79,12 @@ static void enable_dhcpv4_server(const char *ip_address, const char *netmask)
 
 void wifi_manager_init(void)
 {
-  k_sem_init(&wifi_connected_sem, 0, 1);
-
   net_mgmt_init_event_callback(
-      &cb, wifi_event_handler,
+      &wifi_cb, wifi_event_handler,
       NET_EVENT_WIFI_CONNECT_RESULT | NET_EVENT_WIFI_DISCONNECT_RESULT |
           NET_EVENT_WIFI_AP_ENABLE_RESULT | NET_EVENT_WIFI_AP_DISABLE_RESULT |
           NET_EVENT_WIFI_AP_STA_CONNECTED | NET_EVENT_WIFI_AP_STA_DISCONNECTED);
-  net_mgmt_add_event_callback(&cb);
+  net_mgmt_add_event_callback(&wifi_cb);
 
   ap_iface = net_if_get_wifi_sap();
   sta_iface = net_if_get_wifi_sta();
@@ -108,26 +105,43 @@ int wifi_manager_connect(const char *ssid, const char *psk)
       .psk_length = strlen(psk),
       .security = WIFI_SECURITY_TYPE_PSK,
       .channel = WIFI_CHANNEL_ANY,
-      .band = WIFI_FREQ_BAND_2_4_GHZ,
+      .band = WIFI_FREQ_BAND_UNKNOWN,
   };
 
   while (1)
   {
-    LOG_INF("Attempting to connect to Wi-Fi...");
+    LOG_INF("Connecting to Wi-Fi: %s", ssid);
 
-    int ret =
-        net_mgmt(NET_REQUEST_WIFI_CONNECT, sta_iface, &params, sizeof(params));
-    if (ret == 0)
-    {
-      LOG_DBG("Connection request sent, waiting for confirmation...");
-      k_sem_take(&wifi_connected_sem, K_FOREVER);
-      LOG_INF("Successfully connected to Wi-Fi");
+    int ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, sta_iface,
+                       &params, sizeof(params));
+    if (ret != 0) {
+      LOG_ERR("Connection request failed (%d). Retrying in 5s...", ret);
+      k_sleep(K_SECONDS(5));
+      continue;
+    }
+
+    bool associated = false;
+    for (int i = 0; i < 40; i++) {
+      k_sleep(K_MSEC(500));
+      struct wifi_iface_status status = {0};
+      if (net_mgmt(NET_REQUEST_WIFI_IFACE_STATUS, sta_iface,
+                   &status, sizeof(status)) == 0) {
+        if (status.state >= WIFI_STATE_COMPLETED) {
+          associated = true;
+          break;
+        }
+      }
+    }
+
+    if (associated) {
+      k_sleep(K_SECONDS(5));
+      LOG_INF("Connected to Wi-Fi: %s", ssid);
       return 0;
     }
 
-    LOG_ERR("Connection attempt failed (error: %d). Retrying in 5 seconds...",
-            ret);
-    k_sleep(K_SECONDS(5));
+    LOG_WRN("Wi-Fi connect timed out. Retrying...");
+    net_mgmt(NET_REQUEST_WIFI_DISCONNECT, sta_iface, NULL, 0);
+    k_sleep(K_SECONDS(3));
   }
 }
 

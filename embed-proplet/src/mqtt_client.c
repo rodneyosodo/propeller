@@ -23,6 +23,12 @@
 #include <zephyr/sys/sys_heap.h>
 #endif
 
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
+#ifdef CONFIG_NET_HOSTNAME
+#include <zephyr/net/hostname.h>
+#endif
+
 LOG_MODULE_REGISTER(mqtt_client);
 
 #define RX_BUFFER_SIZE 1024
@@ -33,7 +39,7 @@ LOG_MODULE_REGISTER(mqtt_client);
 #define PAYLOAD_BUFFER_SIZE 1024
 #endif
 
-#define MQTT_BROKER_HOSTNAME "10.42.0.1" /* Replace with your broker's IP */
+#define MQTT_BROKER_HOSTNAME "10.42.0.1"
 #define MQTT_BROKER_PORT 1883
 
 #define REGISTRY_ACK_TOPIC_TEMPLATE "m/%s/c/%s/control/manager/registry"
@@ -55,61 +61,13 @@ LOG_MODULE_REGISTER(mqtt_client);
 
 #define DEFAULT_NAMESPACE "embedded"
 
-#define MAX_ID_LEN 64
-#define MAX_NAME_LEN 64
-#define MAX_STATE_LEN 16
-#define MAX_URL_LEN 256
-#define MAX_TIMESTAMP_LEN 32
-#define MAX_BASE64_LEN 1024
-#define MAX_INPUTS 16
-#define MAX_RESULTS 16
 #define MAX_UPDATE_B64_LEN 2048
 #define MAX_ERROR_MSG_LEN 256
 
-struct task {
-  char id[MAX_ID_LEN];
-  char name[MAX_NAME_LEN];
-  char state[MAX_STATE_LEN];
-  char image_url[MAX_URL_LEN];
-  char mode[MAX_NAME_LEN];
-
-  char file[MAX_BASE64_LEN];
-  size_t file_len;
-
-  uint64_t inputs[MAX_INPUTS];
-  size_t inputs_count;
-  uint64_t results[MAX_RESULTS];
-  size_t results_count;
-
-  char start_time[MAX_TIMESTAMP_LEN];
-  char finish_time[MAX_TIMESTAMP_LEN];
-  char created_at[MAX_TIMESTAMP_LEN];
-  char updated_at[MAX_TIMESTAMP_LEN];
-
-  bool is_fl_task;  // Legacy field - FL tasks now detected via ROUND_ID
-  
-  char fl_round_id_str[32];
-  char fl_format[MAX_NAME_LEN];
-  char fl_num_samples_str[32];
-  
-  char round_id[MAX_ID_LEN];
-  char model_uri[MAX_URL_LEN];
-  char hyperparams[512];
-  bool is_fml_task;
-  
-  char proplet_id[MAX_ID_LEN];
-  char model_data[4096];
-  char dataset_data[4096];
-  char coordinator_url[MAX_URL_LEN];
-  char model_registry_url[MAX_URL_LEN];
-  char data_store_url[MAX_URL_LEN];
-  bool model_data_fetched;
-  bool dataset_data_fetched;
-};
-
-static struct task g_current_task;
+struct task g_current_task;
 
 static char g_proplet_id[MAX_ID_LEN];
+static char g_client_key[MAX_ID_LEN];
 static const char *g_namespace = DEFAULT_NAMESPACE;
 
 static uint8_t rx_buffer[RX_BUFFER_SIZE];
@@ -339,7 +297,7 @@ int publish(const char *domain_id, const char *channel_id,
 }
 
 int mqtt_client_connect(const char *domain_id, const char *proplet_id,
-                        const char *channel_id) {
+                        const char *client_key, const char *channel_id) {
   int ret;
   struct sockaddr_in *broker = (struct sockaddr_in *)&broker_addr;
 
@@ -361,6 +319,8 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
   strncpy(g_proplet_id, proplet_id, sizeof(g_proplet_id) - 1);
   g_proplet_id[sizeof(g_proplet_id) - 1] = '\0';
+  strncpy(g_client_key, client_key ? client_key : "", sizeof(g_client_key) - 1);
+  g_client_key[sizeof(g_client_key) - 1] = '\0';
 
   snprintf(g_will_topic_str, sizeof(g_will_topic_str), ALIVE_TOPIC_TEMPLATE,
            domain_id, channel_id);
@@ -391,7 +351,10 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   username.size = strlen(g_proplet_id);
   client_ctx.user_name = &username;
 
-  client_ctx.password = NULL;
+  static struct mqtt_utf8 password;
+  password.utf8 = (const uint8_t *)g_client_key;
+  password.size = strlen(g_client_key);
+  client_ctx.password = (g_client_key[0] != '\0') ? &password : NULL;
   client_ctx.protocol_version = MQTT_VERSION_3_1_1;
 
   client_ctx.rx_buf = rx_buffer;
@@ -658,6 +621,7 @@ void handle_start_command(const char *payload) {
         LOG_ERR("Failed to subscribe to model topic: %s (error: %d)", t.model_uri, ret);
       }
     }
+  }
   // FL tasks are detected via ROUND_ID environment variable (FML tasks)
   LOG_INF("image_url=%s, file-len(b64)=%zu", t.image_url, strlen(t.file));
   LOG_INF("inputs_count=%zu", t.inputs_count);
@@ -1152,24 +1116,112 @@ void publish_metrics_message(const char *domain_id, const char *channel_id,
   cJSON_Delete(root);
 }
 
+static cJSON *parse_tags(const char *tags_str) {
+  cJSON *arr = cJSON_CreateArray();
+  if (!tags_str || tags_str[0] == '\0') {
+    return arr;
+  }
+  char buf[256];
+  strncpy(buf, tags_str, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  char *token = strtok(buf, ",");
+  while (token) {
+    while (*token == ' ') {
+      token++;
+    }
+    cJSON_AddItemToArray(arr, cJSON_CreateString(token));
+    token = strtok(NULL, ",");
+  }
+  return arr;
+}
+
 int publish_discovery(const char *domain_id, const char *proplet_id,
-                      const char *channel_id) {
-  char topic[128];
-  char payload[128];
-
-  snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, domain_id,
-           channel_id);
-  snprintf(payload, sizeof(payload), "{\"proplet_id\":\"%s\"}", proplet_id);
-
+                      const char *channel_id, const char *description,
+                      const char *tags, const char *location,
+                      const char *version) {
   if (!mqtt_connected) {
     LOG_ERR("MQTT client is not connected. Discovery aborted.");
     return -ENOTCONN;
   }
 
+  char ip_str[NET_IPV4_ADDR_LEN];
+  ip_str[0] = '\0';
+  struct net_if *iface = net_if_get_default();
+  if (iface != NULL) {
+    struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
+    if (ipv4 != NULL) {
+      net_addr_ntop(AF_INET, &ipv4->unicast[0].ipv4.address.in_addr,
+                    ip_str, sizeof(ip_str));
+    }
+  }
+
+#ifdef CONFIG_NET_HOSTNAME
+  const char *hostname = net_hostname_get();
+#else
+  const char *hostname = "";
+#endif
+
+#if defined(CONFIG_XTENSA)
+  const char *cpu_arch = "xtensa";
+#elif defined(CONFIG_ARM64)
+  const char *cpu_arch = "aarch64";
+#elif defined(CONFIG_ARM)
+  const char *cpu_arch = "arm";
+#elif defined(CONFIG_RISCV)
+  const char *cpu_arch = "riscv32";
+#elif defined(CONFIG_X86)
+  const char *cpu_arch = "x86";
+#else
+  const char *cpu_arch = "unknown";
+#endif
+
+#ifdef CONFIG_SRAM_SIZE
+  uint64_t total_memory = (uint64_t)CONFIG_SRAM_SIZE * 1024;
+#else
+  uint64_t total_memory = 0;
+#endif
+
+  const char *ns = (g_namespace != NULL) ? g_namespace : DEFAULT_NAMESPACE;
+
+  cJSON *root = cJSON_CreateObject();
+  if (root == NULL) {
+    LOG_ERR("Failed to allocate discovery JSON object.");
+    return -ENOMEM;
+  }
+
+  cJSON_AddStringToObject(root, "proplet_id", proplet_id);
+  cJSON_AddStringToObject(root, "namespace", ns);
+  cJSON_AddStringToObject(root, "description",
+                          description ? description : "");
+  cJSON_AddItemToObject(root, "tags", parse_tags(tags));
+  cJSON_AddStringToObject(root, "location", location ? location : "");
+  cJSON_AddStringToObject(root, "ip", ip_str);
+  cJSON_AddStringToObject(root, "environment", "embedded");
+  cJSON_AddStringToObject(root, "os", "zephyr");
+  cJSON_AddStringToObject(root, "hostname", hostname ? hostname : "");
+  cJSON_AddStringToObject(root, "cpu_arch", cpu_arch);
+  cJSON_AddNumberToObject(root, "total_memory_bytes", (double)total_memory);
+  cJSON_AddStringToObject(root, "proplet_version", version ? version : "");
+  cJSON_AddStringToObject(root, "wasm_runtime", "wamr");
+
+  char *payload = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+
+  if (payload == NULL) {
+    LOG_ERR("Failed to serialise discovery JSON.");
+    return -ENOMEM;
+  }
+
+  char topic[128];
+  snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, domain_id,
+           channel_id);
+
   struct mqtt_publish_param param;
   prepare_publish_param(&param, topic, payload);
 
   int ret = mqtt_publish(&client_ctx, &param);
+  cJSON_free(payload);
+
   if (ret != 0) {
     LOG_ERR("Failed to publish discovery. Error: %d", ret);
     return ret;

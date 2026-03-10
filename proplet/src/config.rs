@@ -47,6 +47,9 @@ pub struct PropletConfig {
     pub http_enabled: bool,
     pub preopened_dirs: Vec<String>,
     pub http_proxy_port: u16,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub location: Option<String>,
 }
 
 impl Default for PropletConfig {
@@ -78,6 +81,9 @@ impl Default for PropletConfig {
             http_enabled: false,
             preopened_dirs: Vec::new(),
             http_proxy_port: 8222,
+            description: None,
+            tags: Vec::new(),
+            location: None,
         }
     }
 }
@@ -313,6 +319,28 @@ impl PropletConfig {
                     .filter(|s| !s.is_empty())
                     .map(|s| s.to_string())
                     .collect();
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_DESCRIPTION") {
+            if !val.is_empty() {
+                config.description = Some(val);
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_TAGS") {
+            if !val.is_empty() {
+                config.tags = val
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_LOCATION") {
+            if !val.is_empty() {
+                config.location = Some(val);
             }
         }
 

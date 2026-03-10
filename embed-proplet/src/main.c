@@ -6,12 +6,18 @@
 
 LOG_MODULE_REGISTER(main);
 
-#define WIFI_SSID "<YOUR_WIFI_SSID>"
-#define WIFI_PSK "<YOUR_WIFI_PSK>"
-#define PROPLET_ID "<YOUR_PROPLET_ID>"
-#define DOMAIN_ID "<YOUR_DOMAIN_ID>"
-#define CHANNEL_ID "<YOUR_CHANNEL_ID>"
+#define WIFI_SSID   "<YOUR_WIFI_SSID>"
+#define WIFI_PSK    "<YOUR_WIFI_PSK>"
+#define PROPLET_ID  "<YOUR_PROPLET_ID>"
+#define CLIENT_KEY  "<YOUR_CLIENT_KEY>"
+#define DOMAIN_ID   "<YOUR_DOMAIN_ID>"
+#define CHANNEL_ID  "<YOUR_CHANNEL_ID>"
 #define PROPLET_NAMESPACE "embedded"
+
+#define PROPLET_DESCRIPTION "ESP32-S3 embed-proplet"
+#define PROPLET_TAGS        "embedded,esp32s3,zephyr"
+#define PROPLET_LOCATION    "dev-bench"
+#define PROPLET_VERSION     "0.1.0-PROP-103"
 
 #ifndef PROPLET_LIVELINESS_INTERVAL_MS
 #define PROPLET_LIVELINESS_INTERVAL_MS 10000
@@ -39,7 +45,7 @@ int main(void)
     LOG_WRN("Task monitor init failed, metrics may be unavailable");
   }
 
-  if (mqtt_client_connect(domain_id, PROPLET_ID, channel_id) != 0) {
+  if (mqtt_client_connect(domain_id, PROPLET_ID, CLIENT_KEY, channel_id) != 0) {
     LOG_ERR("MQTT connect failed");
     return -1;
   }
@@ -49,7 +55,9 @@ int main(void)
     return -1;
   }
 
-  if (publish_discovery(domain_id, PROPLET_ID, channel_id) != 0) {
+  if (publish_discovery(domain_id, PROPLET_ID, channel_id,
+                        PROPLET_DESCRIPTION, PROPLET_TAGS,
+                        PROPLET_LOCATION, PROPLET_VERSION) != 0) {
     LOG_ERR("MQTT discovery publish failed");
     return -1;
   }
