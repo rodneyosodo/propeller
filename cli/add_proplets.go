@@ -28,6 +28,7 @@ Example:
 		domainID, channelID, numExisting, err := readExistingConfig(fileName)
 		if err != nil {
 			logErrorCmd(*cmd, fmt.Errorf("failed to read %s: %w", fileName, err))
+
 			return
 		}
 
