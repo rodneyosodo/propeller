@@ -290,5 +290,7 @@ func NewProvisionCmd() *cobra.Command {
 		"The name of the file to create",
 	)
 
+	provisionCmd.AddCommand(addPropletsCmd)
+
 	return provisionCmd
 }
