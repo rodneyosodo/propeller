@@ -1085,6 +1085,51 @@ func (svc *service) handle(ctx context.Context) func(topic string, msg map[strin
 	}
 }
 
+func msgString(msg map[string]any, key string) string {
+	v, _ := msg[key].(string)
+	return v
+}
+
+func msgStringSlice(msg map[string]any, key string) []string {
+	v, ok := msg[key]
+	if !ok {
+		return nil
+	}
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		result := make([]string, 0, len(t))
+		for _, item := range t {
+			if s, ok := item.(string); ok {
+				result = append(result, s)
+			}
+		}
+		return result
+	}
+	return nil
+}
+
+func msgUint64(msg map[string]any, key string) uint64 {
+	v, ok := msg[key]
+	if !ok {
+		return 0
+	}
+	switch t := v.(type) {
+	case uint64:
+		return t
+	case float64:
+		return uint64(t)
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0
+		}
+		return uint64(n)
+	}
+	return 0
+}
+
 func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any) error {
 	propletID, ok := msg["proplet_id"].(string)
 	if !ok {
@@ -1095,8 +1140,19 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 	}
 
 	p := proplet.Proplet{
-		ID:   propletID,
-		Name: namegen.Generate(),
+		ID:               propletID,
+		Name:             namegen.Generate(),
+		Description:      msgString(msg, "description"),
+		Tags:             msgStringSlice(msg, "tags"),
+		Location:         msgString(msg, "location"),
+		IP:               msgString(msg, "ip"),
+		Environment:      msgString(msg, "environment"),
+		OS:               msgString(msg, "os"),
+		Hostname:         msgString(msg, "hostname"),
+		CPUArch:          msgString(msg, "cpu_arch"),
+		TotalMemoryBytes: msgUint64(msg, "total_memory_bytes"),
+		PropletVersion:   msgString(msg, "proplet_version"),
+		WasmRuntime:      msgString(msg, "wasm_runtime"),
 	}
 	if err := svc.propletRepo.Create(ctx, p); err != nil {
 		return err

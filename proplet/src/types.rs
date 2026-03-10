@@ -150,6 +150,22 @@ pub struct LivelinessMessage {
 pub struct DiscoveryMessage {
     pub proplet_id: String,
     pub namespace: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ip: Option<String>,
+    pub environment: String,
+    pub os: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hostname: Option<String>,
+    pub cpu_arch: String,
+    pub total_memory_bytes: u64,
+    pub proplet_version: String,
+    pub wasm_runtime: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -591,6 +607,17 @@ mod tests {
         let msg = DiscoveryMessage {
             proplet_id: "proplet-456".to_string(),
             namespace: "prod".to_string(),
+            description: None,
+            tags: Vec::new(),
+            location: None,
+            ip: None,
+            environment: "binary".to_string(),
+            os: "linux".to_string(),
+            hostname: None,
+            cpu_arch: "x86_64".to_string(),
+            total_memory_bytes: 0,
+            proplet_version: "unknown".to_string(),
+            wasm_runtime: "wasmtime-internal".to_string(),
         };
 
         let json = serde_json::to_string(&msg).unwrap();

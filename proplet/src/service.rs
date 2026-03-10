@@ -219,6 +219,58 @@ impl PropletService {
     }
 
     async fn publish_discovery(&self) -> Result<()> {
+        let ip = std::net::UdpSocket::bind("0.0.0.0:0")
+            .and_then(|s| {
+                s.connect("8.8.8.8:80")?;
+                s.local_addr()
+            })
+            .ok()
+            .map(|addr| addr.ip().to_string());
+
+        let environment = if std::path::Path::new("/.dockerenv").exists() {
+            "docker".to_string()
+        } else if cfg!(target_os = "espidf") || cfg!(target_arch = "xtensa") {
+            "embedded".to_string()
+        } else {
+            "binary".to_string()
+        };
+
+        let hostname = std::env::var("HOSTNAME")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                std::fs::read_to_string("/etc/hostname")
+                    .ok()
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            });
+
+        let total_memory_bytes = std::fs::read_to_string("/proc/meminfo")
+            .ok()
+            .and_then(|contents| {
+                contents.lines().find_map(|line| {
+                    let line = line.trim();
+                    if let Some(rest) = line.strip_prefix("MemTotal:") {
+                        rest.trim()
+                            .split_whitespace()
+                            .next()
+                            .and_then(|kb| kb.parse::<u64>().ok())
+                            .map(|kb| kb * 1024)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .unwrap_or(0);
+
+        let proplet_version =
+            std::env::var("PROPLET_VERSION").unwrap_or_else(|_| "unknown".to_string());
+
+        let wasm_runtime = match &self.config.external_wasm_runtime {
+            Some(rt) => rt.clone(),
+            None => "wasmtime-internal".to_string(),
+        };
+
         let discovery = DiscoveryMessage {
             proplet_id: self.config.client_id.clone(),
             namespace: self
@@ -226,6 +278,17 @@ impl PropletService {
                 .k8s_namespace
                 .clone()
                 .unwrap_or_else(|| "default".to_string()),
+            description: self.config.description.clone(),
+            tags: self.config.tags.clone(),
+            location: self.config.location.clone(),
+            ip,
+            environment,
+            os: std::env::consts::OS.to_string(),
+            hostname,
+            cpu_arch: std::env::consts::ARCH.to_string(),
+            total_memory_bytes,
+            proplet_version,
+            wasm_runtime,
         };
 
         let topic = build_topic(

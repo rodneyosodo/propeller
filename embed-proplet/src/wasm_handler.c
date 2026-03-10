@@ -147,6 +147,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     extern const char *channel_id;
     extern const char *domain_id;
     publish_results_with_error(domain_id, channel_id, task_id, NULL, error_buf);
+    /* Release reserved slot */
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -201,7 +202,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     wasm_runtime_unload(module);
     extern const char *channel_id;
     extern const char *domain_id;
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, NULL);
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_buf);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -221,7 +222,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     wasm_runtime_unload(module);
     extern const char *channel_id;
     extern const char *domain_id;
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, NULL);
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_buf);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -266,7 +267,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     wasm_runtime_unload(module);
     extern const char *channel_id;
     extern const char *domain_id;
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, NULL);
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_buf);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));

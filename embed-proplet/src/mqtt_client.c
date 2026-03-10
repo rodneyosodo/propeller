@@ -23,6 +23,12 @@
 #include <zephyr/sys/sys_heap.h>
 #endif
 
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
+#ifdef CONFIG_NET_HOSTNAME
+#include <zephyr/net/hostname.h>
+#endif
+
 LOG_MODULE_REGISTER(mqtt_client);
 
 #define RX_BUFFER_SIZE 1024
@@ -33,7 +39,7 @@ LOG_MODULE_REGISTER(mqtt_client);
 #define PAYLOAD_BUFFER_SIZE 1024
 #endif
 
-#define MQTT_BROKER_HOSTNAME "10.42.0.1" /* Replace with your broker's IP */
+#define MQTT_BROKER_HOSTNAME "10.42.0.1"
 #define MQTT_BROKER_PORT 1883
 
 #define REGISTRY_ACK_TOPIC_TEMPLATE "m/%s/c/%s/control/manager/registry"
@@ -317,7 +323,6 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
   strncpy(g_proplet_id, proplet_id, sizeof(g_proplet_id) - 1);
   g_proplet_id[sizeof(g_proplet_id) - 1] = '\0';
-
   strncpy(g_client_key, client_key ? client_key : "", sizeof(g_client_key) - 1);
   g_client_key[sizeof(g_client_key) - 1] = '\0';
 
@@ -359,7 +364,7 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   static struct mqtt_utf8 password;
   password.utf8 = (const uint8_t *)g_client_key;
   password.size = strlen(g_client_key);
-  client_ctx.password = (password.size > 0) ? &password : NULL;
+  client_ctx.password = (g_client_key[0] != '\0') ? &password : NULL;
   client_ctx.protocol_version = MQTT_VERSION_3_1_1;
 
   client_ctx.rx_buf = rx_buffer;
@@ -627,7 +632,7 @@ void handle_start_command(const char *payload) {
       }
     }
   }
-
+  // FL tasks are detected via ROUND_ID environment variable (FML tasks)
   LOG_INF("image_url=%s, file-len(b64)=%zu", t.image_url, strlen(t.file));
   LOG_INF("inputs_count=%zu", t.inputs_count);
 
@@ -1121,24 +1126,112 @@ void publish_metrics_message(const char *domain_id, const char *channel_id,
   cJSON_Delete(root);
 }
 
+static cJSON *parse_tags(const char *tags_str) {
+  cJSON *arr = cJSON_CreateArray();
+  if (!tags_str || tags_str[0] == '\0') {
+    return arr;
+  }
+  char buf[256];
+  strncpy(buf, tags_str, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  char *token = strtok(buf, ",");
+  while (token) {
+    while (*token == ' ') {
+      token++;
+    }
+    cJSON_AddItemToArray(arr, cJSON_CreateString(token));
+    token = strtok(NULL, ",");
+  }
+  return arr;
+}
+
 int publish_discovery(const char *domain_id, const char *proplet_id,
-                      const char *channel_id) {
-  char topic[128];
-  char payload[128];
-
-  snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, domain_id,
-           channel_id);
-  snprintf(payload, sizeof(payload), "{\"proplet_id\":\"%s\"}", proplet_id);
-
+                      const char *channel_id, const char *description,
+                      const char *tags, const char *location,
+                      const char *version) {
   if (!mqtt_connected) {
     LOG_ERR("MQTT client is not connected. Discovery aborted.");
     return -ENOTCONN;
   }
 
+  char ip_str[NET_IPV4_ADDR_LEN];
+  ip_str[0] = '\0';
+  struct net_if *iface = net_if_get_default();
+  if (iface != NULL) {
+    struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
+    if (ipv4 != NULL) {
+      net_addr_ntop(AF_INET, &ipv4->unicast[0].ipv4.address.in_addr,
+                    ip_str, sizeof(ip_str));
+    }
+  }
+
+#ifdef CONFIG_NET_HOSTNAME
+  const char *hostname = net_hostname_get();
+#else
+  const char *hostname = "";
+#endif
+
+#if defined(CONFIG_XTENSA)
+  const char *cpu_arch = "xtensa";
+#elif defined(CONFIG_ARM64)
+  const char *cpu_arch = "aarch64";
+#elif defined(CONFIG_ARM)
+  const char *cpu_arch = "arm";
+#elif defined(CONFIG_RISCV)
+  const char *cpu_arch = "riscv32";
+#elif defined(CONFIG_X86)
+  const char *cpu_arch = "x86";
+#else
+  const char *cpu_arch = "unknown";
+#endif
+
+#ifdef CONFIG_SRAM_SIZE
+  uint64_t total_memory = (uint64_t)CONFIG_SRAM_SIZE * 1024;
+#else
+  uint64_t total_memory = 0;
+#endif
+
+  const char *ns = (g_namespace != NULL) ? g_namespace : DEFAULT_NAMESPACE;
+
+  cJSON *root = cJSON_CreateObject();
+  if (root == NULL) {
+    LOG_ERR("Failed to allocate discovery JSON object.");
+    return -ENOMEM;
+  }
+
+  cJSON_AddStringToObject(root, "proplet_id", proplet_id);
+  cJSON_AddStringToObject(root, "namespace", ns);
+  cJSON_AddStringToObject(root, "description",
+                          description ? description : "");
+  cJSON_AddItemToObject(root, "tags", parse_tags(tags));
+  cJSON_AddStringToObject(root, "location", location ? location : "");
+  cJSON_AddStringToObject(root, "ip", ip_str);
+  cJSON_AddStringToObject(root, "environment", "embedded");
+  cJSON_AddStringToObject(root, "os", "zephyr");
+  cJSON_AddStringToObject(root, "hostname", hostname ? hostname : "");
+  cJSON_AddStringToObject(root, "cpu_arch", cpu_arch);
+  cJSON_AddNumberToObject(root, "total_memory_bytes", (double)total_memory);
+  cJSON_AddStringToObject(root, "proplet_version", version ? version : "");
+  cJSON_AddStringToObject(root, "wasm_runtime", "wamr");
+
+  char *payload = cJSON_PrintUnformatted(root);
+  cJSON_Delete(root);
+
+  if (payload == NULL) {
+    LOG_ERR("Failed to serialise discovery JSON.");
+    return -ENOMEM;
+  }
+
+  char topic[128];
+  snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, domain_id,
+           channel_id);
+
   struct mqtt_publish_param param;
   prepare_publish_param(&param, topic, payload);
 
   int ret = mqtt_publish(&client_ctx, &param);
+  cJSON_free(payload);
+
   if (ret != 0) {
     LOG_ERR("Failed to publish discovery. Error: %d", ret);
     return ret;

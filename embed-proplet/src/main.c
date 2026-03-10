@@ -9,6 +9,11 @@ LOG_MODULE_REGISTER(main);
 
 #define PROPLET_NAMESPACE "embedded"
 
+#define PROPLET_DESCRIPTION "ESP32-S3 embed-proplet"
+#define PROPLET_TAGS        "embedded,esp32s3,zephyr"
+#define PROPLET_LOCATION    "dev-bench"
+#define PROPLET_VERSION     "0.1.0-PROP-103"
+
 #ifndef PROPLET_LIVELINESS_INTERVAL_MS
 #define PROPLET_LIVELINESS_INTERVAL_MS 10000
 #endif
@@ -60,7 +65,9 @@ int main(void)
 	}
 
 	if (publish_discovery(creds.domain_id, creds.proplet_id,
-			      creds.channel_id) != 0) {
+			      creds.channel_id,
+			      PROPLET_DESCRIPTION, PROPLET_TAGS,
+			      PROPLET_LOCATION, PROPLET_VERSION) != 0) {
 		LOG_ERR("MQTT discovery publish failed");
 		return -1;
 	}
