@@ -19,6 +19,7 @@ import (
 	"github.com/absmach/propeller/pkg/dag"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/job"
+	"github.com/absmach/propeller/pkg/maps"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/scheduler"
@@ -1085,55 +1086,6 @@ func (svc *service) handle(ctx context.Context) func(topic string, msg map[strin
 	}
 }
 
-func msgString(msg map[string]any, key string) string {
-	v, _ := msg[key].(string)
-
-	return v
-}
-
-func msgStringSlice(msg map[string]any, key string) []string {
-	v, ok := msg[key]
-	if !ok {
-		return nil
-	}
-	switch t := v.(type) {
-	case []string:
-		return t
-	case []any:
-		result := make([]string, 0, len(t))
-		for _, item := range t {
-			if s, ok := item.(string); ok {
-				result = append(result, s)
-			}
-		}
-
-		return result
-	}
-
-	return nil
-}
-
-func msgUint64(msg map[string]any, key string) uint64 {
-	v, ok := msg[key]
-	if !ok {
-		return 0
-	}
-	switch t := v.(type) {
-	case uint64:
-		return t
-	case float64:
-		return uint64(t)
-	case json.Number:
-		n, err := t.Int64()
-		if err != nil {
-			return 0
-		}
-
-		return uint64(n)
-	}
-
-	return 0
-}
 
 func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any) error {
 	propletID, ok := msg["proplet_id"].(string)
@@ -1153,17 +1105,17 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 		ID:   propletID,
 		Name: namegen.Generate(),
 		Metadata: proplet.PropletMetadata{
-			Description:      msgString(meta, "description"),
-			Tags:             msgStringSlice(meta, "tags"),
-			Location:         msgString(meta, "location"),
-			IP:               msgString(meta, "ip"),
-			Environment:      msgString(meta, "environment"),
-			OS:               msgString(meta, "os"),
-			Hostname:         msgString(meta, "hostname"),
-			CPUArch:          msgString(meta, "cpu_arch"),
-			TotalMemoryBytes: msgUint64(meta, "total_memory_bytes"),
-			PropletVersion:   msgString(meta, "proplet_version"),
-			WasmRuntime:      msgString(meta, "wasm_runtime"),
+			Description:      maps.GetString(meta, "description", ""),
+			Tags:             maps.GetStringSlice(meta, "tags"),
+			Location:         maps.GetString(meta, "location", ""),
+			IP:               maps.GetString(meta, "ip", ""),
+			Environment:      maps.GetString(meta, "environment", ""),
+			OS:               maps.GetString(meta, "os", ""),
+			Hostname:         maps.GetString(meta, "hostname", ""),
+			CPUArch:          maps.GetString(meta, "cpu_arch", ""),
+			TotalMemoryBytes: maps.GetUint64(meta, "total_memory_bytes"),
+			PropletVersion:   maps.GetString(meta, "proplet_version", ""),
+			WasmRuntime:      maps.GetString(meta, "wasm_runtime", ""),
 		},
 	}
 	if err := svc.propletRepo.Create(ctx, p); err != nil {
