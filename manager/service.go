@@ -1086,7 +1086,6 @@ func (svc *service) handle(ctx context.Context) func(topic string, msg map[strin
 	}
 }
 
-
 func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any) error {
 	propletID, ok := msg["proplet_id"].(string)
 	if !ok {
