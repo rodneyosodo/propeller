@@ -15,8 +15,6 @@ struct proplet_credentials {
 int credentials_load(struct proplet_credentials *creds,
 		     const struct proplet_credentials *defaults);
 
-int credentials_save_field(const char *key, const char *value);
-
 const struct proplet_credentials *credentials_get(void);
 
 #endif /* CREDENTIALS_H */
