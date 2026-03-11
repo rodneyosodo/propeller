@@ -173,23 +173,26 @@ stop-all:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
 $(EXAMPLES):
-	GOTOOLCHAIN=go1.23.5 GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasip2 examples/$@/$@.go
+	GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasip2 examples/$@/$@.go
 
 addition-wat:
 	@wat2wasm examples/addition-wat/addition.wat -o build/addition-wat.wasm
 	@base64 build/addition-wat.wasm > build/addition-wat.b64
 
 http-client:
+	mkdir -p $(BUILD_DIR)
 	cd examples/http-client && cargo build --release
-	cp examples/http-client/target/wasm32-wasip2/release/http-client.wasm build/http-client.wasm
+	cp examples/http-client/target/wasm32-wasip2/release/http-client.wasm $(BUILD_DIR)/http-client.wasm
 
 http-server:
+	mkdir -p $(BUILD_DIR)
 	cd examples/http-server && cargo build --release
-	cp examples/http-server/target/wasm32-wasip2/release/http_server.wasm build/http-server.wasm
+	cp examples/http-server/target/wasm32-wasip2/release/http_server.wasm $(BUILD_DIR)/http-server.wasm
 
 filesystem:
+	mkdir -p $(BUILD_DIR)
 	cd examples/filesystem && cargo build --release
-	cp examples/filesystem/target/wasm32-wasip2/release/filesystem.wasm build/filesystem.wasm
+	cp examples/filesystem/target/wasm32-wasip2/release/filesystem.wasm $(BUILD_DIR)/filesystem.wasm
 
 help:
 	@echo "Usage: make <target>"
