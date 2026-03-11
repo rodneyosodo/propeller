@@ -45,6 +45,22 @@ func GetStringSlice(m map[string]any, key string) []string {
 	return def
 }
 
+func GetMap(m map[string]any, key string) map[string]any {
+	if m == nil {
+		return map[string]any{}
+	}
+	value, ok := m[key]
+	if !ok {
+		return map[string]any{}
+	}
+	sub, ok := value.(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+
+	return sub
+}
+
 func GetUint64(m map[string]any, key string) uint64 {
 	if m == nil {
 		return 0

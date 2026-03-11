@@ -1095,10 +1095,7 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 		return errors.New("proplet id is empty")
 	}
 
-	meta, _ := msg["metadata"].(map[string]any)
-	if meta == nil {
-		meta = map[string]any{}
-	}
+	meta := maps.GetMap(msg, "metadata")
 
 	p := proplet.Proplet{
 		ID:   propletID,
