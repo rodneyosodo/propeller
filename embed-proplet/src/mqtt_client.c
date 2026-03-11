@@ -1191,18 +1191,26 @@ int publish_discovery(const char *domain_id, const char *proplet_id,
 
   cJSON_AddStringToObject(root, "proplet_id", proplet_id);
   cJSON_AddStringToObject(root, "namespace", ns);
-  cJSON_AddStringToObject(root, "description",
+
+  cJSON *metadata = cJSON_CreateObject();
+  if (metadata == NULL) {
+    cJSON_Delete(root);
+    LOG_ERR("Failed to allocate metadata JSON object.");
+    return -ENOMEM;
+  }
+  cJSON_AddStringToObject(metadata, "description",
                           description ? description : "");
-  cJSON_AddItemToObject(root, "tags", parse_tags(tags));
-  cJSON_AddStringToObject(root, "location", location ? location : "");
-  cJSON_AddStringToObject(root, "ip", ip_str);
-  cJSON_AddStringToObject(root, "environment", "embedded");
-  cJSON_AddStringToObject(root, "os", "zephyr");
-  cJSON_AddStringToObject(root, "hostname", hostname ? hostname : "");
-  cJSON_AddStringToObject(root, "cpu_arch", cpu_arch);
-  cJSON_AddNumberToObject(root, "total_memory_bytes", (double)total_memory);
-  cJSON_AddStringToObject(root, "proplet_version", version ? version : "");
-  cJSON_AddStringToObject(root, "wasm_runtime", "wamr");
+  cJSON_AddItemToObject(metadata, "tags", parse_tags(tags));
+  cJSON_AddStringToObject(metadata, "location", location ? location : "");
+  cJSON_AddStringToObject(metadata, "ip", ip_str);
+  cJSON_AddStringToObject(metadata, "environment", "embedded");
+  cJSON_AddStringToObject(metadata, "os", "zephyr");
+  cJSON_AddStringToObject(metadata, "hostname", hostname ? hostname : "");
+  cJSON_AddStringToObject(metadata, "cpu_arch", cpu_arch);
+  cJSON_AddNumberToObject(metadata, "total_memory_bytes", (double)total_memory);
+  cJSON_AddStringToObject(metadata, "proplet_version", version ? version : "");
+  cJSON_AddStringToObject(metadata, "wasm_runtime", "wamr");
+  cJSON_AddItemToObject(root, "metadata", metadata);
 
   char *payload = cJSON_PrintUnformatted(root);
   cJSON_Delete(root);

@@ -277,17 +277,19 @@ impl PropletService {
                 .k8s_namespace
                 .clone()
                 .unwrap_or_else(|| "default".to_string()),
-            description: self.config.description.clone(),
-            tags: self.config.tags.clone(),
-            location: self.config.location.clone(),
-            ip,
-            environment,
-            os: std::env::consts::OS.to_string(),
-            hostname,
-            cpu_arch: std::env::consts::ARCH.to_string(),
-            total_memory_bytes,
-            proplet_version,
-            wasm_runtime,
+            metadata: PropletMetadata {
+                description: self.config.description.clone(),
+                tags: self.config.tags.clone(),
+                location: self.config.location.clone(),
+                ip,
+                environment,
+                os: std::env::consts::OS.to_string(),
+                hostname,
+                cpu_arch: std::env::consts::ARCH.to_string(),
+                total_memory_bytes,
+                proplet_version,
+                wasm_runtime,
+            },
         };
 
         let topic = build_topic(

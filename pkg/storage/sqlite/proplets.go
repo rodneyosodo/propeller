@@ -44,12 +44,12 @@ func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	tags, err := jsonBytes(p.Tags)
+	tags, err := jsonBytes(p.Metadata.Tags)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	_, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory, p.Description, tags, p.Location, p.IP, p.Environment, p.OS, p.Hostname, p.CPUArch, p.TotalMemoryBytes, p.PropletVersion, p.WasmRuntime)
+	_, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory, p.Metadata.Description, tags, p.Metadata.Location, p.Metadata.IP, p.Metadata.Environment, p.Metadata.OS, p.Metadata.Hostname, p.Metadata.CPUArch, p.Metadata.TotalMemoryBytes, p.Metadata.PropletVersion, p.Metadata.WasmRuntime)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
@@ -81,12 +81,12 @@ func (r *propletRepo) Update(ctx context.Context, p proplet.Proplet) error {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	tags, err := jsonBytes(p.Tags)
+	tags, err := jsonBytes(p.Metadata.Tags)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	if _, err = r.db.ExecContext(ctx, query, p.Name, p.TaskCount, p.Alive, aliveHistory, p.Description, tags, p.Location, p.IP, p.Environment, p.OS, p.Hostname, p.CPUArch, p.TotalMemoryBytes, p.PropletVersion, p.WasmRuntime, p.ID); err != nil {
+	if _, err = r.db.ExecContext(ctx, query, p.Name, p.TaskCount, p.Alive, aliveHistory, p.Metadata.Description, tags, p.Metadata.Location, p.Metadata.IP, p.Metadata.Environment, p.Metadata.OS, p.Metadata.Hostname, p.Metadata.CPUArch, p.Metadata.TotalMemoryBytes, p.Metadata.PropletVersion, p.Metadata.WasmRuntime, p.ID); err != nil {
 		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
 
@@ -142,20 +142,22 @@ func (r *propletRepo) Delete(ctx context.Context, id string) error {
 
 func (r *propletRepo) toProplet(dbp dbProplet) (proplet.Proplet, error) {
 	p := proplet.Proplet{
-		ID:               dbp.ID,
-		Name:             dbp.Name,
-		TaskCount:        dbp.TaskCount,
-		Alive:            dbp.Alive,
-		Description:      dbp.Description,
-		Location:         dbp.Location,
-		IP:               dbp.IP,
-		Environment:      dbp.Environment,
-		OS:               dbp.OS,
-		Hostname:         dbp.Hostname,
-		CPUArch:          dbp.CPUArch,
-		TotalMemoryBytes: dbp.TotalMemoryBytes,
-		PropletVersion:   dbp.PropletVersion,
-		WasmRuntime:      dbp.WasmRuntime,
+		ID:        dbp.ID,
+		Name:      dbp.Name,
+		TaskCount: dbp.TaskCount,
+		Alive:     dbp.Alive,
+		Metadata: proplet.PropletMetadata{
+			Description:      dbp.Description,
+			Location:         dbp.Location,
+			IP:               dbp.IP,
+			Environment:      dbp.Environment,
+			OS:               dbp.OS,
+			Hostname:         dbp.Hostname,
+			CPUArch:          dbp.CPUArch,
+			TotalMemoryBytes: dbp.TotalMemoryBytes,
+			PropletVersion:   dbp.PropletVersion,
+			WasmRuntime:      dbp.WasmRuntime,
+		},
 	}
 
 	if dbp.AliveHistory != nil {
@@ -165,7 +167,7 @@ func (r *propletRepo) toProplet(dbp dbProplet) (proplet.Proplet, error) {
 	}
 
 	if dbp.Tags != nil {
-		if err := jsonUnmarshal(dbp.Tags, &p.Tags); err != nil {
+		if err := jsonUnmarshal(dbp.Tags, &p.Metadata.Tags); err != nil {
 			return proplet.Proplet{}, err
 		}
 	}

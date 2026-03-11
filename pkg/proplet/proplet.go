@@ -4,23 +4,27 @@ import "time"
 
 const aliveTimeout = 10 * time.Second
 
+type PropletMetadata struct {
+	Description      string   `json:"description,omitempty"`
+	Tags             []string `json:"tags,omitempty"`
+	Location         string   `json:"location,omitempty"`
+	IP               string   `json:"ip,omitempty"`
+	Environment      string   `json:"environment,omitempty"`
+	OS               string   `json:"os,omitempty"`
+	Hostname         string   `json:"hostname,omitempty"`
+	CPUArch          string   `json:"cpu_arch,omitempty"`
+	TotalMemoryBytes uint64   `json:"total_memory_bytes,omitempty"`
+	PropletVersion   string   `json:"proplet_version,omitempty"`
+	WasmRuntime      string   `json:"wasm_runtime,omitempty"`
+}
+
 type Proplet struct {
-	ID               string      `json:"id"`
-	Name             string      `json:"name"`
-	TaskCount        uint64      `json:"task_count"`
-	Alive            bool        `json:"alive"`
-	AliveHistory     []time.Time `json:"alive_history"`
-	Description      string      `json:"description,omitempty"`
-	Tags             []string    `json:"tags,omitempty"`
-	Location         string      `json:"location,omitempty"`
-	IP               string      `json:"ip,omitempty"`
-	Environment      string      `json:"environment,omitempty"`
-	OS               string      `json:"os,omitempty"`
-	Hostname         string      `json:"hostname,omitempty"`
-	CPUArch          string      `json:"cpu_arch,omitempty"`
-	TotalMemoryBytes uint64      `json:"total_memory_bytes,omitempty"`
-	PropletVersion   string      `json:"proplet_version,omitempty"`
-	WasmRuntime      string      `json:"wasm_runtime,omitempty"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name"`
+	TaskCount    uint64          `json:"task_count"`
+	Alive        bool            `json:"alive"`
+	AliveHistory []time.Time     `json:"alive_at"`
+	Metadata     PropletMetadata `json:"metadata"`
 }
 
 func (p *Proplet) SetAlive() {
