@@ -18,38 +18,28 @@ func NewPropletRepository(db *Database) PropletRepository {
 }
 
 type dbProplet struct {
-	ID               string `db:"id"`
-	Name             string `db:"name"`
-	TaskCount        uint64 `db:"task_count"`
-	Alive            bool   `db:"alive"`
-	AliveHistory     []byte `db:"alive_history"`
-	Description      string `db:"description"`
-	Tags             []byte `db:"tags"`
-	Location         string `db:"location"`
-	IP               string `db:"ip"`
-	Environment      string `db:"environment"`
-	OS               string `db:"os"`
-	Hostname         string `db:"hostname"`
-	CPUArch          string `db:"cpu_arch"`
-	TotalMemoryBytes uint64 `db:"total_memory_bytes"`
-	PropletVersion   string `db:"proplet_version"`
-	WasmRuntime      string `db:"wasm_runtime"`
+	ID           string `db:"id"`
+	Name         string `db:"name"`
+	TaskCount    uint64 `db:"task_count"`
+	Alive        bool   `db:"alive"`
+	AliveHistory []byte `db:"alive_history"`
+	Metadata     []byte `db:"metadata"`
 }
 
 func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
-	query := `INSERT INTO proplets (id, name, task_count, alive, alive_history, description, tags, location, ip, environment, os, hostname, cpu_arch, total_memory_bytes, proplet_version, wasm_runtime) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO proplets (id, name, task_count, alive, alive_history, metadata) VALUES (?, ?, ?, ?, ?, ?)`
 
 	aliveHistory, err := jsonBytes(p.AliveHistory)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	tags, err := jsonBytes(p.Metadata.Tags)
+	metadata, err := jsonBytes(p.Metadata)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	_, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory, p.Metadata.Description, tags, p.Metadata.Location, p.Metadata.IP, p.Metadata.Environment, p.Metadata.OS, p.Metadata.Hostname, p.Metadata.CPUArch, p.Metadata.TotalMemoryBytes, p.Metadata.PropletVersion, p.Metadata.WasmRuntime)
+	_, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory, metadata)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
@@ -58,7 +48,7 @@ func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
 }
 
 func (r *propletRepo) Get(ctx context.Context, id string) (proplet.Proplet, error) {
-	query := `SELECT id, name, task_count, alive, alive_history, description, tags, location, ip, environment, os, hostname, cpu_arch, total_memory_bytes, proplet_version, wasm_runtime FROM proplets WHERE id = ?`
+	query := `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets WHERE id = ?`
 
 	var dbp dbProplet
 	err := r.db.GetContext(ctx, &dbp, query, id)
@@ -74,19 +64,19 @@ func (r *propletRepo) Get(ctx context.Context, id string) (proplet.Proplet, erro
 }
 
 func (r *propletRepo) Update(ctx context.Context, p proplet.Proplet) error {
-	query := `UPDATE proplets SET name = ?, task_count = ?, alive = ?, alive_history = ?, description = ?, tags = ?, location = ?, ip = ?, environment = ?, os = ?, hostname = ?, cpu_arch = ?, total_memory_bytes = ?, proplet_version = ?, wasm_runtime = ? WHERE id = ?`
+	query := `UPDATE proplets SET name = ?, task_count = ?, alive = ?, alive_history = ?, metadata = ? WHERE id = ?`
 
 	aliveHistory, err := jsonBytes(p.AliveHistory)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	tags, err := jsonBytes(p.Metadata.Tags)
+	metadata, err := jsonBytes(p.Metadata)
 	if err != nil {
 		return fmt.Errorf("marshal error: %w", err)
 	}
 
-	if _, err = r.db.ExecContext(ctx, query, p.Name, p.TaskCount, p.Alive, aliveHistory, p.Metadata.Description, tags, p.Metadata.Location, p.Metadata.IP, p.Metadata.Environment, p.Metadata.OS, p.Metadata.Hostname, p.Metadata.CPUArch, p.Metadata.TotalMemoryBytes, p.Metadata.PropletVersion, p.Metadata.WasmRuntime, p.ID); err != nil {
+	if _, err = r.db.ExecContext(ctx, query, p.Name, p.TaskCount, p.Alive, aliveHistory, metadata, p.ID); err != nil {
 		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
 
@@ -100,7 +90,7 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
-	query := `SELECT id, name, task_count, alive, alive_history, description, tags, location, ip, environment, os, hostname, cpu_arch, total_memory_bytes, proplet_version, wasm_runtime FROM proplets LIMIT ? OFFSET ?`
+	query := `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets LIMIT ? OFFSET ?`
 
 	rows, err := r.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
@@ -111,7 +101,7 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	proplets := make([]proplet.Proplet, 0)
 	for rows.Next() {
 		var dbp dbProplet
-		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory, &dbp.Description, &dbp.Tags, &dbp.Location, &dbp.IP, &dbp.Environment, &dbp.OS, &dbp.Hostname, &dbp.CPUArch, &dbp.TotalMemoryBytes, &dbp.PropletVersion, &dbp.WasmRuntime); err != nil {
+		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory, &dbp.Metadata); err != nil {
 			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
@@ -146,18 +136,6 @@ func (r *propletRepo) toProplet(dbp dbProplet) (proplet.Proplet, error) {
 		Name:      dbp.Name,
 		TaskCount: dbp.TaskCount,
 		Alive:     dbp.Alive,
-		Metadata: proplet.PropletMetadata{
-			Description:      dbp.Description,
-			Location:         dbp.Location,
-			IP:               dbp.IP,
-			Environment:      dbp.Environment,
-			OS:               dbp.OS,
-			Hostname:         dbp.Hostname,
-			CPUArch:          dbp.CPUArch,
-			TotalMemoryBytes: dbp.TotalMemoryBytes,
-			PropletVersion:   dbp.PropletVersion,
-			WasmRuntime:      dbp.WasmRuntime,
-		},
 	}
 
 	if dbp.AliveHistory != nil {
@@ -166,8 +144,8 @@ func (r *propletRepo) toProplet(dbp dbProplet) (proplet.Proplet, error) {
 		}
 	}
 
-	if dbp.Tags != nil {
-		if err := jsonUnmarshal(dbp.Tags, &p.Metadata.Tags); err != nil {
+	if dbp.Metadata != nil {
+		if err := jsonUnmarshal(dbp.Metadata, &p.Metadata); err != nil {
 			return proplet.Proplet{}, err
 		}
 	}

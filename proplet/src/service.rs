@@ -9,6 +9,7 @@ use reqwest::Client as HttpClient;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
+use sysinfo::System;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -219,48 +220,40 @@ impl PropletService {
     }
 
     async fn publish_discovery(&self) -> Result<()> {
-        let ip = std::net::UdpSocket::bind("0.0.0.0:0")
-            .and_then(|s| {
-                s.connect("8.8.8.8:80")?;
-                s.local_addr()
-            })
-            .ok()
-            .map(|addr| addr.ip().to_string());
-
-        let environment = if std::path::Path::new("/.dockerenv").exists() {
-            "docker".to_string()
-        } else if cfg!(target_os = "espidf") || cfg!(target_arch = "xtensa") {
-            "embedded".to_string()
-        } else {
-            "binary".to_string()
-        };
-
-        let hostname = std::env::var("HOSTNAME")
-            .ok()
-            .filter(|s| !s.is_empty())
-            .or_else(|| {
-                std::fs::read_to_string("/etc/hostname")
+        let (ip, environment, os, hostname, cpu_arch, total_memory_bytes) =
+            if self.config.collect_system_info {
+                let ip = std::net::UdpSocket::bind("0.0.0.0:0")
+                    .and_then(|s| {
+                        s.connect("8.8.8.8:80")?;
+                        s.local_addr()
+                    })
                     .ok()
-                    .map(|s| s.trim().to_string())
-                    .filter(|s| !s.is_empty())
-            });
+                    .map(|addr| addr.ip().to_string());
 
-        let total_memory_bytes = std::fs::read_to_string("/proc/meminfo")
-            .ok()
-            .and_then(|contents| {
-                contents.lines().find_map(|line| {
-                    let line = line.trim();
-                    if let Some(rest) = line.strip_prefix("MemTotal:") {
-                        rest.split_whitespace()
-                            .next()
-                            .and_then(|kb| kb.parse::<u64>().ok())
-                            .map(|kb| kb * 1024)
-                    } else {
-                        None
-                    }
-                })
-            })
-            .unwrap_or(0);
+                let environment = if std::path::Path::new("/.dockerenv").exists() {
+                    "docker".to_string()
+                } else if cfg!(target_os = "espidf") || cfg!(target_arch = "xtensa") {
+                    "embedded".to_string()
+                } else {
+                    "binary".to_string()
+                };
+
+                let mut sys = System::new_all();
+                sys.refresh_all();
+                let hostname = System::host_name();
+                let total_memory_bytes = sys.total_memory();
+
+                (
+                    ip,
+                    environment,
+                    std::env::consts::OS.to_string(),
+                    hostname,
+                    std::env::consts::ARCH.to_string(),
+                    total_memory_bytes,
+                )
+            } else {
+                (None, String::new(), String::new(), None, String::new(), 0)
+            };
 
         let proplet_version =
             std::env::var("PROPLET_VERSION").unwrap_or_else(|_| "unknown".to_string());
@@ -283,9 +276,9 @@ impl PropletService {
                 location: self.config.location.clone(),
                 ip,
                 environment,
-                os: std::env::consts::OS.to_string(),
+                os,
                 hostname,
-                cpu_arch: std::env::consts::ARCH.to_string(),
+                cpu_arch,
                 total_memory_bytes,
                 proplet_version,
                 wasm_runtime,
