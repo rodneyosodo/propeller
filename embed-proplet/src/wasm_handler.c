@@ -58,16 +58,14 @@ static bool write_string_to_wasm_memory(wasm_exec_env_t exec_env, const char *st
 
 static bool get_proplet_id_wrapper(wasm_exec_env_t exec_env,
                                     uint32_t *ret_offset, uint32_t *ret_len) {
-  extern struct task g_current_task;
-  const char *proplet_id = g_current_task.proplet_id[0] != '\0' 
-                            ? g_current_task.proplet_id 
+  const char *proplet_id = g_current_task.proplet_id[0] != '\0'
+                            ? g_current_task.proplet_id
                             : "";
   return write_string_to_wasm_memory(exec_env, proplet_id, ret_offset, ret_len);
 }
 
 static bool get_model_data_wrapper(wasm_exec_env_t exec_env,
                                     uint32_t *ret_offset, uint32_t *ret_len) {
-  extern struct task g_current_task;
   const char *model_data = g_current_task.model_data_fetched && g_current_task.model_data[0] != '\0'
                             ? g_current_task.model_data
                             : "";
@@ -76,7 +74,6 @@ static bool get_model_data_wrapper(wasm_exec_env_t exec_env,
 
 static bool get_dataset_data_wrapper(wasm_exec_env_t exec_env,
                                       uint32_t *ret_offset, uint32_t *ret_len) {
-  extern struct task g_current_task;
   const char *dataset_data = g_current_task.dataset_data_fetched && g_current_task.dataset_data[0] != '\0'
                               ? g_current_task.dataset_data
                               : "";
@@ -149,11 +146,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     }
     extern const char *channel_id;
     extern const char *domain_id;
-    extern void publish_results_with_error(const char *, const char *, 
-                                           const char *, const char *, 
-                                           const char *);
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_msg);    
-    /* Release reserved slot */
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_buf);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -180,10 +173,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     wasm_runtime_unload(module);
     extern const char *channel_id;
     extern const char *domain_id;
-    extern void publish_results_with_error(const char *, const char *, 
-                                           const char *, const char *, 
-                                           const char *);
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_msg);    
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_buf);
     /* Release reserved slot */
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
@@ -211,10 +201,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     wasm_runtime_unload(module);
     extern const char *channel_id;
     extern const char *domain_id;
-    extern void publish_results_with_error(const char *, const char *, 
-                                           const char *, const char *, 
-                                           const char *);
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_msg);    
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, NULL);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -232,12 +219,9 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     }
     wasm_runtime_deinstantiate(module_inst);
     wasm_runtime_unload(module);
-   extern const char *channel_id;
+    extern const char *channel_id;
     extern const char *domain_id;
-    extern void publish_results_with_error(const char *, const char *, 
-                                           const char *, const char *, 
-                                           const char *);
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_msg);    
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, NULL);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -282,10 +266,7 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     wasm_runtime_unload(module);
     extern const char *channel_id;
     extern const char *domain_id;
-    extern void publish_results_with_error(const char *, const char *, 
-                                           const char *, const char *, 
-                                           const char *);
-    publish_results_with_error(domain_id, channel_id, task_id, NULL, error_msg);    
+    publish_results_with_error(domain_id, channel_id, task_id, NULL, NULL);
     k_mutex_lock(&g_wasm_apps_mutex, K_FOREVER);
     g_wasm_apps[slot].in_use = false;
     memset(g_wasm_apps[slot].id, 0, sizeof(g_wasm_apps[slot].id));
@@ -304,9 +285,6 @@ void execute_wasm_module(const char *task_id, const uint8_t *wasm_data,
     
     extern const char *channel_id;
     extern const char *domain_id;
-    extern void publish_results_with_error(const char *, const char *, 
-                                           const char *, const char *, 
-                                           const char *);
     publish_results_with_error(domain_id, channel_id, task_id, NULL, error_msg);
   }
   else

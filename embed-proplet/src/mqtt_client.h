@@ -7,22 +7,73 @@
 
 #define PAYLOAD_BUFFER_SIZE 1024
 
+#define MAX_ID_LEN 64
+#define MAX_NAME_LEN 64
+#define MAX_STATE_LEN 16
+#define MAX_URL_LEN 256
+#define MAX_TIMESTAMP_LEN 32
+#define MAX_BASE64_LEN 1024
+#define MAX_INPUTS 16
+#define MAX_RESULTS 16
+
+struct task {
+  char id[MAX_ID_LEN];
+  char name[MAX_NAME_LEN];
+  char state[MAX_STATE_LEN];
+  char image_url[MAX_URL_LEN];
+  char mode[MAX_NAME_LEN];
+
+  char file[MAX_BASE64_LEN];
+  size_t file_len;
+
+  uint64_t inputs[MAX_INPUTS];
+  size_t inputs_count;
+  uint64_t results[MAX_RESULTS];
+  size_t results_count;
+
+  char start_time[MAX_TIMESTAMP_LEN];
+  char finish_time[MAX_TIMESTAMP_LEN];
+  char created_at[MAX_TIMESTAMP_LEN];
+  char updated_at[MAX_TIMESTAMP_LEN];
+
+  bool is_fl_task;
+
+  char fl_round_id_str[32];
+  char fl_format[MAX_NAME_LEN];
+  char fl_num_samples_str[32];
+
+  char round_id[MAX_ID_LEN];
+  char model_uri[MAX_URL_LEN];
+  char hyperparams[512];
+  bool is_fml_task;
+
+  char proplet_id[MAX_ID_LEN];
+  char model_data[4096];
+  char dataset_data[4096];
+  char coordinator_url[MAX_URL_LEN];
+  char model_registry_url[MAX_URL_LEN];
+  char data_store_url[MAX_URL_LEN];
+  bool model_data_fetched;
+  bool dataset_data_fetched;
+};
+
+extern struct task g_current_task;
+
 extern bool mqtt_connected;
 
 /**
  * @brief Initialize the MQTT client and establish a connection to the broker.
  *
- * Note: This connects using the provided proplet_id as both MQTT client ID and
- * MQTT username. Password is not used in the current 3-argument API.
- *
  * @param domain_id   Domain ID used for topic generation (e.g., m/<domain>/c/<channel>/...).
- * @param proplet_id  Proplet identity used for manager tracking and alive/metrics payloads.
+ * @param proplet_id  SuperMQ client ID used as MQTT client ID and username.
+ * @param client_key  SuperMQ client secret used as MQTT password.
  * @param channel_id  Channel ID used for topic generation.
  *
  * @return 0 on success, negative errno on failure.
  */
 int mqtt_client_connect(const char *domain_id,
                         const char *proplet_id,
+                        const char *client_key,
                         const char *channel_id);
 
 /**
