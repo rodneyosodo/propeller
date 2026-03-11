@@ -1144,20 +1144,27 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 		return errors.New("proplet id is empty")
 	}
 
+	meta, _ := msg["metadata"].(map[string]any)
+	if meta == nil {
+		meta = map[string]any{}
+	}
+
 	p := proplet.Proplet{
-		ID:               propletID,
-		Name:             namegen.Generate(),
-		Description:      msgString(msg, "description"),
-		Tags:             msgStringSlice(msg, "tags"),
-		Location:         msgString(msg, "location"),
-		IP:               msgString(msg, "ip"),
-		Environment:      msgString(msg, "environment"),
-		OS:               msgString(msg, "os"),
-		Hostname:         msgString(msg, "hostname"),
-		CPUArch:          msgString(msg, "cpu_arch"),
-		TotalMemoryBytes: msgUint64(msg, "total_memory_bytes"),
-		PropletVersion:   msgString(msg, "proplet_version"),
-		WasmRuntime:      msgString(msg, "wasm_runtime"),
+		ID:   propletID,
+		Name: namegen.Generate(),
+		Metadata: proplet.PropletMetadata{
+			Description:      msgString(meta, "description"),
+			Tags:             msgStringSlice(meta, "tags"),
+			Location:         msgString(meta, "location"),
+			IP:               msgString(meta, "ip"),
+			Environment:      msgString(meta, "environment"),
+			OS:               msgString(meta, "os"),
+			Hostname:         msgString(meta, "hostname"),
+			CPUArch:          msgString(meta, "cpu_arch"),
+			TotalMemoryBytes: msgUint64(meta, "total_memory_bytes"),
+			PropletVersion:   msgString(meta, "proplet_version"),
+			WasmRuntime:      msgString(meta, "wasm_runtime"),
+		},
 	}
 	if err := svc.propletRepo.Create(ctx, p); err != nil {
 		return err
