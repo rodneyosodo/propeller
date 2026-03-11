@@ -1,0 +1,130 @@
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+
+name: "propeller"
+
+networks:
+  supermq-base-net:
+    external: true
+    name: supermq-base-net
+
+services:
+  manager:
+    image: ghcr.io/absmach/propeller/manager:${PROP_RELEASE_TAG}
+    container_name: propeller-manager
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${MANAGER_HTTP_PORT}/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      retries: 5
+    expose:
+      - ${MANAGER_HTTP_PORT}
+    ports:
+      - ${MANAGER_HTTP_PORT}:${MANAGER_HTTP_PORT}
+    environment:
+      MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL}
+      MANAGER_INSTANCE_ID: ${MANAGER_INSTANCE_ID}
+      MANAGER_MQTT_ADDRESS: ${MANAGER_MQTT_ADDRESS}
+      MANAGER_MQTT_QOS: ${MANAGER_MQTT_QOS}
+      MANAGER_MQTT_TIMEOUT: ${MANAGER_MQTT_TIMEOUT}
+      MANAGER_DOMAIN_ID: ${MANAGER_DOMAIN_ID}
+      MANAGER_CHANNEL_ID: ${MANAGER_CHANNEL_ID}
+      MANAGER_CLIENT_ID: ${MANAGER_CLIENT_ID}
+      MANAGER_CLIENT_KEY: ${MANAGER_CLIENT_KEY}
+      MANAGER_HTTP_HOST: ${MANAGER_HTTP_HOST}
+      MANAGER_HTTP_PORT: ${MANAGER_HTTP_PORT}
+      MANAGER_HTTP_SERVER_CERT: ${MANAGER_HTTP_SERVER_CERT}
+      MANAGER_HTTP_SERVER_KEY: ${MANAGER_HTTP_SERVER_KEY}
+      MANAGER_OTEL_URL: ${MANAGER_OTEL_URL}
+      MANAGER_TRACE_RATIO: ${MANAGER_TRACE_RATIO}
+      JOB_EXECUTION_MODE: ${JOB_EXECUTION_MODE}
+      MANAGER_STORAGE_TYPE: ${MANAGER_STORAGE_TYPE:-badger}
+      MANAGER_BADGER_PATH: ${MANAGER_BADGER_PATH:-/tmp/badger}
+      MANAGER_SQLITE_PATH: ${MANAGER_SQLITE_PATH:-/tmp/propeller.db}
+      MANAGER_POSTGRES_HOST: ${MANAGER_POSTGRES_HOST:-localhost}
+      MANAGER_POSTGRES_PORT: ${MANAGER_POSTGRES_PORT:-5432}
+      MANAGER_POSTGRES_USER: ${MANAGER_POSTGRES_USER:-propeller}
+      MANAGER_POSTGRES_PASS: ${MANAGER_POSTGRES_PASS:-propeller}
+      MANAGER_POSTGRES_DB: ${MANAGER_POSTGRES_DB:-propeller}
+      MANAGER_POSTGRES_SSLMODE: ${MANAGER_POSTGRES_SSLMODE:-disable}
+    volumes:
+      - ./config.toml:/config.toml
+    networks:
+      - supermq-base-net
+
+  # Proplet - WebAssembly edge runtime
+  # Available image tags:
+  #   - latest   (base, lightweight)
+  #   - wasi-nn  (with wasi-nn/OpenVINO, x86_64 only)
+  #
+  # For wasi-nn support, set in .env:
+  #   1. PROPLET_IMAGE_TAG=wasi-nn
+  #   2. PROPLET_EXTERNAL_WASM_RUNTIME=wasmtime
+  proplet:
+    image: ghcr.io/absmach/propeller/proplet:${PROPLET_IMAGE_TAG}
+    container_name: propeller-proplet
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "pgrep", "-x", "proplet"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    expose:
+      - 8081
+    ports:
+      - 8081:8081
+    environment:
+      PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL}
+      PROPLET_INSTANCE_ID: ${PROPLET_INSTANCE_ID}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS}
+      PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS}
+      PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT}
+      PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL}
+      PROPLET_DOMAIN_ID: ${PROPLET_DOMAIN_ID}
+      PROPLET_CHANNEL_ID: ${PROPLET_CHANNEL_ID}
+      PROPLET_CLIENT_ID: ${PROPLET_CLIENT_ID}
+      PROPLET_CLIENT_KEY: ${PROPLET_CLIENT_KEY}
+      PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME}
+      PROPLET_MANAGER_K8S_NAMESPACE: ${PROPLET_MANAGER_K8S_NAMESPACE}
+      PROPLET_CONFIG_FILE: ${PROPLET_CONFIG_FILE}
+      PROPLET_CONFIG_SECTION: ${PROPLET_CONFIG_SECTION}
+      COORDINATOR_URL: ${COORDINATOR_URL:-http://coordinator-http:8080}
+      MODEL_REGISTRY_URL: ${MODEL_REGISTRY_URL:-http://model-registry:8081}
+      DATA_STORE_URL: ${DATA_STORE_URL:-http://local-data-store:8083}
+    volumes:
+      - ./config.toml:/home/proplet/config.toml
+      # To run wasi-nn examples, uncomment the fixture volume and create the directory with model files.
+      # See examples/wasi-nn/README.md for setup instructions.
+      # - ../fixture:/home/proplet/fixture
+    # Uncomment for wasi-nn image (OpenVINO requires x86_64)
+    # platform: linux/amd64
+    networks:
+      - supermq-base-net
+
+  proxy:
+    image: ghcr.io/absmach/propeller/proxy:${PROP_RELEASE_TAG}
+    container_name: propeller-proxy
+    restart: on-failure
+    environment:
+      PROXY_LOG_LEVEL: ${PROXY_LOG_LEVEL}
+      PROXY_INSTANCE_ID: ${PROXY_INSTANCE_ID}
+      PROXY_MQTT_ADDRESS: ${PROXY_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROXY_MQTT_QOS: ${PROXY_MQTT_QOS}
+      PROXY_MQTT_TIMEOUT: ${PROXY_MQTT_TIMEOUT}
+      PROXY_DOMAIN_ID: ${PROXY_DOMAIN_ID}
+      PROXY_CHANNEL_ID: ${PROXY_CHANNEL_ID}
+      PROXY_CLIENT_ID: ${PROXY_CLIENT_ID}
+      PROXY_CLIENT_KEY: ${PROXY_CLIENT_KEY}
+      PROXY_CHUNK_SIZE: ${PROXY_CHUNK_SIZE}
+      PROXY_AUTHENTICATE: ${PROXY_AUTHENTICATE}
+      PROXY_REGISTRY_TOKEN: ${PROXY_REGISTRY_TOKEN}
+      PROXY_REGISTRY_USERNAME: ${PROXY_REGISTRY_USERNAME}
+      PROXY_REGISTRY_PASSWORD: ${PROXY_REGISTRY_PASSWORD}
+      PROXY_REGISTRY_URL: ${PROXY_REGISTRY_URL}
+    volumes:
+      - ./config.toml:/config.toml
+    networks:
+      - supermq-base-net
