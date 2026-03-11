@@ -237,7 +237,7 @@ func (db *Database) Migrate() error {
 			{
 				Id: "3_add_proplet_metadata",
 				Up: []string{
-					`ALTER TABLE proplets ADD COLUMN metadata TEXT DEFAULT '{}'`,
+					`ALTER TABLE proplets ADD COLUMN metadata JSONB DEFAULT '{}'`,
 				},
 				Down: []string{
 					`ALTER TABLE proplets DROP COLUMN metadata`,

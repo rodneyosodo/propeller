@@ -232,8 +232,6 @@ impl PropletService {
 
                 let environment = if std::path::Path::new("/.dockerenv").exists() {
                     "docker".to_string()
-                } else if cfg!(target_os = "espidf") || cfg!(target_arch = "xtensa") {
-                    "embedded".to_string()
                 } else {
                     "binary".to_string()
                 };
@@ -255,8 +253,7 @@ impl PropletService {
                 (None, String::new(), String::new(), None, String::new(), 0)
             };
 
-        let proplet_version =
-            std::env::var("PROPLET_VERSION").unwrap_or_else(|_| "unknown".to_string());
+        let proplet_version = env!("CARGO_PKG_VERSION").to_string();
 
         let wasm_runtime = match &self.config.external_wasm_runtime {
             Some(rt) => rt.clone(),
