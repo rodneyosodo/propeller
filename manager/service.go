@@ -1131,7 +1131,7 @@ func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]an
 	}
 
 	p, err := svc.GetProplet(ctx, propletID)
-	if errors.Is(err, pkgerrors.ErrNotFound) {
+	if errors.Is(err, pkgerrors.ErrNotFound) || errors.Is(err, storage.ErrPropletNotFound) {
 		return svc.createPropletHandler(ctx, msg)
 	}
 	if err != nil {

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 
@@ -172,7 +173,11 @@ func (a *postgresPropletAdapter) Create(ctx context.Context, p proplet.Proplet) 
 }
 
 func (a *postgresPropletAdapter) Get(ctx context.Context, id string) (proplet.Proplet, error) {
-	return a.repo.Get(ctx, id)
+	p, err := a.repo.Get(ctx, id)
+	if errors.Is(err, postgres.ErrPropletNotFound) {
+		return proplet.Proplet{}, ErrPropletNotFound
+	}
+	return p, err
 }
 
 func (a *postgresPropletAdapter) Update(ctx context.Context, p proplet.Proplet) error {
@@ -310,7 +315,11 @@ func (a *sqlitePropletAdapter) Create(ctx context.Context, p proplet.Proplet) er
 }
 
 func (a *sqlitePropletAdapter) Get(ctx context.Context, id string) (proplet.Proplet, error) {
-	return a.repo.Get(ctx, id)
+	p, err := a.repo.Get(ctx, id)
+	if errors.Is(err, sqlite.ErrPropletNotFound) {
+		return proplet.Proplet{}, ErrPropletNotFound
+	}
+	return p, err
 }
 
 func (a *sqlitePropletAdapter) Update(ctx context.Context, p proplet.Proplet) error {
@@ -448,7 +457,11 @@ func (a *badgerPropletAdapter) Create(ctx context.Context, p proplet.Proplet) er
 }
 
 func (a *badgerPropletAdapter) Get(ctx context.Context, id string) (proplet.Proplet, error) {
-	return a.repo.Get(ctx, id)
+	p, err := a.repo.Get(ctx, id)
+	if errors.Is(err, badger.ErrPropletNotFound) {
+		return proplet.Proplet{}, ErrPropletNotFound
+	}
+	return p, err
 }
 
 func (a *badgerPropletAdapter) Update(ctx context.Context, p proplet.Proplet) error {
