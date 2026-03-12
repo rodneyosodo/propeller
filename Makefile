@@ -194,6 +194,10 @@ filesystem:
 	cd examples/filesystem && cargo build --release
 	cp examples/filesystem/target/wasm32-wasip2/release/filesystem.wasm $(BUILD_DIR)/filesystem.wasm
 
+hal-test:
+	cd examples/hal-test && cargo build --release
+	cp examples/hal-test/target/wasm32-wasip1/release/hal-test.wasm build/hal-test.wasm
+
 help:
 	@echo "Usage: make <target>"
 	@echo ""
