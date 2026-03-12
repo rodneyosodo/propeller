@@ -177,6 +177,7 @@ func (a *postgresPropletAdapter) Get(ctx context.Context, id string) (proplet.Pr
 	if errors.Is(err, postgres.ErrPropletNotFound) {
 		return proplet.Proplet{}, ErrPropletNotFound
 	}
+
 	return p, err
 }
 
@@ -319,6 +320,7 @@ func (a *sqlitePropletAdapter) Get(ctx context.Context, id string) (proplet.Prop
 	if errors.Is(err, sqlite.ErrPropletNotFound) {
 		return proplet.Proplet{}, ErrPropletNotFound
 	}
+
 	return p, err
 }
 
@@ -461,6 +463,7 @@ func (a *badgerPropletAdapter) Get(ctx context.Context, id string) (proplet.Prop
 	if errors.Is(err, badger.ErrPropletNotFound) {
 		return proplet.Proplet{}, ErrPropletNotFound
 	}
+
 	return p, err
 }
 
