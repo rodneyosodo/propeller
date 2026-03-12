@@ -129,7 +129,7 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) docker_proplet_wasinn push_proplet_wasinn mocks
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) docker_proplet_wasinn push_proplet_wasinn mocks start-supermq stop-supermq start-propeller stop-propeller start-all stop-all
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) http-client http-server filesystem
 
 clean:
@@ -158,6 +158,20 @@ start-supermq:
 stop-supermq:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
+start-propeller:
+	docker compose -f docker/compose.propeller.yaml --env-file docker/.env up -d
+
+stop-propeller:
+	docker compose -f docker/compose.propeller.yaml --env-file docker/.env down
+
+start-all:
+	docker compose -f docker/compose.yaml --env-file docker/.env up -d
+	docker compose -f docker/compose.propeller.yaml --env-file docker/.env up -d
+
+stop-all:
+	docker compose -f docker/compose.propeller.yaml --env-file docker/.env down
+	docker compose -f docker/compose.yaml --env-file docker/.env down
+
 $(EXAMPLES):
 	GOTOOLCHAIN=go1.25.5 GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasip2 examples/$@/$@.go
 
@@ -166,16 +180,19 @@ addition-wat:
 	@base64 build/addition-wat.wasm > build/addition-wat.b64
 
 http-client:
+	mkdir -p $(BUILD_DIR)
 	cd examples/http-client && cargo build --release
-	cp examples/http-client/target/wasm32-wasip2/release/http-client.wasm build/http-client.wasm
+	cp examples/http-client/target/wasm32-wasip2/release/http-client.wasm $(BUILD_DIR)/http-client.wasm
 
 http-server:
+	mkdir -p $(BUILD_DIR)
 	cd examples/http-server && cargo build --release
-	cp examples/http-server/target/wasm32-wasip2/release/http_server.wasm build/http-server.wasm
+	cp examples/http-server/target/wasm32-wasip2/release/http_server.wasm $(BUILD_DIR)/http-server.wasm
 
 filesystem:
+	mkdir -p $(BUILD_DIR)
 	cd examples/filesystem && cargo build --release
-	cp examples/filesystem/target/wasm32-wasip2/release/filesystem.wasm build/filesystem.wasm
+	cp examples/filesystem/target/wasm32-wasip2/release/filesystem.wasm $(BUILD_DIR)/filesystem.wasm
 
 help:
 	@echo "Usage: make <target>"
@@ -199,7 +216,11 @@ help:
 	@echo "  docker_proplet_wasinn: build proplet wasi-nn Docker image"
 	@echo "  push_proplet_wasinn:   push proplet:wasi-nn Docker image"
 	@echo "  latest:           build and push all Go service Docker images"
-	@echo "  start-supermq:    start the supermq docker compose"
-	@echo "  stop-supermq:     stop the supermq docker compose"
+	@echo "  start-supermq:    start SuperMQ services only"
+	@echo "  stop-supermq:     stop SuperMQ services only"
+	@echo "  start-propeller:  start Propeller services only (requires provisioned config.toml)"
+	@echo "  stop-propeller:   stop Propeller services only"
+	@echo "  start-all:        start SuperMQ and Propeller services (requires provisioned config.toml)"
+	@echo "  stop-all:         stop SuperMQ and Propeller services"
 	@echo "  mocks:            generate mockery mocks for all interfaces"
 	@echo "  help:             display this help message"

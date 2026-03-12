@@ -37,7 +37,7 @@ func newService(t *testing.T) manager.Service {
 	repos, err := storage.NewRepositories(storage.Config{Type: "memory"})
 	require.NoError(t, err)
 	sched := scheduler.NewRoundRobin()
-	pubsub := mqttmocks.NewPubSub(t)
+	pubsub := mqttmocks.NewMockPubSub(t)
 	pubsub.On("Publish", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()

@@ -93,7 +93,7 @@ func TestShutdownSignalsStopBeforeInterrupt(t *testing.T) {
 	repos, err := storage.NewRepositories(storage.Config{Type: "memory"})
 	require.NoError(t, err)
 
-	pubsub := mqttmocks.NewPubSub(t)
+	pubsub := mqttmocks.NewMockPubSub(t)
 	pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
 	pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()
 	pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
