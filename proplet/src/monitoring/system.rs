@@ -45,7 +45,7 @@ impl SystemMonitor {
         sys.refresh_processes_specifics(
             ProcessesToUpdate::Some(&[pid]),
             true,
-            ProcessRefreshKind::new()
+            ProcessRefreshKind::default()
                 .with_cpu()
                 .with_memory()
                 .with_disk_usage(),
@@ -166,7 +166,7 @@ impl SystemMonitor {
             sys.refresh_processes_specifics(
                 ProcessesToUpdate::Some(&[pid_val]),
                 true,
-                ProcessRefreshKind::new()
+                ProcessRefreshKind::default()
                     .with_cpu()
                     .with_memory()
                     .with_disk_usage(),

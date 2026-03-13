@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.licenses=Apache-2.0
 LABEL org.opencontainers.image.title="Propeller Proplet with wasi-nn"
 LABEL org.opencontainers.image.description="Propeller edge runtime with wasi-nn/OpenVINO support"
 
-ARG WASMTIME_VERSION=41.0.3
+ARG WASMTIME_VERSION=42.0.1
 ARG OPENVINO_VERSION=2025.4.0.20398.8fdad55727d
 
 RUN apt-get update && \

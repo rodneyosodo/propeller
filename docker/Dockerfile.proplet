@@ -20,7 +20,7 @@ LABEL org.opencontainers.image.licenses=Apache-2.0
 LABEL org.opencontainers.image.title="Propeller Proplet (Rust)"
 LABEL org.opencontainers.image.description="Propeller edge runtime for WebAssembly modules"
 
-ARG WASMTIME_VERSION=41.0.3
+ARG WASMTIME_VERSION=42.0.1
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
