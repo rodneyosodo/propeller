@@ -23,7 +23,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: 1.26.x
+          go-version: 1.25.x
           cache-dependency-path: "go.sum"
 
       - name: Run linters
@@ -34,8 +34,8 @@ jobs:
 
       - name: Install TinyGo
         run: |
-          wget https://github.com/tinygo-org/tinygo/releases/download/v0.39.0/tinygo_0.39.0_amd64.deb
-          sudo dpkg -i tinygo_0.39.0_amd64.deb
+          wget https://github.com/tinygo-org/tinygo/releases/download/v0.40.1/tinygo_0.40.1_amd64.deb
+          sudo dpkg -i tinygo_0.40.1_amd64.deb
 
       - name: Install wasmtools
         run: cargo install --locked wasm-tools
