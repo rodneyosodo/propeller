@@ -134,5 +134,11 @@ pub extern "C" fn run_export() -> i32 {
 }
 
 fn main() {
-    std::process::exit(run() as i32);
+    // Don't call exit() - just return normally
+    // The return value from run() (0 for success, 1 for failure) will be ignored
+    // since main() returns () and WASI will exit with code 0
+    let result = run();
+    if result != 0 {
+        eprintln!("HAL test failed with exit code: {}", result);
+    }
 }

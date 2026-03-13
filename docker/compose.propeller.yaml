@@ -14,7 +14,8 @@ services:
     container_name: propeller-manager
     restart: on-failure
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:${MANAGER_HTTP_PORT}/health"]
+      test:
+        ["CMD", "wget", "-qO-", "http://localhost:${MANAGER_HTTP_PORT}/health"]
       interval: 10s
       timeout: 5s
       start_period: 10s
@@ -87,6 +88,8 @@ services:
       PROPLET_CHANNEL_ID: ${PROPLET_CHANNEL_ID}
       PROPLET_CLIENT_ID: ${PROPLET_CLIENT_ID}
       PROPLET_CLIENT_KEY: ${PROPLET_CLIENT_KEY}
+      PROPLET_HAL_ENABLED: ${PROPLET_HAL_ENABLED}
+      PROPLET_HTTP_ENABLED: ${PROPLET_HTTP_ENABLED}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME}
       PROPLET_MANAGER_K8S_NAMESPACE: ${PROPLET_MANAGER_K8S_NAMESPACE}
       PROPLET_CONFIG_FILE: ${PROPLET_CONFIG_FILE}
