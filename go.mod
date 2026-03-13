@@ -4,7 +4,7 @@ go 1.25.8
 
 require (
 	github.com/0x6flab/namegenerator v1.4.0
-	github.com/absmach/supermq v0.19.1
+	github.com/absmach/supermq v0.18.5
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/dgraph-io/badger/v4 v4.9.1
