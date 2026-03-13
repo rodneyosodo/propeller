@@ -85,7 +85,6 @@ impl WasmtimeRuntime {
 
         let mut async_config = Config::new();
         async_config.wasm_component_model(true);
-        async_config.async_support(true);
 
         let engine = Engine::new(&sync_config)?;
         let async_engine = Engine::new(&async_config)?;
@@ -166,8 +165,14 @@ impl Runtime for WasmtimeRuntime {
 impl WasmtimeRuntime {
     async fn start_app_core(&self, config: StartConfig) -> Result<Vec<u8>> {
         info!("Compiling WASM core module for task: {}", config.id);
-        let module = Module::from_binary(&self.engine, &config.wasm_binary)
-            .context("Failed to compile Wasmtime module from binary")?;
+        let module = match Module::from_binary(&self.engine, &config.wasm_binary) {
+            Ok(module) => module,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to compile Wasmtime module from binary: {e}"
+                ))
+            }
+        };
 
         info!("Module compiled successfully for task: {}", config.id);
 
@@ -179,9 +184,9 @@ impl WasmtimeRuntime {
         }
 
         for dir in &self.preopened_dirs {
-            wasi_builder
+            let _ = wasi_builder
                 .preopened_dir(dir, dir, DirPerms::all(), FilePerms::all())
-                .with_context(|| format!("Failed to preopen directory '{dir}'"))?;
+                .map_err(|e| format!("Failed to preopen directory '{dir}': {e}"));
         }
 
         let wasi = wasi_builder.build_p1();
@@ -189,8 +194,8 @@ impl WasmtimeRuntime {
         let mut store = Store::new(&self.engine, wasi);
 
         let mut linker = Linker::new(&self.engine);
-        wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx| ctx)
-            .context("Failed to add WASI to linker")?;
+        let _ = wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx| ctx)
+            .map_err(|e| format!("Failed to add WASI to linker: {e}"));
 
         if self.hal_enabled {
             let provider = Arc::new(HalProvider::with_defaults());
@@ -198,9 +203,14 @@ impl WasmtimeRuntime {
                 .context("Failed to add ELASTIC TEE HAL interfaces to linker")?;
         }
 
-        let instance = linker
-            .instantiate(&mut store, &module)
-            .context("Failed to instantiate Wasmtime module")?;
+        let instance = match linker.instantiate(&mut store, &module) {
+            Ok(instance) => instance,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to instantiate Wasmtime module: {e}"
+                ))
+            }
+        };
 
         self.run_core_instance(config, store, instance).await
     }
@@ -210,8 +220,15 @@ impl WasmtimeRuntime {
             "Compiling WASM P2 command component for task: {}",
             config.id
         );
-        let component = component::Component::from_binary(&self.engine, &config.wasm_binary)
-            .context("Failed to compile WASM component from binary")?;
+
+        let component = match component::Component::from_binary(&self.engine, &config.wasm_binary) {
+            Ok(component) => component,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to compile WASM component from binary: {e}"
+                ))
+            }
+        };
 
         info!("Component compiled successfully for task: {}", config.id);
 
@@ -223,9 +240,9 @@ impl WasmtimeRuntime {
         }
 
         for dir in &self.preopened_dirs {
-            wasi_builder
+            let _ = wasi_builder
                 .preopened_dir(dir, dir, DirPerms::all(), FilePerms::all())
-                .with_context(|| format!("Failed to preopen directory '{dir}'"))?;
+                .map_err(|e| format!("Failed to preopen directory '{dir}': {e}"));
         }
 
         let wasi = wasi_builder.build();
@@ -239,10 +256,10 @@ impl WasmtimeRuntime {
         let mut store = Store::new(&self.engine, store_data);
 
         let mut linker: component::Linker<StoreData> = component::Linker::new(&self.engine);
-        wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
-            .context("Failed to add WASI P2 to component linker")?;
-        wasmtime_wasi_http::add_only_http_to_linker_sync(&mut linker)
-            .context("Failed to add wasi:http to component linker")?;
+        let _ = wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
+            .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
+        let _ = wasmtime_wasi_http::add_only_http_to_linker_sync(&mut linker)
+            .map_err(|e| format!("Failed to add wasi:http to component linker: {e}"));
 
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
@@ -252,13 +269,18 @@ impl WasmtimeRuntime {
 
         let handle = tokio::task::spawn(async move {
             let result = tokio::task::spawn_blocking(move || {
-                let command = Command::instantiate(&mut store, &component, &linker)
-                    .context("Failed to instantiate WASM command component")?;
+                let command = match Command::instantiate(&mut store, &component, &linker) {
+                    Ok(command) => command,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to instantiate WASM command component: {e}"
+                        ))
+                    }
+                };
 
-                let program_result = command
-                    .wasi_cli_run()
-                    .call_run(&mut store)
-                    .context("Failed to call wasi:cli/run on component")?;
+                let program_result = command.wasi_cli_run().call_run(&mut store).map_err(|e| {
+                    anyhow::anyhow!("Failed to call wasi:cli/run on component: {e}")
+                })?;
 
                 match program_result {
                     Ok(()) => {
@@ -315,17 +337,17 @@ impl WasmtimeRuntime {
         );
 
         let component = component::Component::from_binary(&self.async_engine, &config.wasm_binary)
-            .context("Failed to compile WASM proxy component")?;
+            .map_err(|e| anyhow::anyhow!("Failed to compile WASM proxy component: {e}"))?;
 
         let mut linker: component::Linker<StoreData> = component::Linker::new(&self.async_engine);
         wasmtime_wasi::p2::add_to_linker_async(&mut linker)
-            .context("Failed to add WASI P2 async to proxy linker")?;
+            .map_err(|e| anyhow::anyhow!("Failed to add WASI P2 async to proxy linker: {e}"))?;
         wasmtime_wasi_http::add_only_http_to_linker_async(&mut linker)
-            .context("Failed to add wasi:http async to proxy linker")?;
+            .map_err(|e| anyhow::anyhow!("Failed to add wasi:http async to proxy linker: {e}"))?;
 
         let pre = Arc::new(
             ProxyPre::new(linker.instantiate_pre(&component)?)
-                .context("Failed to create ProxyPre")?,
+                .map_err(|e| anyhow::anyhow!("Failed to create ProxyPre: {e}"))?,
         );
 
         let env: Arc<Vec<(String, String)>> = Arc::new(config.env.into_iter().collect());
@@ -499,7 +521,7 @@ impl WasmtimeRuntime {
                         );
                         init_func
                             .call(&mut store, &[], &mut [])
-                            .context("Failed to initialize WASM runtime via _initialize")?;
+                            .map_err(|e| anyhow::anyhow!("Failed to initialize WASM runtime via _initialize: {e}"))?;
                         info!(
                             "WASM runtime initialized successfully for task: {}",
                             task_id
@@ -598,7 +620,7 @@ impl WasmtimeRuntime {
                         .collect();
 
                     func.call(&mut store, &wasm_args, &mut results)
-                        .context(format!("Failed to call function '{function_name}'"))?;
+                        .map_err(|e| anyhow::anyhow!("Failed to call function '{function_name}': {e}"))?;
 
                     info!("Function '{}' executed successfully", function_name);
 
@@ -688,22 +710,22 @@ async fn handle_proxy_request(
     let incoming = store
         .data_mut()
         .new_incoming_request(Scheme::Http, req)
-        .context("Failed to create incoming request")?;
+        .map_err(|e| anyhow::anyhow!("Failed to create incoming request: {e}"))?;
     let outparam = store
         .data_mut()
         .new_response_outparam(sender)
-        .context("Failed to create response outparam")?;
+        .map_err(|e| anyhow::anyhow!("Failed to create response outparam: {e}"))?;
 
     let task = tokio::task::spawn(async move {
         let proxy = pre
             .instantiate_async(&mut store)
             .await
-            .context("Failed to instantiate proxy component")?;
+            .map_err(|e| anyhow::anyhow!("Failed to instantiate proxy component: {e}"))?;
         proxy
             .wasi_http_incoming_handler()
             .call_handle(&mut store, incoming, outparam)
             .await
-            .context("Failed to call incoming-handler")?;
+            .map_err(|e| anyhow::anyhow!("Failed to call incoming-handler: {e}"))?;
         Ok::<_, anyhow::Error>(())
     });
 

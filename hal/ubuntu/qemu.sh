@@ -327,7 +327,7 @@ runcmd:
   # Install Wasmtime
   - |
     echo "=== Installing Wasmtime ==="
-    WASMTIME_VERSION=$(curl -s https://api.github.com/repos/bytecodealliance/wasmtime/releases/latest | jq -r .tag_name)
+    WASMTIME_VERSION="v42.0.1"
     echo "Downloading Wasmtime ${WASMTIME_VERSION}..."
     curl -L "https://github.com/bytecodealliance/wasmtime/releases/download/${WASMTIME_VERSION}/wasmtime-${WASMTIME_VERSION}-x86_64-linux.tar.xz" -o /tmp/wasmtime.tar.xz
     tar -xf /tmp/wasmtime.tar.xz -C /tmp
