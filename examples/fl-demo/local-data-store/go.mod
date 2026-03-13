@@ -1,5 +1,5 @@
 module local-data-store
 
-go 1.21
+go 1.26
 
 require github.com/gorilla/mux v1.8.1
