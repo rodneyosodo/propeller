@@ -56,7 +56,7 @@ From the repository root:
 
 ```bash
 cd examples/fl-demo/client-wasm
-GOTOOLCHAIN=go1.25.5 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go
+GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go
 cd ../../..
 ```
 
@@ -227,6 +227,7 @@ This starts:
 ### Run Provisioning Script
 
 > **Note**: Python dependencies are listed in `requirements.txt`. Install them with:
+>
 > ```bash
 > pip install -r examples/fl-demo/requirements.txt
 > ```
@@ -288,6 +289,7 @@ curl http://localhost:8086/health
 ```
 
 > **Note**: If services don't start properly, or if containers exited, you need to recreate them:
+>
 > ```bash
 > docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d --force-recreate manager coordinator-http proplet proplet-2 proplet-3 proxy
 > ```
@@ -308,6 +310,7 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 ```
 
 > **Note**: If the manager health check fails, check the logs:
+>
 > ```bash
 > docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env logs manager
 > ```
@@ -355,6 +358,7 @@ curl http://localhost:8084/models/0
 ### Option A: Using HTTP API (Manager) - Recommended
 
 > **Note**: If you get a 404 error, ensure the manager was built from source (see Step 3). You can rebuild and restart:
+>
 > ```bash
 > docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env build manager
 > docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d manager
@@ -498,7 +502,7 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 
 - Check proplet logs for "DEBUG:" messages to see if weights are being updated during training
 - Verify that datasets contain valid `x` and `y` values (see "Verifying Step 5: Dataset Loading")
-- Ensure the wasm client was rebuilt after code changes: `cd examples/fl-demo/client-wasm && GOTOOLCHAIN=go1.25.5 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go`
+- Ensure the wasm client was rebuilt after code changes: `cd examples/fl-demo/client-wasm && GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go`
 
 ## Verifying Step 5: Dataset Loading from Local Data Store
 
@@ -853,7 +857,12 @@ If proplet logs show the old channel ID in MQTT topics instead of the new one:
 If you see this error in manager logs:
 
 ```json
-{"level":"WARN","msg":"skipping participant: proplet not found","proplet_id":"proplet-1","error":"not found"}
+{
+  "level": "WARN",
+  "msg": "skipping participant: proplet not found",
+  "proplet_id": "proplet-1",
+  "error": "not found"
+}
 ```
 
 **Root Cause**: The `participants` array in ConfigureExperiment is using instance IDs (`"proplet-1"`, `"proplet-2"`, `"proplet-3"`) instead of SuperMQ CLIENT_IDs (UUIDs).
@@ -933,7 +942,6 @@ And proplet logs show `"Requesting binary from registry: ghcr.io/..."` but no ex
    ```
 
    Look for:
-
    - Connection errors
    - "failed to fetch container" errors
    - Authentication errors

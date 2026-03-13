@@ -1,6 +1,6 @@
 module github.com/absmach/propeller
 
-go 1.26.0
+go 1.25.8
 
 require (
 	github.com/0x6flab/namegenerator v1.4.0
