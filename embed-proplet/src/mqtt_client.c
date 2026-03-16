@@ -55,61 +55,17 @@ LOG_MODULE_REGISTER(mqtt_client);
 
 #define DEFAULT_NAMESPACE "embedded"
 
-#define MAX_ID_LEN 64
-#define MAX_NAME_LEN 64
-#define MAX_STATE_LEN 16
-#define MAX_URL_LEN 256
-#define MAX_TIMESTAMP_LEN 32
-#define MAX_BASE64_LEN 1024
-#define MAX_INPUTS 16
-#define MAX_RESULTS 16
 #define MAX_UPDATE_B64_LEN 2048
 #define MAX_ERROR_MSG_LEN 256
 
-struct task {
-  char id[MAX_ID_LEN];
-  char name[MAX_NAME_LEN];
-  char state[MAX_STATE_LEN];
-  char image_url[MAX_URL_LEN];
-  char mode[MAX_NAME_LEN];
-
-  char file[MAX_BASE64_LEN];
-  size_t file_len;
-
-  uint64_t inputs[MAX_INPUTS];
-  size_t inputs_count;
-  uint64_t results[MAX_RESULTS];
-  size_t results_count;
-
-  char start_time[MAX_TIMESTAMP_LEN];
-  char finish_time[MAX_TIMESTAMP_LEN];
-  char created_at[MAX_TIMESTAMP_LEN];
-  char updated_at[MAX_TIMESTAMP_LEN];
-
-  bool is_fl_task;  // Legacy field - FL tasks now detected via ROUND_ID
-  
-  char fl_round_id_str[32];
-  char fl_format[MAX_NAME_LEN];
-  char fl_num_samples_str[32];
-  
-  char round_id[MAX_ID_LEN];
-  char model_uri[MAX_URL_LEN];
-  char hyperparams[512];
-  bool is_fml_task;
-  
-  char proplet_id[MAX_ID_LEN];
-  char model_data[4096];
-  char dataset_data[4096];
-  char coordinator_url[MAX_URL_LEN];
-  char model_registry_url[MAX_URL_LEN];
-  char data_store_url[MAX_URL_LEN];
-  bool model_data_fetched;
-  bool dataset_data_fetched;
-};
-
-static struct task g_current_task;
+struct task g_current_task;
 
 static char g_proplet_id[MAX_ID_LEN];
+static char g_client_key[MAX_ID_LEN];
+static char g_channel_id[MAX_ID_LEN];
+static char g_domain_id[MAX_ID_LEN];
+const char *channel_id = g_channel_id;
+const char *domain_id = g_domain_id;
 static const char *g_namespace = DEFAULT_NAMESPACE;
 
 static uint8_t rx_buffer[RX_BUFFER_SIZE];
@@ -339,7 +295,7 @@ int publish(const char *domain_id, const char *channel_id,
 }
 
 int mqtt_client_connect(const char *domain_id, const char *proplet_id,
-                        const char *channel_id) {
+                        const char *client_key, const char *channel_id) {
   int ret;
   struct sockaddr_in *broker = (struct sockaddr_in *)&broker_addr;
 
@@ -361,6 +317,15 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
   strncpy(g_proplet_id, proplet_id, sizeof(g_proplet_id) - 1);
   g_proplet_id[sizeof(g_proplet_id) - 1] = '\0';
+
+  strncpy(g_client_key, client_key ? client_key : "", sizeof(g_client_key) - 1);
+  g_client_key[sizeof(g_client_key) - 1] = '\0';
+
+  strncpy(g_domain_id, domain_id ? domain_id : "", sizeof(g_domain_id) - 1);
+  g_domain_id[sizeof(g_domain_id) - 1] = '\0';
+
+  strncpy(g_channel_id, channel_id ? channel_id : "", sizeof(g_channel_id) - 1);
+  g_channel_id[sizeof(g_channel_id) - 1] = '\0';
 
   snprintf(g_will_topic_str, sizeof(g_will_topic_str), ALIVE_TOPIC_TEMPLATE,
            domain_id, channel_id);
@@ -391,7 +356,10 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   username.size = strlen(g_proplet_id);
   client_ctx.user_name = &username;
 
-  client_ctx.password = NULL;
+  static struct mqtt_utf8 password;
+  password.utf8 = (const uint8_t *)g_client_key;
+  password.size = strlen(g_client_key);
+  client_ctx.password = (password.size > 0) ? &password : NULL;
   client_ctx.protocol_version = MQTT_VERSION_3_1_1;
 
   client_ctx.rx_buf = rx_buffer;
@@ -658,7 +626,8 @@ void handle_start_command(const char *payload) {
         LOG_ERR("Failed to subscribe to model topic: %s (error: %d)", t.model_uri, ret);
       }
     }
-  // FL tasks are detected via ROUND_ID environment variable (FML tasks)
+  }
+
   LOG_INF("image_url=%s, file-len(b64)=%zu", t.image_url, strlen(t.file));
   LOG_INF("inputs_count=%zu", t.inputs_count);
 
