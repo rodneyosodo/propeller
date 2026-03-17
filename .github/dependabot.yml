@@ -11,7 +11,15 @@ updates:
           - "*"
 
   - package-ecosystem: "gomod"
-    directory: "/"
+    directories:
+      - "./"
+      - "examples/fl-demo/aggregator"
+      - "examples/fl-demo/coordinator-http"
+      - "examples/fl-demo/local-data-store"
+      - "examples/fl-demo/model-registry"
+      - "examples/fl-demo"
+      -
+
     schedule:
       interval: "monthly"
       day: "monday"
@@ -21,7 +29,11 @@ updates:
           - "*"
 
   - package-ecosystem: "cargo"
-    directory: "/proplet"
+    directories:
+      - "proplet"
+      - "examples/http-client"
+      - "examples/http-server"
+      - "examples/wasi-nn"
     schedule:
       interval: "monthly"
       day: "monday"

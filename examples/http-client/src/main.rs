@@ -15,8 +15,7 @@
 ///   Set PROPLET_HTTP_ENABLED=true on the proplet.
 ///   Upload as a WASI P2 command task (daemon=false). The component entry
 ///   point is the `run` export, called automatically — no --invoke needed.
-use wstd::http::{Client, IntoBody, Method, Request};
-use wstd::io::AsyncRead;
+use wstd::http::{Body, Client, Method, Request};
 
 #[wstd::main]
 async fn main() {
@@ -25,16 +24,12 @@ async fn main() {
     // --- 1. GET against an external endpoint ---
     println!("=== GET https://httpbin.org/get ===");
     let req = Request::get("https://httpbin.org/get")
-        .body(b"".into_body())
+        .body(Body::empty())
         .unwrap();
     let mut res = client.send(req).await.expect("GET httpbin failed");
     println!("Status: {}", res.status());
-    let mut body = Vec::new();
-    res.body_mut()
-        .read_to_end(&mut body)
-        .await
-        .expect("failed to read body");
-    println!("{}\n", String::from_utf8_lossy(&body));
+    let body = res.body_mut().contents().await.expect("failed to read body");
+    println!("{}\n", String::from_utf8_lossy(body));
 
     // --- 2. POST with a body against an external echo endpoint ---
     println!("=== POST https://httpbin.org/post ===");
@@ -43,14 +38,10 @@ async fn main() {
         .method(Method::POST)
         .uri("https://httpbin.org/post")
         .header("content-type", "text/plain")
-        .body(payload.into_body())
+        .body(Body::from(payload.as_slice()))
         .unwrap();
     let mut res = client.send(req).await.expect("POST httpbin failed");
     println!("Status: {}", res.status());
-    let mut body = Vec::new();
-    res.body_mut()
-        .read_to_end(&mut body)
-        .await
-        .expect("failed to read body");
-    println!("{}\n", String::from_utf8_lossy(&body));
+    let body = res.body_mut().contents().await.expect("failed to read body");
+    println!("{}\n", String::from_utf8_lossy(body));
 }

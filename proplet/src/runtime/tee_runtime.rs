@@ -269,7 +269,6 @@ impl TeeWasmRuntime {
 
         let mut config = Config::new();
         config.wasm_component_model(false);
-        config.async_support(false);
 
         let engine = Engine::new(&config)?;
         let linker = Linker::new(&engine);
