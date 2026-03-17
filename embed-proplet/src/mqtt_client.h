@@ -3,18 +3,19 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <zephyr/net/mqtt.h>
 
 #define PAYLOAD_BUFFER_SIZE 1024
 
-#define MAX_ID_LEN 64
-#define MAX_NAME_LEN 64
-#define MAX_STATE_LEN 16
-#define MAX_URL_LEN 256
-#define MAX_TIMESTAMP_LEN 32
-#define MAX_BASE64_LEN 1024
-#define MAX_INPUTS 16
-#define MAX_RESULTS 16
+#define MAX_ID_LEN         64
+#define MAX_NAME_LEN       64
+#define MAX_STATE_LEN      16
+#define MAX_URL_LEN        256
+#define MAX_TIMESTAMP_LEN  32
+#define MAX_BASE64_LEN     1024
+#define MAX_INPUTS         16
+#define MAX_RESULTS        16
 
 struct task {
   char id[MAX_ID_LEN];
@@ -64,9 +65,11 @@ extern bool mqtt_connected;
 /**
  * @brief Initialize the MQTT client and establish a connection to the broker.
  *
+ * Connects using proplet_id as MQTT client ID and username, client_key as password.
+ *
  * @param domain_id   Domain ID used for topic generation (e.g., m/<domain>/c/<channel>/...).
- * @param proplet_id  SuperMQ client ID used as MQTT client ID and username.
- * @param client_key  SuperMQ client secret used as MQTT password.
+ * @param proplet_id  Proplet identity (SuperMQ client_id) — used as MQTT username.
+ * @param client_key  SuperMQ client secret — used as MQTT password.
  * @param channel_id  Channel ID used for topic generation.
  *
  * @return 0 on success, negative errno on failure.
@@ -140,15 +143,26 @@ void publish_registry_request(const char *domain_id,
 /**
  * @brief Publish a discovery message when the Proplet comes online.
  *
+ * Auto-detected fields (ip, environment, os, hostname, cpu_arch,
+ * total_memory_bytes, wasm_runtime) are resolved inside the function.
+ *
  * @param domain_id   Domain ID used for topic generation.
  * @param proplet_id  Proplet identity.
  * @param channel_id  Channel ID used for topic generation.
+ * @param description Human-readable description of this proplet (may be empty).
+ * @param tags        Comma-separated tag list, e.g. "gateway,prod" (may be empty).
+ * @param location    Physical or logical location string (may be empty).
+ * @param version     Firmware/software version string.
  *
  * @return 0 on success, negative errno on failure.
  */
 int publish_discovery(const char *domain_id,
                       const char *proplet_id,
-                      const char *channel_id);
+                      const char *channel_id,
+                      const char *description,
+                      const char *tags,
+                      const char *location,
+                      const char *version);
 
 /**
  * @brief Publish the results of a completed task.

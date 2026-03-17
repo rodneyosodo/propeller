@@ -9,6 +9,7 @@ use reqwest::Client as HttpClient;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
+use sysinfo::System;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
@@ -61,7 +62,7 @@ pub struct PropletService {
 
 impl PropletService {
     pub fn new(config: PropletConfig, pubsub: PubSub, runtime: Arc<dyn Runtime>) -> Self {
-        let proplet = Proplet::new(config.instance_id.clone(), "proplet".to_string());
+        let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
         let http_client = HttpClient::builder()
@@ -96,7 +97,7 @@ impl PropletService {
         runtime: Arc<dyn Runtime>,
         tee_runtime: Arc<dyn Runtime>,
     ) -> Self {
-        let proplet = Proplet::new(config.instance_id.clone(), "proplet".to_string());
+        let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
         let http_client = HttpClient::builder()
@@ -219,6 +220,46 @@ impl PropletService {
     }
 
     async fn publish_discovery(&self) -> Result<()> {
+        let (ip, environment, os, hostname, cpu_arch, total_memory_bytes) =
+            if self.config.collect_system_info {
+                let ip = std::net::UdpSocket::bind("0.0.0.0:0")
+                    .and_then(|s| {
+                        s.connect("8.8.8.8:80")?;
+                        s.local_addr()
+                    })
+                    .ok()
+                    .map(|addr| addr.ip().to_string());
+
+                let environment = if std::path::Path::new("/.dockerenv").exists() {
+                    "docker".to_string()
+                } else {
+                    "binary".to_string()
+                };
+
+                let mut sys = System::new_all();
+                sys.refresh_all();
+                let hostname = System::host_name();
+                let total_memory_bytes = sys.total_memory();
+
+                (
+                    ip,
+                    environment,
+                    std::env::consts::OS.to_string(),
+                    hostname,
+                    std::env::consts::ARCH.to_string(),
+                    total_memory_bytes,
+                )
+            } else {
+                (None, String::new(), String::new(), None, String::new(), 0)
+            };
+
+        let proplet_version = env!("CARGO_PKG_VERSION").to_string();
+
+        let wasm_runtime = match &self.config.external_wasm_runtime {
+            Some(rt) => rt.clone(),
+            None => "wasmtime-internal".to_string(),
+        };
+
         let discovery = DiscoveryMessage {
             proplet_id: self.config.client_id.clone(),
             namespace: self
@@ -226,6 +267,19 @@ impl PropletService {
                 .k8s_namespace
                 .clone()
                 .unwrap_or_else(|| "default".to_string()),
+            metadata: PropletMetadata {
+                description: self.config.description.clone(),
+                tags: self.config.tags.clone(),
+                location: self.config.location.clone(),
+                ip,
+                environment,
+                os,
+                hostname,
+                cpu_arch,
+                total_memory_bytes,
+                proplet_version,
+                wasm_runtime,
+            },
         };
 
         let topic = build_topic(

@@ -19,6 +19,7 @@ import (
 	"github.com/absmach/propeller/pkg/dag"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/job"
+	"github.com/absmach/propeller/pkg/maps"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/scheduler"
@@ -1094,9 +1095,24 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 		return errors.New("proplet id is empty")
 	}
 
+	meta := maps.GetMap(msg, "metadata")
+
 	p := proplet.Proplet{
 		ID:   propletID,
 		Name: namegen.Generate(),
+		Metadata: proplet.PropletMetadata{
+			Description:      maps.GetString(meta, "description", ""),
+			Tags:             maps.GetStringSlice(meta, "tags"),
+			Location:         maps.GetString(meta, "location", ""),
+			IP:               maps.GetString(meta, "ip", ""),
+			Environment:      maps.GetString(meta, "environment", ""),
+			OS:               maps.GetString(meta, "os", ""),
+			Hostname:         maps.GetString(meta, "hostname", ""),
+			CPUArch:          maps.GetString(meta, "cpu_arch", ""),
+			TotalMemoryBytes: maps.GetUint64(meta, "total_memory_bytes"),
+			PropletVersion:   maps.GetString(meta, "proplet_version", ""),
+			WasmRuntime:      maps.GetString(meta, "wasm_runtime", ""),
+		},
 	}
 	if err := svc.propletRepo.Create(ctx, p); err != nil {
 		return err
@@ -1115,7 +1131,7 @@ func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]an
 	}
 
 	p, err := svc.GetProplet(ctx, propletID)
-	if errors.Is(err, pkgerrors.ErrNotFound) {
+	if errors.Is(err, pkgerrors.ErrNotFound) || errors.Is(err, storage.ErrPropletNotFound) {
 		return svc.createPropletHandler(ctx, msg)
 	}
 	if err != nil {

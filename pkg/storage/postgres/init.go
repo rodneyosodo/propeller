@@ -241,6 +241,15 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE tasks DROP COLUMN IF EXISTS workflow_id`,
 				},
 			},
+			{
+				Id: "3_add_proplet_metadata",
+				Up: []string{
+					`ALTER TABLE proplets ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'`,
+				},
+				Down: []string{
+					`ALTER TABLE proplets DROP COLUMN IF EXISTS metadata`,
+				},
+			},
 		},
 	}
 

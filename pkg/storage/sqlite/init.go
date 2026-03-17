@@ -234,6 +234,15 @@ func (db *Database) Migrate() error {
 					`DROP INDEX IF EXISTS idx_tasks_workflow_id`,
 				},
 			},
+			{
+				Id: "3_add_proplet_metadata",
+				Up: []string{
+					`ALTER TABLE proplets ADD COLUMN metadata JSONB DEFAULT '{}'`,
+				},
+				Down: []string{
+					`ALTER TABLE proplets DROP COLUMN metadata`,
+				},
+			},
 		},
 	}
 

@@ -23,17 +23,23 @@ type dbProplet struct {
 	TaskCount    uint64 `db:"task_count"`
 	Alive        bool   `db:"alive"`
 	AliveHistory []byte `db:"alive_history"`
+	Metadata     []byte `db:"metadata"`
 }
 
 func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
-	query := `INSERT INTO proplets (id, name, task_count, alive, alive_history) VALUES ($1, $2, $3, $4, $5)`
+	query := `INSERT INTO proplets (id, name, task_count, alive, alive_history, metadata) VALUES ($1, $2, $3, $4, $5, $6)`
 
 	aliveHistory, err := jsonBytes(p.AliveHistory)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
-	if _, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory); err != nil {
+	metadata, err := jsonBytes(p.Metadata)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+
+	if _, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory, metadata); err != nil {
 		return fmt.Errorf("%w: %w", ErrCreate, err)
 	}
 
@@ -41,7 +47,7 @@ func (r *propletRepo) Create(ctx context.Context, p proplet.Proplet) error {
 }
 
 func (r *propletRepo) Get(ctx context.Context, id string) (proplet.Proplet, error) {
-	query := `SELECT id, name, task_count, alive, alive_history FROM proplets WHERE id = $1`
+	query := `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets WHERE id = $1`
 
 	var dbp dbProplet
 
@@ -57,14 +63,19 @@ func (r *propletRepo) Get(ctx context.Context, id string) (proplet.Proplet, erro
 }
 
 func (r *propletRepo) Update(ctx context.Context, p proplet.Proplet) error {
-	query := `UPDATE proplets SET name = $2, task_count = $3, alive = $4, alive_history = $5 WHERE id = $1`
+	query := `UPDATE proplets SET name = $2, task_count = $3, alive = $4, alive_history = $5, metadata = $6 WHERE id = $1`
 
 	aliveHistory, err := jsonBytes(p.AliveHistory)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
-	if _, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory); err != nil {
+	metadata, err := jsonBytes(p.Metadata)
+	if err != nil {
+		return fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+
+	if _, err = r.db.ExecContext(ctx, query, p.ID, p.Name, p.TaskCount, p.Alive, aliveHistory, metadata); err != nil {
 		return fmt.Errorf("%w: %w", ErrUpdate, err)
 	}
 
@@ -78,7 +89,7 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
-	query := `SELECT id, name, task_count, alive, alive_history FROM proplets LIMIT $1 OFFSET $2`
+	query := `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets LIMIT $1 OFFSET $2`
 
 	rows, err := r.db.QueryContext(ctx, query, limit, offset)
 	if err != nil {
@@ -89,7 +100,7 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	proplets := make([]proplet.Proplet, 0)
 	for rows.Next() {
 		var dbp dbProplet
-		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory); err != nil {
+		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory, &dbp.Metadata); err != nil {
 			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
 
@@ -128,6 +139,12 @@ func (r *propletRepo) toProplet(dbp dbProplet) (proplet.Proplet, error) {
 
 	if dbp.AliveHistory != nil {
 		if err := jsonUnmarshal(dbp.AliveHistory, &p.AliveHistory); err != nil {
+			return proplet.Proplet{}, err
+		}
+	}
+
+	if dbp.Metadata != nil {
+		if err := jsonUnmarshal(dbp.Metadata, &p.Metadata); err != nil {
 			return proplet.Proplet{}, err
 		}
 	}

@@ -24,7 +24,6 @@ import (
 	"github.com/absmach/supermq/pkg/server"
 	httpserver "github.com/absmach/supermq/pkg/server/http"
 	"github.com/caarlos0/env/v11"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
@@ -40,7 +39,6 @@ const (
 
 type config struct {
 	LogLevel    string        `env:"MANAGER_LOG_LEVEL"           envDefault:"info"`
-	InstanceID  string        `env:"MANAGER_INSTANCE_ID"`
 	MQTTAddress string        `env:"MANAGER_MQTT_ADDRESS"        envDefault:"tcp://localhost:1883"`
 	MQTTQoS     uint8         `env:"MANAGER_MQTT_QOS"            envDefault:"2"`
 	MQTTTimeout time.Duration `env:"MANAGER_MQTT_TIMEOUT"        envDefault:"30s"`
@@ -67,10 +65,6 @@ func main() {
 		exitCode = 1
 
 		return
-	}
-
-	if cfg.InstanceID == "" {
-		cfg.InstanceID = uuid.NewString()
 	}
 
 	if err := ensureManagerCredentials(&cfg); err != nil {
@@ -181,7 +175,7 @@ func main() {
 		return
 	}
 
-	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.InstanceID), logger)
+	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.ClientID), logger)
 
 	g.Go(func() error {
 		return hs.Start()
