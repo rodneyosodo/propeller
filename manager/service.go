@@ -1712,6 +1712,7 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 		"name":               t.Name,
 		"state":              t.State,
 		"image_url":          t.ImageURL,
+		"wasm_http_url":      t.WasmHTTPURL,
 		"file":               t.File,
 		"inputs":             t.Inputs,
 		"cli_args":           t.CLIArgs,
