@@ -243,6 +243,15 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE proplets DROP COLUMN metadata`,
 				},
 			},
+			{
+				Id: "4_add_function_name",
+				Up: []string{
+					`ALTER TABLE tasks ADD COLUMN function_name TEXT`,
+				},
+				Down: []string{
+					`ALTER TABLE tasks DROP COLUMN function_name`,
+				},
+			},
 		},
 	}
 
