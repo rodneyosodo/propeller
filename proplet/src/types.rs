@@ -66,6 +66,8 @@ pub struct StartRequest {
     pub mode: Option<String>,
     #[serde(default)]
     pub proplet_id: Option<String>,
+    #[serde(default)]
+    pub function_name: Option<String>,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
