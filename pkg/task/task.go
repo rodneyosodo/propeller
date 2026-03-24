@@ -71,7 +71,7 @@ type Task struct {
 	FunctionName      string                     `json:"function_name,omitempty"`
 	File              []byte                     `json:"file,omitempty"`
 	CLIArgs           []string                   `json:"cli_args"`
-	Inputs            []uint64                   `json:"inputs,omitempty"`
+	Inputs            []string                   `json:"inputs,omitempty"`
 	Env               map[string]string          `json:"env,omitempty"`
 	Daemon            bool                       `json:"daemon"`
 	Encrypted         bool                       `json:"encrypted"`
