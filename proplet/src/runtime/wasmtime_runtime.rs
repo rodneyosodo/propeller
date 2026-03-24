@@ -1,7 +1,6 @@
 use super::{Runtime, RuntimeContext, StartConfig};
 use crate::hal_linker;
 use anyhow::{Context, Result};
-use wasm_wave;
 use async_trait::async_trait;
 use elastic_tee_hal::interfaces::HalProvider;
 use hyper::server::conn::http1;
@@ -15,6 +14,7 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
+use wasm_wave;
 use wasmtime::component::ResourceTable;
 use wasmtime::*;
 use wasmtime_wasi::p2::bindings::sync::Command;
@@ -376,9 +376,7 @@ impl WasmtimeRuntime {
                 let instance = match linker.instantiate(&mut store, &component) {
                     Ok(i) => i,
                     Err(e) => {
-                        return Err(anyhow::anyhow!(
-                            "Failed to instantiate WASM component: {e}"
-                        ))
+                        return Err(anyhow::anyhow!("Failed to instantiate WASM component: {e}"))
                     }
                 };
 
@@ -419,12 +417,14 @@ impl WasmtimeRuntime {
                     })
                     .collect::<Result<Vec<_>>>()?;
 
-                let mut results: Vec<component::Val> =
-                    (0..result_count).map(|_| component::Val::Bool(false)).collect();
+                let mut results: Vec<component::Val> = (0..result_count)
+                    .map(|_| component::Val::Bool(false))
+                    .collect();
 
-                func.call(&mut store, &wasm_args, &mut results).map_err(|e| {
-                    anyhow::anyhow!("Failed to call export '{}': {e}", function_name)
-                })?;
+                func.call(&mut store, &wasm_args, &mut results)
+                    .map_err(|e| {
+                        anyhow::anyhow!("Failed to call export '{}': {e}", function_name)
+                    })?;
 
                 let result_string = results
                     .first()

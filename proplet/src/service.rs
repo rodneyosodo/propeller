@@ -572,7 +572,8 @@ impl PropletService {
             // so they can be included in the environment variables
             let mut config = StartConfig {
                 id: task_id.clone(),
-                function_name: req.function_name
+                function_name: req
+                    .function_name
                     .as_deref()
                     .filter(|s| !s.is_empty())
                     .map(String::from)
