@@ -1,6 +1,7 @@
 use super::{Runtime, RuntimeContext, StartConfig};
 use crate::hal_linker;
 use anyhow::{Context, Result};
+use wasm_wave;
 use async_trait::async_trait;
 use elastic_tee_hal::interfaces::HalProvider;
 use hyper::server::conn::http1;
@@ -407,26 +408,14 @@ impl WasmtimeRuntime {
                 let wasm_args: Vec<component::Val> = args
                     .iter()
                     .zip(param_types.iter())
-                    .map(|(arg, (_, ty))| match ty {
-                        component::Type::Bool => Ok(component::Val::Bool(*arg != 0)),
-                        component::Type::S8 => Ok(component::Val::S8(*arg as i8)),
-                        component::Type::U8 => Ok(component::Val::U8(*arg as u8)),
-                        component::Type::S16 => Ok(component::Val::S16(*arg as i16)),
-                        component::Type::U16 => Ok(component::Val::U16(*arg as u16)),
-                        component::Type::S32 => Ok(component::Val::S32(*arg as i32)),
-                        component::Type::U32 => Ok(component::Val::U32(*arg as u32)),
-                        component::Type::S64 => Ok(component::Val::S64(*arg as i64)),
-                        component::Type::U64 => Ok(component::Val::U64(*arg)),
-                        component::Type::Float32 => {
-                            Ok(component::Val::Float32(f32::from_bits(*arg as u32)))
-                        }
-                        component::Type::Float64 => {
-                            Ok(component::Val::Float64(f64::from_bits(*arg)))
-                        }
-                        _ => Err(anyhow::anyhow!(
-                            "Unsupported WIT parameter type for export '{}'",
-                            function_name
-                        )),
+                    .map(|(wave_str, (_, ty))| {
+                        wasm_wave::from_str::<component::Val>(ty, wave_str).map_err(|e| {
+                            anyhow::anyhow!(
+                                "Failed to parse WAVE argument '{}' for export '{}': {e}",
+                                wave_str,
+                                function_name
+                            )
+                        })
                     })
                     .collect::<Result<Vec<_>>>()?;
 
@@ -437,21 +426,10 @@ impl WasmtimeRuntime {
                     anyhow::anyhow!("Failed to call export '{}': {e}", function_name)
                 })?;
 
-                let result_string = results.first().map(|v| match v {
-                    component::Val::Bool(b) => b.to_string(),
-                    component::Val::S8(n) => n.to_string(),
-                    component::Val::U8(n) => n.to_string(),
-                    component::Val::S16(n) => n.to_string(),
-                    component::Val::U16(n) => n.to_string(),
-                    component::Val::S32(n) => n.to_string(),
-                    component::Val::U32(n) => n.to_string(),
-                    component::Val::S64(n) => n.to_string(),
-                    component::Val::U64(n) => n.to_string(),
-                    component::Val::Float32(f) => f.to_string(),
-                    component::Val::Float64(f) => f.to_string(),
-                    component::Val::String(s) => s.clone(),
-                    _ => String::new(),
-                }).unwrap_or_default();
+                let result_string = results
+                    .first()
+                    .and_then(|v| wasm_wave::to_string(v).ok())
+                    .unwrap_or_default();
 
                 info!(
                     "Export '{}' for task {} completed, result: {}",
@@ -760,13 +738,25 @@ impl WasmtimeRuntime {
                         .iter()
                         .zip(param_types.iter())
                         .map(|(arg, param_type)| match param_type {
-                            ValType::I32 => Val::I32(*arg as i32),
-                            ValType::I64 => Val::I64(*arg as i64),
-                            ValType::F32 => Val::F32((*arg as f32).to_bits()),
-                            ValType::F64 => Val::F64((*arg as f64).to_bits()),
-                            _ => Val::I32(*arg as i32),
+                            ValType::I32 => arg
+                                .parse::<i32>()
+                                .map(Val::I32)
+                                .map_err(|e| anyhow::anyhow!("Failed to parse '{}' as i32: {e}", arg)),
+                            ValType::I64 => arg
+                                .parse::<i64>()
+                                .map(Val::I64)
+                                .map_err(|e| anyhow::anyhow!("Failed to parse '{}' as i64: {e}", arg)),
+                            ValType::F32 => arg
+                                .parse::<f32>()
+                                .map(|f| Val::F32(f.to_bits()))
+                                .map_err(|e| anyhow::anyhow!("Failed to parse '{}' as f32: {e}", arg)),
+                            ValType::F64 => arg
+                                .parse::<f64>()
+                                .map(|f| Val::F64(f.to_bits()))
+                                .map_err(|e| anyhow::anyhow!("Failed to parse '{}' as f64: {e}", arg)),
+                            _ => Err(anyhow::anyhow!("Unsupported Wasm value type for arg '{}'", arg)),
                         })
-                        .collect();
+                        .collect::<Result<Vec<_>>>()?;
 
                     info!(
                         "Calling function '{}' with {} params, expects {} results",
