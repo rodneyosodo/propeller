@@ -54,7 +54,10 @@ impl HostRuntime {
     }
 
     fn is_wasm_component(binary: &[u8]) -> bool {
-        binary.len() >= 8 && binary[4..8] == [0x0a, 0x00, 0x01, 0x00]
+        // Component model binary layer marker: 0x0a (older wasm-tools) or 0x0d (wasm-tools >= 0.200)
+        binary.len() >= 8
+            && (binary[4..8] == [0x0a, 0x00, 0x01, 0x00]
+                || binary[4..8] == [0x0d, 0x00, 0x01, 0x00])
     }
 }
 
@@ -403,5 +406,29 @@ mod tests {
         assert_eq!(content.len(), 1024 * 1024);
 
         runtime.cleanup_temp_file(file_path).await.unwrap();
+    }
+
+    #[test]
+    fn test_is_wasm_component_old_format() {
+        let binary = [0x00, 0x61, 0x73, 0x6d, 0x0a, 0x00, 0x01, 0x00, 0x00];
+        assert!(HostRuntime::is_wasm_component(&binary));
+    }
+
+    #[test]
+    fn test_is_wasm_component_new_format() {
+        let binary = [0x00, 0x61, 0x73, 0x6d, 0x0d, 0x00, 0x01, 0x00, 0x00];
+        assert!(HostRuntime::is_wasm_component(&binary));
+    }
+
+    #[test]
+    fn test_is_wasm_component_rejects_core_module() {
+        let binary = [0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x00];
+        assert!(!HostRuntime::is_wasm_component(&binary));
+    }
+
+    #[test]
+    fn test_is_wasm_component_rejects_too_short() {
+        let binary = [0x00, 0x61, 0x73, 0x6d];
+        assert!(!HostRuntime::is_wasm_component(&binary));
     }
 }
