@@ -260,15 +260,6 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE tasks DROP COLUMN IF EXISTS broadcast`,
 				},
 			},
-			{
-				Id: "5_add_wasm_http_url",
-				Up: []string{
-					`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS wasm_http_url TEXT`,
-				},
-				Down: []string{
-					`ALTER TABLE tasks DROP COLUMN IF EXISTS wasm_http_url`,
-				},
-			},
 		},
 	}
 
