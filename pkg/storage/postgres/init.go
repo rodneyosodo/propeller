@@ -250,7 +250,7 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE proplets DROP COLUMN IF EXISTS metadata`,
 				},
 			},
-			},
+		},
 	}
 
 	_, err := migrate.Exec(db.DB.DB, "postgres", migrations, migrate.Up)

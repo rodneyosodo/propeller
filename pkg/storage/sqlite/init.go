@@ -243,7 +243,7 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE proplets DROP COLUMN metadata`,
 				},
 			},
-			},
+		},
 	}
 
 	_, err := migrate.Exec(db.DB.DB, "sqlite3", migrations, migrate.Up)
