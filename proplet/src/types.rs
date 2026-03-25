@@ -384,7 +384,7 @@ mod tests {
 
         let result = req.validate();
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().to_string(), "function name is required");
+        assert_eq!(result.unwrap_err().to_string(), "name is required");
     }
 
     #[test]
