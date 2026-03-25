@@ -572,12 +572,7 @@ impl PropletService {
             // so they can be included in the environment variables
             let mut config = StartConfig {
                 id: task_id.clone(),
-                function_name: req
-                    .function_name
-                    .as_deref()
-                    .filter(|s| !s.is_empty())
-                    .map(String::from)
-                    .unwrap_or_else(|| task_name.clone()),
+                function_name: task_name.clone(),
                 daemon,
                 wasm_binary,
                 cli_args,

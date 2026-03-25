@@ -1677,7 +1677,6 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 	payload := map[string]any{
 		"id":                 t.ID,
 		"name":               t.Name,
-		"function_name":      t.FunctionName,
 		"state":              t.State,
 		"image_url":          t.ImageURL,
 		"file":               t.File,

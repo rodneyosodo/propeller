@@ -68,7 +68,6 @@ type Task struct {
 	Kind              TaskKind                   `json:"kind,omitempty"`
 	State             State                      `json:"state"`
 	ImageURL          string                     `json:"image_url,omitempty"`
-	FunctionName      string                     `json:"function_name,omitempty"`
 	File              []byte                     `json:"file,omitempty"`
 	CLIArgs           []string                   `json:"cli_args"`
 	Inputs            []string                   `json:"inputs,omitempty"`

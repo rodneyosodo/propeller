@@ -66,8 +66,6 @@ pub struct StartRequest {
     pub mode: Option<String>,
     #[serde(default)]
     pub proplet_id: Option<String>,
-    #[serde(default)]
-    pub function_name: Option<String>,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -85,7 +83,7 @@ impl StartRequest {
             return Err(anyhow::anyhow!("id is required"));
         }
         if self.name.is_empty() {
-            return Err(anyhow::anyhow!("function name is required"));
+            return Err(anyhow::anyhow!("name is required"));
         }
 
         if self.encrypted {
@@ -313,7 +311,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -336,7 +333,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -359,7 +355,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -384,7 +379,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -409,7 +403,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -437,7 +430,6 @@ mod tests {
             encrypted: true,
             kbs_resource_path: Some("default/key1/value".to_string()),
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -460,7 +452,6 @@ mod tests {
             encrypted: true,
             kbs_resource_path: Some("default/key1/value".to_string()),
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -488,7 +479,6 @@ mod tests {
             encrypted: true,
             kbs_resource_path: Some("default/key1/value".to_string()),
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -551,55 +541,6 @@ mod tests {
         assert_eq!(req.inputs, vec!["10", "20", "30"]);
         assert!(req.daemon);
         assert_eq!(req.env.as_ref().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn test_start_request_function_name_present() {
-        let json_data = json!({
-            "id": "task-fn",
-            "name": "my_module",
-            "file": "ZGF0YQ==",
-            "image_url": "",
-            "function_name": "compute_sum"
-        });
-        let req: StartRequest = serde_json::from_value(json_data).unwrap();
-        assert_eq!(req.function_name, Some("compute_sum".to_string()));
-    }
-
-    #[test]
-    fn test_start_request_function_name_absent_defaults_to_none() {
-        let json_data = json!({
-            "id": "task-no-fn",
-            "name": "my_module",
-            "file": "ZGF0YQ=="
-        });
-        let req: StartRequest = serde_json::from_value(json_data).unwrap();
-        assert_eq!(req.function_name, None);
-    }
-
-    #[test]
-    fn test_start_request_function_name_roundtrip() {
-        let req = StartRequest {
-            id: "task-rt".to_string(),
-            cli_args: vec![],
-            name: "module".to_string(),
-            state: 0,
-            file: "ZGF0YQ==".to_string(),
-            image_url: String::new(),
-            inputs: vec!["1u32".to_string(), "2u32".to_string()],
-            daemon: false,
-            env: None,
-            monitoring_profile: None,
-            encrypted: false,
-            kbs_resource_path: None,
-            mode: None,
-            function_name: Some("add".to_string()),
-            proplet_id: None,
-        };
-        let json = serde_json::to_string(&req).unwrap();
-        let deserialized: StartRequest = serde_json::from_str(&json).unwrap();
-        assert_eq!(deserialized.function_name, Some("add".to_string()));
-        assert_eq!(deserialized.inputs, vec!["1u32", "2u32"]);
     }
 
     #[test]
@@ -795,7 +736,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
@@ -861,7 +801,6 @@ mod tests {
             encrypted: false,
             kbs_resource_path: None,
             mode: None,
-            function_name: None,
             proplet_id: None,
         };
 
