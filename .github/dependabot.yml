@@ -18,7 +18,6 @@ updates:
       - "examples/fl-demo/local-data-store"
       - "examples/fl-demo/model-registry"
       - "examples/fl-demo"
-      -
 
     schedule:
       interval: "monthly"
