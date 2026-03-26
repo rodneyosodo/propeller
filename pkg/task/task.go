@@ -8,8 +8,6 @@ import (
 	"github.com/absmach/propeller/pkg/proplet"
 )
 
-// FlexStrings is a []string that accepts both JSON strings and JSON numbers
-// when unmarshaling, coercing numbers to their string representation.
 type FlexStrings []string
 
 func (f *FlexStrings) UnmarshalJSON(data []byte) error {
