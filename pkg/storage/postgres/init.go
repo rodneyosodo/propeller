@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/absmach/propeller/pkg/job"
-	"github.com/absmach/propeller/pkg/proplet"
-	"github.com/absmach/propeller/pkg/task"
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/jmoiron/sqlx"
 	migrate "github.com/rubenv/sql-migrate"
+
+	"github.com/absmach/propeller/pkg/job"
+	"github.com/absmach/propeller/pkg/proplet"
+	"github.com/absmach/propeller/pkg/task"
 )
 
 var (
