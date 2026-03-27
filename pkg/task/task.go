@@ -20,6 +20,7 @@ func (f *FlexStrings) UnmarshalJSON(data []byte) error {
 		var s string
 		if err := json.Unmarshal(r, &s); err == nil {
 			(*f)[i] = s
+
 			continue
 		}
 		var n json.Number
@@ -28,6 +29,7 @@ func (f *FlexStrings) UnmarshalJSON(data []byte) error {
 		}
 		(*f)[i] = n.String()
 	}
+
 	return nil
 }
 
