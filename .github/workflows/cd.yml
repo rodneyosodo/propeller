@@ -4,11 +4,12 @@ on:
   push:
     branches:
       - main
+      - feat/ci
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ghcr.io/absmach/propeller
+  IMAGE_PREFIX: ghcr.io/rodneyosodo/propeller
 
 jobs:
   docker-go:
