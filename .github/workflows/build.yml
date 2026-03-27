@@ -91,8 +91,8 @@ jobs:
           - { goos: linux, goarch: riscv64, runner: ubuntu-latest }
           - { goos: darwin, goarch: amd64, runner: macos-latest }
           - { goos: darwin, goarch: arm64, runner: macos-latest }
-          - { goos: windows, goarch: amd64, runner: ubuntu-latest }
-          - { goos: windows, goarch: arm64, runner: ubuntu-latest }
+          - { goos: windows, goarch: amd64, runner: windows-latest }
+          - { goos: windows, goarch: arm64, runner: windows-latest }
           - { goos: freebsd, goarch: amd64, runner: ubuntu-latest }
           - { goos: freebsd, goarch: arm64, runner: ubuntu-latest }
           - { goos: netbsd, goarch: amd64, runner: ubuntu-latest }
