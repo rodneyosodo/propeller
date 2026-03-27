@@ -29,18 +29,6 @@ jobs:
           - { goos: linux, goarch: amd64, service: proxy }
           - { goos: linux, goarch: arm64, service: proxy }
           - { goos: linux, goarch: riscv64, service: proxy }
-          - { goos: darwin, goarch: amd64, service: manager }
-          - { goos: darwin, goarch: arm64, service: manager }
-          - { goos: darwin, goarch: amd64, service: cli }
-          - { goos: darwin, goarch: arm64, service: cli }
-          - { goos: darwin, goarch: amd64, service: proxy }
-          - { goos: darwin, goarch: arm64, service: proxy }
-          - { goos: windows, goarch: amd64, service: manager }
-          - { goos: windows, goarch: arm64, service: manager }
-          - { goos: windows, goarch: amd64, service: cli }
-          - { goos: windows, goarch: arm64, service: cli }
-          - { goos: windows, goarch: amd64, service: proxy }
-          - { goos: windows, goarch: arm64, service: proxy }
 
     steps:
       - name: Checkout Code
@@ -78,10 +66,6 @@ jobs:
           - { goos: linux, goarch: amd64, runner: ubuntu-latest }
           - { goos: linux, goarch: arm64, runner: ubuntu-latest }
           - { goos: linux, goarch: riscv64, runner: ubuntu-latest }
-          - { goos: darwin, goarch: amd64, runner: macos-latest }
-          - { goos: darwin, goarch: arm64, runner: macos-latest }
-          - { goos: windows, goarch: amd64, runner: windows-latest }
-          - { goos: windows, goarch: arm64, runner: windows-latest }
 
     steps:
       - name: Checkout Code
@@ -103,21 +87,13 @@ jobs:
       - name: Build
         shell: bash
         env:
-          ext: ""
           target: ""
         run: |
           mkdir -p dist
-          if [ "${{ matrix.goos }}" = "windows" ]; then
-            ext=".exe"
-          fi
           case "${{ matrix.goos }}-${{ matrix.goarch }}" in
             linux-amd64) target="x86_64-unknown-linux-gnu" ;;
             linux-arm64) target="aarch64-unknown-linux-gnu" ;;
             linux-riscv64) target="riscv64gc-unknown-linux-gnu" ;;
-            darwin-amd64) target="x86_64-apple-darwin" ;;
-            darwin-arm64) target="aarch64-apple-darwin" ;;
-            windows-amd64) target="x86_64-pc-windows-msvc" ;;
-            windows-arm64) target="aarch64-pc-windows-msvc" ;;
           esac
           if [ -n "$target" ]; then
             rustup target add "$target"
@@ -128,10 +104,7 @@ jobs:
               esac
             fi
             cd proplet && cargo build --release --target "$target"
-            mv proplet/target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
-          else
-            cd proplet && cargo build --release
-            mv proplet/target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
+            mv proplet/target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}
           fi
 
       - name: Upload artifacts

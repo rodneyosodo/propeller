@@ -27,7 +27,7 @@ sysinfo = "0.38.4"
 chrono = { version = "0.4", features = ["serde"] }
 libc = "0.2"
 socket2 = { version = "0.5", features = ["all"] }
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 
 # TEE & Encryption Support (default feature)
 attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = ["rust-crypto", "kbs"] }
