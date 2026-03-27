@@ -81,22 +81,22 @@ jobs:
 
   proplet:
     name: proplet-${{ matrix.goos }}-${{ matrix.goarch }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: linux, goarch: riscv64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
-          - { goos: windows, goarch: amd64 }
-          - { goos: windows, goarch: arm64 }
-          - { goos: freebsd, goarch: amd64 }
-          - { goos: freebsd, goarch: arm64 }
-          - { goos: netbsd, goarch: amd64 }
-          - { goos: openbsd, goarch: amd64 }
+          - { goos: linux, goarch: amd64, runner: ubuntu-latest }
+          - { goos: linux, goarch: arm64, runner: ubuntu-latest }
+          - { goos: linux, goarch: riscv64, runner: ubuntu-latest }
+          - { goos: darwin, goarch: amd64, runner: macos-latest }
+          - { goos: darwin, goarch: arm64, runner: macos-latest }
+          - { goos: windows, goarch: amd64, runner: ubuntu-latest }
+          - { goos: windows, goarch: arm64, runner: ubuntu-latest }
+          - { goos: freebsd, goarch: amd64, runner: ubuntu-latest }
+          - { goos: freebsd, goarch: arm64, runner: ubuntu-latest }
+          - { goos: netbsd, goarch: amd64, runner: ubuntu-latest }
+          - { goos: openbsd, goarch: amd64, runner: ubuntu-latest }
 
     steps:
       - name: Checkout Code
@@ -106,13 +106,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cross-compilation toolchains
-        if: matrix.goarch != 'amd64'
+        if: matrix.runner == 'ubuntu-latest' && matrix.goarch != 'amd64'
         run: |
           sudo apt-get update
           case "${{ matrix.goos }}-${{ matrix.goarch }}" in
             linux-arm64) sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;;
             linux-riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
-            freebsd-*) sudo apt-get install -y gcc-cross libclang-rt ;;  # FreeBSD targets need cross compilers
+            freebsd-*) sudo apt-get install -y gcc-cross libclang-rt ;;
           esac
 
       - name: Build
@@ -139,8 +139,12 @@ jobs:
           esac
           if [ -n "$target" ]; then
             rustup target add "$target"
-            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
-            export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc
+            if [ "${{ matrix.goos }}" = "linux" ]; then
+              case "${{ matrix.goarch }}" in
+                arm64) export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc ;;
+                riscv64) export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc ;;
+              esac
+            fi
             cd proplet && cargo build --release --target "$target"
             mv proplet/target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
           else
