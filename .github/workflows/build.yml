@@ -105,6 +105,16 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install cross-compilation toolchains
+        if: matrix.goarch != 'amd64'
+        run: |
+          sudo apt-get update
+          case "${{ matrix.goos }}-${{ matrix.goarch }}" in
+            linux-arm64) sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;;
+            linux-riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
+            freebsd-*) sudo apt-get install -y gcc-cross libclang-rt ;;  # FreeBSD targets need cross compilers
+          esac
+
       - name: Build
         env:
           ext: ""
@@ -129,6 +139,8 @@ jobs:
           esac
           if [ -n "$target" ]; then
             rustup target add "$target"
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+            export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc
             cd proplet && cargo build --release --target "$target"
             mv proplet/target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
           else
