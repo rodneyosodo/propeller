@@ -20,7 +20,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # linux — amd64, arm64, riscv64 all supported out-of-the-box
           - { goos: linux, goarch: amd64, service: manager }
           - { goos: linux, goarch: arm64, service: manager }
           - { goos: linux, goarch: riscv64, service: manager }
@@ -30,44 +29,30 @@ jobs:
           - { goos: linux, goarch: amd64, service: proxy }
           - { goos: linux, goarch: arm64, service: proxy }
           - { goos: linux, goarch: riscv64, service: proxy }
-          # darwin (macOS) — only amd64 and arm64 (Apple Silicon)
           - { goos: darwin, goarch: amd64, service: manager }
           - { goos: darwin, goarch: arm64, service: manager }
           - { goos: darwin, goarch: amd64, service: cli }
           - { goos: darwin, goarch: arm64, service: cli }
           - { goos: darwin, goarch: amd64, service: proxy }
           - { goos: darwin, goarch: arm64, service: proxy }
-          # windows — amd64 and arm64; riscv64 is not a valid windows target
           - { goos: windows, goarch: amd64, service: manager }
           - { goos: windows, goarch: arm64, service: manager }
           - { goos: windows, goarch: amd64, service: cli }
           - { goos: windows, goarch: arm64, service: cli }
           - { goos: windows, goarch: amd64, service: proxy }
           - { goos: windows, goarch: arm64, service: proxy }
-          # freebsd — riscv64 added in Go 1.20
           - { goos: freebsd, goarch: amd64, service: manager }
           - { goos: freebsd, goarch: arm64, service: manager }
-          - { goos: freebsd, goarch: riscv64, service: manager }
           - { goos: freebsd, goarch: amd64, service: cli }
           - { goos: freebsd, goarch: arm64, service: cli }
-          - { goos: freebsd, goarch: riscv64, service: cli }
           - { goos: freebsd, goarch: amd64, service: proxy }
           - { goos: freebsd, goarch: arm64, service: proxy }
-          - { goos: freebsd, goarch: riscv64, service: proxy }
-          # netbsd — no riscv64 port
           - { goos: netbsd, goarch: amd64, service: manager }
-          - { goos: netbsd, goarch: arm64, service: manager }
           - { goos: netbsd, goarch: amd64, service: cli }
-          - { goos: netbsd, goarch: arm64, service: cli }
           - { goos: netbsd, goarch: amd64, service: proxy }
-          - { goos: netbsd, goarch: arm64, service: proxy }
-          # openbsd — no riscv64 port
           - { goos: openbsd, goarch: amd64, service: manager }
-          - { goos: openbsd, goarch: arm64, service: manager }
           - { goos: openbsd, goarch: amd64, service: cli }
-          - { goos: openbsd, goarch: arm64, service: cli }
           - { goos: openbsd, goarch: amd64, service: proxy }
-          - { goos: openbsd, goarch: arm64, service: proxy }
 
     steps:
       - name: Checkout Code
@@ -110,11 +95,8 @@ jobs:
           - { goos: windows, goarch: arm64 }
           - { goos: freebsd, goarch: amd64 }
           - { goos: freebsd, goarch: arm64 }
-          - { goos: freebsd, goarch: riscv64 }
           - { goos: netbsd, goarch: amd64 }
-          - { goos: netbsd, goarch: arm64 }
           - { goos: openbsd, goarch: amd64 }
-          - { goos: openbsd, goarch: arm64 }
 
     steps:
       - name: Checkout Code
@@ -142,11 +124,8 @@ jobs:
             windows-arm64) target="aarch64-pc-windows-msvc" ;;
             freebsd-amd64) target="x86_64-unknown-freebsd" ;;
             freebsd-arm64) target="aarch64-unknown-freebsd" ;;
-            freebsd-riscv64) target="riscv64gc-unknown-freebsd" ;;
             netbsd-amd64) target="x86_64-unknown-netbsd" ;;
-            netbsd-arm64) target="aarch64-unknown-netbsd" ;;
             openbsd-amd64) target="x86_64-unknown-openbsd" ;;
-            openbsd-arm64) target="aarch64-unknown-openbsd" ;;
           esac
           if [ -n "$target" ]; then
             rustup target add "$target"
