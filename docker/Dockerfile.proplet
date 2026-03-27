@@ -15,7 +15,6 @@ WORKDIR /build
 COPY proplet/ ./
 
 # Install cross-compilation toolchains and build for the target architecture.
-# upx is applied where supported (amd64 / arm64); it silently skips others.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         clang \
         libclang-dev \

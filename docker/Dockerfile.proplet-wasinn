@@ -6,12 +6,11 @@ ARG TIME
 
 WORKDIR /build
 
-RUN apt update && apt install -y clang libclang-dev upx
+RUN apt update && apt install -y clang libclang-dev
 
 COPY proplet/ ./
 
-RUN cargo build --release && \
-    upx --best target/release/proplet
+RUN cargo build --release
 
 FROM ubuntu:25.10
 
