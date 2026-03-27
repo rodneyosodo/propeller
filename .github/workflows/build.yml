@@ -41,13 +41,10 @@ jobs:
           cache-dependency-path: go.sum
 
       - name: Build
-        shell: bash
         run: |
           mkdir -p dist
-          ext=""
-          [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
           make ${{ matrix.service }} GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0
-          mv build/${{ matrix.service }} dist/${{ matrix.service }}-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
+          mv build/${{ matrix.service }} dist/${{ matrix.service }}-${{ matrix.goos }}-${{ matrix.goarch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
@@ -58,14 +55,14 @@ jobs:
 
   proplet:
     name: proplet-${{ matrix.goos }}-${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { goos: linux, goarch: amd64, runner: ubuntu-latest }
-          - { goos: linux, goarch: arm64, runner: ubuntu-latest }
-          - { goos: linux, goarch: riscv64, runner: ubuntu-latest }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: riscv64 }
 
     steps:
       - name: Checkout Code
@@ -75,37 +72,25 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install cross-compilation toolchains
-        if: matrix.runner == 'ubuntu-latest' && matrix.goarch != 'amd64'
-        shell: bash
+        if: matrix.goarch != 'amd64'
         run: |
           sudo apt-get update
-          case "${{ matrix.goos }}-${{ matrix.goarch }}" in
-            linux-arm64) sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;;
-            linux-riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
+          case "${{ matrix.goarch }}" in
+            arm64) sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;;
+            riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
           esac
 
       - name: Build
-        shell: bash
-        env:
-          target: ""
         run: |
           mkdir -p dist
-          case "${{ matrix.goos }}-${{ matrix.goarch }}" in
-            linux-amd64) target="x86_64-unknown-linux-gnu" ;;
-            linux-arm64) target="aarch64-unknown-linux-gnu" ;;
-            linux-riscv64) target="riscv64gc-unknown-linux-gnu" ;;
-          esac
-          if [ -n "$target" ]; then
-            rustup target add "$target"
-            if [ "${{ matrix.goos }}" = "linux" ]; then
-              case "${{ matrix.goarch }}" in
-                arm64) export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc ;;
-                riscv64) export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc ;;
-              esac
-            fi
-            cd proplet && cargo build --release --target "$target"
-            mv proplet/target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}
+          rustup target add ${{ matrix.goarch }}-unknown-linux-gnu
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+          elif [ "${{ matrix.goarch }}" = "riscv64" ]; then
+            export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc
           fi
+          cd proplet && cargo build --release --target ${{ matrix.goarch }}-unknown-linux-gnu
+          mv target/${{ matrix.goarch }}-unknown-linux-gnu/release/proplet ../dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
