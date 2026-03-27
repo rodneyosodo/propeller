@@ -83,14 +83,19 @@ jobs:
       - name: Build
         run: |
           mkdir -p dist
-          rustup target add ${{ matrix.goarch }}-unknown-linux-gnu
+          case "${{ matrix.goarch }}" in
+            amd64) target="x86_64-unknown-linux-gnu" ;;
+            arm64) target="aarch64-unknown-linux-gnu" ;;
+            riscv64) target="riscv64gc-unknown-linux-gnu" ;;
+          esac
+          rustup target add "$target"
           if [ "${{ matrix.goarch }}" = "arm64" ]; then
             export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
           elif [ "${{ matrix.goarch }}" = "riscv64" ]; then
             export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc
           fi
-          cd proplet && cargo build --release --target ${{ matrix.goarch }}-unknown-linux-gnu
-          mv target/${{ matrix.goarch }}-unknown-linux-gnu/release/proplet ../dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}
+          cd proplet && cargo build --release --target "$target"
+          mv target/$target/release/proplet ../dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
