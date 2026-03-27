@@ -14,10 +14,9 @@ ARG TIME
 WORKDIR /go/src/github.com/absmach/propeller
 COPY . .
 RUN apk update \
-    && apk add make upx \
+    && apk add make \
     && _goarm="${GOARM:-${TARGETVARIANT#v}}" \
     && make $SVC GOARCH=${GOARCH} ${_goarm:+GOARM=${_goarm}} \
-    && (upx --best build/$SVC 2>/dev/null || true) \
     && mv build/$SVC /exe
 
 FROM scratch
