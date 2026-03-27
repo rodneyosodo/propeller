@@ -19,19 +19,17 @@ COPY proplet/ ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
         clang \
         libclang-dev \
-        upx \
         gcc-aarch64-linux-gnu \
+        libc6-dev-arm64-cross \
     && case "${TARGETARCH}" in \
         amd64) \
             rustup target add x86_64-unknown-linux-gnu && \
             cargo build --release --target x86_64-unknown-linux-gnu && \
-            (upx --best target/x86_64-unknown-linux-gnu/release/proplet 2>/dev/null || true) && \
             cp target/x86_64-unknown-linux-gnu/release/proplet /proplet ;; \
         arm64) \
             rustup target add aarch64-unknown-linux-gnu && \
             CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
             cargo build --release --target aarch64-unknown-linux-gnu && \
-            (upx --best target/aarch64-unknown-linux-gnu/release/proplet 2>/dev/null || true) && \
             cp target/aarch64-unknown-linux-gnu/release/proplet /proplet ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac
