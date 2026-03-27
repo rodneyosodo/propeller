@@ -4,12 +4,73 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
 
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/absmach/propeller
+
 jobs:
-  build-and-push:
-    name: Build and Push
+  docker-go:
+    name: Docker Go / ${{ matrix.svc }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        svc: [manager, cli, proxy]
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          # Docker images only make sense on Linux; riscv64 support in the
+          # alpine builder image and multi-arch manifests is available.
+          platforms: linux/amd64,linux/arm64,linux/riscv64
+          push: true
+          build-args: |
+            SVC=${{ matrix.svc }}
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            TIME=${{ steps.meta.outputs.time }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:latest
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:${{ steps.meta.outputs.commit }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  docker-proplet:
+    name: Docker proplet
     runs-on: ubuntu-latest
 
     permissions:
@@ -22,21 +83,78 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Docker Build
+      - name: Compute build metadata
+        id: meta
+        run: |
+          echo "version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')" >> $GITHUB_OUTPUT
+          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to DockerHub
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push Docker images
-        run: |
-          make latest -j $(nproc)
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.proplet
+          # The builder stage uses FROM --platform=$BUILDPLATFORM so Rust
+          # cross-compiles on the host (amd64) rather than running under QEMU.
+          # wasmtime releases provide amd64 and arm64 Linux binaries.
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            TIME=${{ steps.meta.outputs.time }}
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/proplet:latest
+            ${{ env.IMAGE_PREFIX }}/proplet:${{ steps.meta.outputs.commit }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-      - name: Build and push proplet wasi-nn image
-        run: |
-          make docker_proplet_wasinn
-          make push_proplet_wasinn
+  docker-proplet-wasinn:
+    name: Docker proplet (wasi-nn)
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.proplet-wasinn
+          # OpenVINO backend is x86-only
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE_PREFIX }}/proplet:wasi-nn
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
