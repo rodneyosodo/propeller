@@ -150,11 +150,11 @@ jobs:
           esac
           if [ -n "$target" ]; then
             rustup target add "$target"
-            cargo build --release --target "$target" -p proplet
-            mv target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
+            cd proplet && cargo build --release --target "$target"
+            mv proplet/target/$target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
           else
-            cargo build --release -p proplet
-            mv target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
+            cd proplet && cargo build --release
+            mv proplet/target/release/proplet dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
           fi
 
       - name: Upload artifacts
