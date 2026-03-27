@@ -1,6 +1,11 @@
 FROM golang:1.26-alpine3.23 AS builder
 ARG SVC
-ARG GOARCH
+# TARGETARCH / TARGETVARIANT are set automatically by docker buildx.
+# GOARCH / GOARM can still be passed explicitly via --build-arg to keep
+# backwards-compatibility with the `make dockers` Makefile targets.
+ARG TARGETARCH
+ARG TARGETVARIANT
+ARG GOARCH=${TARGETARCH}
 ARG GOARM
 ARG VERSION
 ARG COMMIT
@@ -9,9 +14,9 @@ ARG TIME
 WORKDIR /go/src/github.com/absmach/propeller
 COPY . .
 RUN apk update \
-    && apk add make upx \
-    && make $SVC \
-    && upx --best build/$SVC \
+    && apk add make \
+    && _goarm="${GOARM:-${TARGETVARIANT#v}}" \
+    && make $SVC GOARCH=${GOARCH} ${_goarm:+GOARM=${_goarm}} \
     && mv build/$SVC /exe
 
 FROM scratch

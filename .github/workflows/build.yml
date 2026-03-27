@@ -1,0 +1,130 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - main
+
+    tags:
+      - "v*"
+
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}/${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64, service: manager }
+          - { goos: linux, goarch: arm64, service: manager }
+          - { goos: linux, goarch: riscv64, service: manager }
+          - { goos: linux, goarch: amd64, service: cli }
+          - { goos: linux, goarch: arm64, service: cli }
+          - { goos: linux, goarch: riscv64, service: cli }
+          - { goos: linux, goarch: amd64, service: proxy }
+          - { goos: linux, goarch: arm64, service: proxy }
+          - { goos: linux, goarch: riscv64, service: proxy }
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 1.25.8
+          cache-dependency-path: go.sum
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          make ${{ matrix.service }} GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0
+          mv build/${{ matrix.service }} dist/${{ matrix.service }}-${{ matrix.goos }}-${{ matrix.goarch }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.service }}-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+          retention-days: 7
+
+  proplet:
+    name: proplet-${{ matrix.goos }}-${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: linux, goarch: riscv64 }
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cross-compilation toolchains
+        if: matrix.goarch != 'amd64'
+        run: |
+          sudo apt-get update
+          case "${{ matrix.goarch }}" in
+            arm64) sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;;
+            riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
+          esac
+
+      - name: Build
+        run: |
+          mkdir -p dist
+          case "${{ matrix.goarch }}" in
+            amd64) target="x86_64-unknown-linux-gnu" ;;
+            arm64) target="aarch64-unknown-linux-gnu" ;;
+            riscv64) target="riscv64gc-unknown-linux-gnu" ;;
+          esac
+          rustup target add "$target"
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+          elif [ "${{ matrix.goarch }}" = "riscv64" ]; then
+            export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_GNU_LINKER=riscv64-linux-gnu-gcc
+          fi
+          cd proplet && cargo build --release --target "$target"
+          mv target/$target/release/proplet ../dist/proplet-${{ matrix.goos }}-${{ matrix.goarch }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: proplet-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+          retention-days: 7
+
+  release:
+    name: GitHub Release
+    needs: [build, proplet]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+          merge-multiple: true
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/**
+          generate_release_notes: true

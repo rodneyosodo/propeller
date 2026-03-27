@@ -6,12 +6,11 @@ ARG TIME
 
 WORKDIR /build
 
-RUN apt update && apt install -y clang libclang-dev upx
+RUN apt update && apt install -y clang libclang-dev
 
 COPY proplet/ ./
 
-RUN cargo build --release && \
-    upx --best target/release/proplet
+RUN cargo build --release
 
 FROM ubuntu:25.10
 
@@ -21,6 +20,7 @@ LABEL org.opencontainers.image.title="Propeller Proplet with wasi-nn"
 LABEL org.opencontainers.image.description="Propeller edge runtime with wasi-nn/OpenVINO support"
 
 ARG WASMTIME_VERSION=42.0.1
+ARG WASMTIME_SHA256=dd5253f3cb521bb094f9951c3d2c45c746b31e5723b07ce56f162ec9bab44d59
 ARG OPENVINO_VERSION=2025.4.0.20398.8fdad55727d
 
 RUN apt-get update && \
@@ -30,10 +30,12 @@ RUN apt-get update && \
         curl \
         xz-utils \
         libtbb12 && \
-    wget -q https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz && \
-    tar -xf wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz && \
-    mv wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime /usr/local/bin/ && \
-    rm -rf wasmtime-v${WASMTIME_VERSION}-x86_64-linux* && \
+    TARBALL="wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" && \
+    wget -q "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${TARBALL}" && \
+    echo "${WASMTIME_SHA256}  ${TARBALL}" | sha256sum -c - || { rm -f "${TARBALL}"; exit 1; } && \
+    tar -xf "${TARBALL}" && \
+    mv "wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime" /usr/local/bin/ && \
+    rm -rf "wasmtime-v${WASMTIME_VERSION}-x86_64-linux" "${TARBALL}" && \
     mkdir -p /opt/intel && \
     cd /tmp && \
     curl -L https://storage.openvinotoolkit.org/repositories/openvino/packages/2025.4/linux/openvino_toolkit_ubuntu24_${OPENVINO_VERSION}_x86_64.tgz --output openvino.tgz && \
