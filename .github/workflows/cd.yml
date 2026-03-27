@@ -156,6 +156,8 @@ jobs:
           # OpenVINO backend is x86-only
           platforms: linux/amd64
           push: true
-          tags: ${{ env.IMAGE_PREFIX }}/proplet:wasi-nn
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:latest
+            ${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
