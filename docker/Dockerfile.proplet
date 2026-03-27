@@ -41,6 +41,9 @@ LABEL org.opencontainers.image.title="Propeller Proplet (Rust)"
 LABEL org.opencontainers.image.description="Propeller edge runtime for WebAssembly modules"
 
 ARG WASMTIME_VERSION=42.0.1
+ARG WASMTIME_SHA256_AMD64=dd5253f3cb521bb094f9951c3d2c45c746b31e5723b07ce56f162ec9bab44d59
+ARG WASMTIME_SHA256_ARM64=fa9b7e09f49f75c17acf2c018a4286cdbeffb4c1f3ee9e72c48b6a42c1deceda
+ARG WASMTIME_SHA256_RISCV64=04fd303b53315650a6cb7230d5a606c4d72187bee439a7ba269c5b2dade8712a
 ARG TARGETARCH
 
 # Map Docker's TARGETARCH to the architecture label used in wasmtime release tarballs.
@@ -50,15 +53,17 @@ RUN apt-get update && \
         wget \
         xz-utils && \
     case "${TARGETARCH}" in \
-        amd64)   WASMTIME_ARCH="x86_64" ;; \
-        arm64)   WASMTIME_ARCH="aarch64" ;; \
-        riscv64) WASMTIME_ARCH="riscv64gc" ;; \
+        amd64)   WASMTIME_ARCH="x86_64";    EXPECTED_SHA256="${WASMTIME_SHA256_AMD64}" ;; \
+        arm64)   WASMTIME_ARCH="aarch64";   EXPECTED_SHA256="${WASMTIME_SHA256_ARM64}" ;; \
+        riscv64) WASMTIME_ARCH="riscv64gc"; EXPECTED_SHA256="${WASMTIME_SHA256_RISCV64}" ;; \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac && \
-    wget -q "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-${WASMTIME_ARCH}-linux.tar.xz" && \
-    tar -xf "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_ARCH}-linux.tar.xz" && \
+    TARBALL="wasmtime-v${WASMTIME_VERSION}-${WASMTIME_ARCH}-linux.tar.xz" && \
+    wget -q "https://github.com/bytecodealliance/wasmtime/releases/download/v${WASMTIME_VERSION}/${TARBALL}" && \
+    echo "${EXPECTED_SHA256}  ${TARBALL}" | sha256sum -c - || { rm -f "${TARBALL}"; exit 1; } && \
+    tar -xf "${TARBALL}" && \
     mv "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_ARCH}-linux/wasmtime" /usr/local/bin/ && \
-    rm -rf "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_ARCH}-linux"* && \
+    rm -rf "wasmtime-v${WASMTIME_VERSION}-${WASMTIME_ARCH}-linux" "${TARBALL}" && \
     apt-get remove -y wget xz-utils && \
     apt-get autoremove -y && \
     apt-get clean && \
