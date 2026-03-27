@@ -41,18 +41,6 @@ jobs:
           - { goos: windows, goarch: arm64, service: cli }
           - { goos: windows, goarch: amd64, service: proxy }
           - { goos: windows, goarch: arm64, service: proxy }
-          - { goos: freebsd, goarch: amd64, service: manager }
-          - { goos: freebsd, goarch: arm64, service: manager }
-          - { goos: freebsd, goarch: amd64, service: cli }
-          - { goos: freebsd, goarch: arm64, service: cli }
-          - { goos: freebsd, goarch: amd64, service: proxy }
-          - { goos: freebsd, goarch: arm64, service: proxy }
-          - { goos: netbsd, goarch: amd64, service: manager }
-          - { goos: netbsd, goarch: amd64, service: cli }
-          - { goos: netbsd, goarch: amd64, service: proxy }
-          - { goos: openbsd, goarch: amd64, service: manager }
-          - { goos: openbsd, goarch: amd64, service: cli }
-          - { goos: openbsd, goarch: amd64, service: proxy }
 
     steps:
       - name: Checkout Code
@@ -108,7 +96,6 @@ jobs:
           case "${{ matrix.goos }}-${{ matrix.goarch }}" in
             linux-arm64) sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross ;;
             linux-riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
-            freebsd-*) sudo apt-get install -y gcc-cross libclang-rt ;;
           esac
 
       - name: Build
@@ -128,10 +115,6 @@ jobs:
             darwin-arm64) target="aarch64-apple-darwin" ;;
             windows-amd64) target="x86_64-pc-windows-msvc" ;;
             windows-arm64) target="aarch64-pc-windows-msvc" ;;
-            freebsd-amd64) target="x86_64-unknown-freebsd" ;;
-            freebsd-arm64) target="aarch64-unknown-freebsd" ;;
-            netbsd-amd64) target="x86_64-unknown-netbsd" ;;
-            openbsd-amd64) target="x86_64-unknown-openbsd" ;;
           esac
           if [ -n "$target" ]; then
             rustup target add "$target"
