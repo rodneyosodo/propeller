@@ -14,32 +14,60 @@ on:
 
 jobs:
   build:
-    name: ${{ matrix.goos }}/${{ matrix.goarch }}
+    name: ${{ matrix.goos }}/${{ matrix.goarch }}/${{ matrix.service }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           # linux — amd64, arm64, riscv64 all supported out-of-the-box
-          - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: linux, goarch: riscv64 }
+          - { goos: linux, goarch: amd64, service: manager }
+          - { goos: linux, goarch: arm64, service: manager }
+          - { goos: linux, goarch: riscv64, service: manager }
+          - { goos: linux, goarch: amd64, service: cli }
+          - { goos: linux, goarch: arm64, service: cli }
+          - { goos: linux, goarch: riscv64, service: cli }
+          - { goos: linux, goarch: amd64, service: proxy }
+          - { goos: linux, goarch: arm64, service: proxy }
+          - { goos: linux, goarch: riscv64, service: proxy }
           # darwin (macOS) — only amd64 and arm64 (Apple Silicon)
-          - { goos: darwin, goarch: amd64 }
-          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64, service: manager }
+          - { goos: darwin, goarch: arm64, service: manager }
+          - { goos: darwin, goarch: amd64, service: cli }
+          - { goos: darwin, goarch: arm64, service: cli }
+          - { goos: darwin, goarch: amd64, service: proxy }
+          - { goos: darwin, goarch: arm64, service: proxy }
           # windows — amd64 and arm64; riscv64 is not a valid windows target
-          - { goos: windows, goarch: amd64 }
-          - { goos: windows, goarch: arm64 }
+          - { goos: windows, goarch: amd64, service: manager }
+          - { goos: windows, goarch: arm64, service: manager }
+          - { goos: windows, goarch: amd64, service: cli }
+          - { goos: windows, goarch: arm64, service: cli }
+          - { goos: windows, goarch: amd64, service: proxy }
+          - { goos: windows, goarch: arm64, service: proxy }
           # freebsd — riscv64 added in Go 1.20
-          - { goos: freebsd, goarch: amd64 }
-          - { goos: freebsd, goarch: arm64 }
-          - { goos: freebsd, goarch: riscv64 }
+          - { goos: freebsd, goarch: amd64, service: manager }
+          - { goos: freebsd, goarch: arm64, service: manager }
+          - { goos: freebsd, goarch: riscv64, service: manager }
+          - { goos: freebsd, goarch: amd64, service: cli }
+          - { goos: freebsd, goarch: arm64, service: cli }
+          - { goos: freebsd, goarch: riscv64, service: cli }
+          - { goos: freebsd, goarch: amd64, service: proxy }
+          - { goos: freebsd, goarch: arm64, service: proxy }
+          - { goos: freebsd, goarch: riscv64, service: proxy }
           # netbsd — no riscv64 port
-          - { goos: netbsd, goarch: amd64 }
-          - { goos: netbsd, goarch: arm64 }
+          - { goos: netbsd, goarch: amd64, service: manager }
+          - { goos: netbsd, goarch: arm64, service: manager }
+          - { goos: netbsd, goarch: amd64, service: cli }
+          - { goos: netbsd, goarch: arm64, service: cli }
+          - { goos: netbsd, goarch: amd64, service: proxy }
+          - { goos: netbsd, goarch: arm64, service: proxy }
           # openbsd — no riscv64 port
-          - { goos: openbsd, goarch: amd64 }
-          - { goos: openbsd, goarch: arm64 }
+          - { goos: openbsd, goarch: amd64, service: manager }
+          - { goos: openbsd, goarch: arm64, service: manager }
+          - { goos: openbsd, goarch: amd64, service: cli }
+          - { goos: openbsd, goarch: arm64, service: cli }
+          - { goos: openbsd, goarch: amd64, service: proxy }
+          - { goos: openbsd, goarch: arm64, service: proxy }
 
     steps:
       - name: Checkout Code
@@ -56,15 +84,13 @@ jobs:
           mkdir -p dist
           ext=""
           [ "${{ matrix.goos }}" = "windows" ] && ext=".exe"
-          for svc in manager cli proxy; do
-            make $svc GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0
-            mv build/$svc dist/${svc}-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
-          done
+          make ${{ matrix.service }} GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CGO_ENABLED=0
+          mv build/${{ matrix.service }} dist/${{ matrix.service }}-${{ matrix.goos }}-${{ matrix.goarch }}${ext}
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: binaries-${{ matrix.goos }}-${{ matrix.goarch }}
+          name: ${{ matrix.service }}-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
           retention-days: 7
 
