@@ -8,6 +8,7 @@ import (
 
 	"github.com/absmach/magistrala"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
+	apiutil "github.com/absmach/magistrala/api/http/util"
 )
 
 const (
@@ -40,7 +41,9 @@ func EncodeResponse(_ context.Context, w http.ResponseWriter, response any) erro
 func EncodeError(_ context.Context, err error, w http.ResponseWriter) {
 	w.Header().Set("Content-Type", ContentType)
 	switch {
-	case errors.Is(err, pkgerrors.ErrEmptyKey):
+	case errors.Is(err, apiutil.ErrValidation),
+		errors.Is(err, pkgerrors.ErrEmptyKey),
+		errors.Is(err, pkgerrors.ErrInvalidValue):
 		w.WriteHeader(http.StatusBadRequest)
 	case errors.Is(err, pkgerrors.ErrInvalidValue):
 		w.WriteHeader(http.StatusBadRequest)

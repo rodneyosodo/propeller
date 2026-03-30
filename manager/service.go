@@ -126,7 +126,7 @@ func (svc *service) GetProplet(ctx context.Context, propletID string) (proplet.P
 
 func (svc *service) ListProplets(ctx context.Context, offset, limit uint64, status string) (proplet.PropletPage, error) {
 	if status != "" && status != PropletStatusActive && status != PropletStatusInactive {
-		return proplet.PropletPage{}, fmt.Errorf("invalid proplet status filter %q: must be %q, %q, or empty", status, PropletStatusActive, PropletStatusInactive)
+		return proplet.PropletPage{}, fmt.Errorf("%w: proplet status must be %q, %q, or empty, got %q", pkgerrors.ErrInvalidValue, PropletStatusActive, PropletStatusInactive, status)
 	}
 
 	if status == "" {
@@ -396,7 +396,7 @@ func (svc *service) GetJob(ctx context.Context, jobID string) ([]task.Task, erro
 
 func (svc *service) ListJobs(ctx context.Context, offset, limit uint64, status string) (JobPage, error) {
 	if status != "" && status != JobStatusPending && status != JobStatusRunning && status != JobStatusCompleted && status != JobStatusFailed {
-		return JobPage{}, errors.Join(apiutil.ErrValidation, fmt.Errorf("invalid job status filter %q: must be %q, %q, %q, %q, or empty", status, JobStatusPending, JobStatusRunning, JobStatusCompleted, JobStatusFailed))
+		return JobPage{}, fmt.Errorf("%w: job status must be %q, %q, %q, %q, or empty, got %q", pkgerrors.ErrInvalidValue, JobStatusPending, JobStatusRunning, JobStatusCompleted, JobStatusFailed, status)
 	}
 
 
