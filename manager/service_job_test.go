@@ -320,5 +320,5 @@ func TestListJobsInvalidStatusFilter(t *testing.T) {
 
 	_, err := svc.ListJobs(context.Background(), 0, 100, "invalid")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid job status filter")
+	assert.Contains(t, err.Error(), "invalid value provided")
 }
