@@ -449,6 +449,10 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64, status s
 	})
 
 	if status != "" {
+		// ComputeJobState only ever returns Pending, Running, Completed, or Failed.
+		// Skipped and Interrupted task states are collapsed: Interrupted → Failed,
+		// Scheduled → Running, all-Skipped → Completed. No job summary can carry
+		// any other state, so the map below is exhaustive.
 		statusStateMap := map[string]task.State{
 			JobStatusPending:   task.Pending,
 			JobStatusRunning:   task.Running,
@@ -1775,6 +1779,10 @@ func (svc *service) listAllTasks(ctx context.Context) ([]task.Task, error) {
 	return allTasks, nil
 }
 
+// listAllProplets fetches every proplet from storage into memory so callers can
+// apply in-process filters (e.g. liveness status). This is O(n) in proplet count.
+// If proplet counts grow large, consider adding a storage-level ListByStatus query
+// to push the filter down to the repository layer instead.
 func (svc *service) listAllProplets(ctx context.Context) ([]proplet.Proplet, error) {
 	const pageSize uint64 = 100
 	var allProplets []proplet.Proplet
