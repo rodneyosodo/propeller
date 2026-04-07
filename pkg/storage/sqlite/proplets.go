@@ -121,6 +121,39 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	return proplets, total, nil
 }
 
+func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
+	const pageSize uint64 = 1000
+	var all []proplet.Proplet
+	var scanOffset uint64
+	for {
+		batch, total, err := r.List(ctx, scanOffset, pageSize)
+		if err != nil {
+			return nil, 0, err
+		}
+		all = append(all, batch...)
+		scanOffset += uint64(len(batch))
+		if scanOffset >= total || len(batch) == 0 {
+			break
+		}
+	}
+
+	var filtered []proplet.Proplet
+	for _, p := range all {
+		isAlive := len(p.AliveHistory) > 0 && !p.AliveHistory[len(p.AliveHistory)-1].Before(since)
+		if isAlive == alive {
+			filtered = append(filtered, p)
+		}
+	}
+
+	filteredTotal := uint64(len(filtered))
+	if offset >= filteredTotal {
+		return []proplet.Proplet{}, filteredTotal, nil
+	}
+	end := min(offset+limit, filteredTotal)
+
+	return filtered[offset:end], filteredTotal, nil
+}
+
 func (r *propletRepo) Delete(ctx context.Context, id string) error {
 	query := `DELETE FROM proplets WHERE id = ?`
 

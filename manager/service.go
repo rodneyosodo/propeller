@@ -146,38 +146,21 @@ func (svc *service) ListProplets(ctx context.Context, offset, limit uint64, stat
 		}, nil
 	}
 
-	all, err := svc.listAllProplets(ctx)
+	alive := status == PropletStatusActive
+	since := time.Now().Add(-proplet.AliveTimeout)
+	proplets, total, err := svc.propletRepo.ListByAlive(ctx, offset, limit, alive, since)
 	if err != nil {
 		return proplet.PropletPage{}, err
 	}
-
-	filtered := make([]proplet.Proplet, 0, len(all))
-	for i := range all {
-		all[i].SetAlive()
-		match := (status == PropletStatusActive && all[i].Alive) ||
-			(status == PropletStatusInactive && !all[i].Alive)
-		if match {
-			filtered = append(filtered, all[i])
-		}
+	for i := range proplets {
+		proplets[i].SetAlive()
 	}
-
-	total := uint64(len(filtered))
-	if offset >= total {
-		return proplet.PropletPage{
-			Offset:   offset,
-			Limit:    limit,
-			Total:    total,
-			Proplets: []proplet.Proplet{},
-		}, nil
-	}
-
-	end := min(offset+limit, total)
 
 	return proplet.PropletPage{
 		Offset:   offset,
 		Limit:    limit,
 		Total:    total,
-		Proplets: filtered[offset:end],
+		Proplets: proplets,
 	}, nil
 }
 
@@ -1779,29 +1762,6 @@ func (svc *service) listAllTasks(ctx context.Context) ([]task.Task, error) {
 	return allTasks, nil
 }
 
-// listAllProplets fetches every proplet from storage into memory so callers can
-// apply in-process filters (e.g. liveness status). This is O(n) in proplet count.
-// If proplet counts grow large, consider adding a storage-level ListByStatus query
-// to push the filter down to the repository layer instead.
-func (svc *service) listAllProplets(ctx context.Context) ([]proplet.Proplet, error) {
-	const pageSize uint64 = 100
-	var allProplets []proplet.Proplet
-	var offset uint64
-
-	for {
-		proplets, total, err := svc.propletRepo.List(ctx, offset, pageSize)
-		if err != nil {
-			return nil, err
-		}
-		allProplets = append(allProplets, proplets...)
-		offset += uint64(len(proplets))
-		if offset >= total || len(proplets) == 0 {
-			break
-		}
-	}
-
-	return allProplets, nil
-}
 
 func (svc *service) pinTaskToProplet(ctx context.Context, taskID, propletID string) error {
 	return svc.taskPropletRepo.Create(ctx, taskID, propletID)

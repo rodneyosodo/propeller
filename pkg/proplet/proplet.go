@@ -2,7 +2,7 @@ package proplet
 
 import "time"
 
-const aliveTimeout = 10 * time.Second
+const AliveTimeout = 10 * time.Second
 
 type PropletMetadata struct {
 	Description      string   `json:"description,omitempty"`
@@ -30,7 +30,7 @@ type Proplet struct {
 func (p *Proplet) SetAlive() {
 	if len(p.AliveHistory) > 0 {
 		lastAlive := p.AliveHistory[len(p.AliveHistory)-1]
-		if time.Since(lastAlive) <= aliveTimeout {
+		if time.Since(lastAlive) <= AliveTimeout {
 			p.Alive = true
 
 			return
