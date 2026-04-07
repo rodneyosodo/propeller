@@ -153,6 +153,33 @@ func (r *memoryPropletRepo) List(ctx context.Context, offset, limit uint64) ([]p
 	return proplets, total, nil
 }
 
+func (r *memoryPropletRepo) ListByAlive(ctx context.Context, offset, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
+	data, _, err := r.storage.List(ctx, 0, maxMemoryFetch)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var filtered []proplet.Proplet
+	for _, d := range data {
+		p, ok := d.(proplet.Proplet)
+		if !ok {
+			continue
+		}
+		isAlive := len(p.AliveHistory) > 0 && !p.AliveHistory[len(p.AliveHistory)-1].Before(since)
+		if isAlive == alive {
+			filtered = append(filtered, p)
+		}
+	}
+
+	filteredTotal := uint64(len(filtered))
+	if offset >= filteredTotal {
+		return []proplet.Proplet{}, filteredTotal, nil
+	}
+	end := min(offset+limit, filteredTotal)
+
+	return filtered[offset:end], filteredTotal, nil
+}
+
 func (r *memoryPropletRepo) Delete(ctx context.Context, id string) error {
 	return r.storage.Delete(ctx, id)
 }
