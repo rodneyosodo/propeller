@@ -122,36 +122,43 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 }
 
 func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
-	const pageSize uint64 = 1000
-	var all []proplet.Proplet
-	var scanOffset uint64
-	for {
-		batch, total, err := r.List(ctx, scanOffset, pageSize)
-		if err != nil {
-			return nil, 0, err
-		}
-		all = append(all, batch...)
-		scanOffset += uint64(len(batch))
-		if scanOffset >= total || len(batch) == 0 {
-			break
-		}
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
+	defer tx.Rollback()
+
+	rows, err := tx.QueryContext(ctx, `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets`)
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+	defer rows.Close()
 
 	var filtered []proplet.Proplet
-	for _, p := range all {
+	for rows.Next() {
+		var dbp dbProplet
+		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory, &dbp.Metadata); err != nil {
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
+		}
+		p, err := r.toProplet(dbp)
+		if err != nil {
+			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
+		}
 		isAlive := len(p.AliveHistory) > 0 && !p.AliveHistory[len(p.AliveHistory)-1].Before(since)
 		if isAlive == alive {
 			filtered = append(filtered, p)
 		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	filteredTotal := uint64(len(filtered))
 	if offset >= filteredTotal {
 		return []proplet.Proplet{}, filteredTotal, nil
 	}
-	end := min(offset+limit, filteredTotal)
 
-	return filtered[offset:end], filteredTotal, nil
+	return filtered[offset:min(offset+limit, filteredTotal)], filteredTotal, nil
 }
 
 func (r *propletRepo) Delete(ctx context.Context, id string) error {
