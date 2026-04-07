@@ -79,14 +79,11 @@ func (r *propletRepo) List(ctx context.Context, offset, limit uint64) ([]proplet
 	return proplets, total, nil
 }
 
+const maxBadgerScan uint64 = 100000
+
 func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
 	prefix := []byte("proplet:")
-	totalRaw, err := r.db.countWithPrefix(prefix)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	values, err := r.db.listWithPrefix(prefix, 0, totalRaw)
+	values, err := r.db.listWithPrefix(prefix, 0, maxBadgerScan)
 	if err != nil {
 		return nil, 0, err
 	}

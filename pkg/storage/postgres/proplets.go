@@ -128,13 +128,19 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 		whereClause = `WHERE alive_history IS NULL OR jsonb_array_length(alive_history) = 0 OR (alive_history ->> (jsonb_array_length(alive_history) - 1))::timestamptz < $1`
 	}
 
+	tx, err := r.db.BeginTxx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
+	if err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+	defer tx.Rollback()
+
 	var total uint64
-	if err := r.db.GetContext(ctx, &total, fmt.Sprintf("SELECT COUNT(*) FROM proplets %s", whereClause), since); err != nil {
+	if err := tx.GetContext(ctx, &total, fmt.Sprintf("SELECT COUNT(*) FROM proplets %s", whereClause), since); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
 	query := fmt.Sprintf(`SELECT id, name, task_count, alive, alive_history, metadata FROM proplets %s LIMIT $2 OFFSET $3`, whereClause)
-	rows, err := r.db.QueryContext(ctx, query, since, limit, offset)
+	rows, err := tx.QueryContext(ctx, query, since, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
