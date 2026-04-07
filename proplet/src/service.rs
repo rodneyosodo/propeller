@@ -430,6 +430,12 @@ impl PropletService {
         })?;
         req.validate()?;
 
+        if let Some(target_id) = &req.proplet_id {
+            if target_id != &self.config.client_id {
+                return Ok(());
+            }
+        }
+
         info!("Received start command for task: {}", req.id);
 
         let runtime = if req.encrypted {

@@ -45,15 +45,16 @@ type dbTask struct {
 	RunIf             *string      `db:"run_if"`
 	Kind              *string      `db:"kind"`
 	Mode              *string      `db:"mode"`
+	Broadcast         bool         `db:"broadcast"`
 }
 
 const taskColumns = `id, name, state, image_url, file, cli_args, inputs, env, daemon, encrypted,
 	kbs_resource_path, proplet_id, results, error, monitoring_profile, start_time, finish_time,
-	created_at, updated_at, workflow_id, job_id, depends_on, run_if, kind, mode`
+	created_at, updated_at, workflow_id, job_id, depends_on, run_if, kind, mode, broadcast`
 
 func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 	query := `INSERT INTO tasks (` + taskColumns + `)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
 	if err != nil {
@@ -96,6 +97,7 @@ func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 		nullString(t.WorkflowID), nullString(t.JobID),
 		dependsOn, nullString(t.RunIf),
 		nullString(string(t.Kind)), nullString(string(t.Mode)),
+		t.Broadcast,
 	)
 	if err != nil {
 		return task.Task{}, fmt.Errorf("%w: %w", ErrCreate, err)
@@ -126,7 +128,7 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 		env = ?, daemon = ?, encrypted = ?, kbs_resource_path = ?, proplet_id = ?,
 		results = ?, error = ?, monitoring_profile = ?, start_time = ?,
 		finish_time = ?, updated_at = ?, workflow_id = ?, job_id = ?,
-		depends_on = ?, run_if = ?, kind = ?, mode = ?
+		depends_on = ?, run_if = ?, kind = ?, mode = ?, broadcast = ?
 	WHERE id = ?`
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
@@ -169,6 +171,7 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 		t.UpdatedAt, nullString(t.WorkflowID), nullString(t.JobID),
 		dependsOn, nullString(t.RunIf),
 		nullString(string(t.Kind)), nullString(string(t.Mode)),
+		t.Broadcast,
 		t.ID,
 	)
 	if err != nil {
@@ -234,7 +237,7 @@ func (r *taskRepo) scanTasks(ctx context.Context, query string, args ...any) ([]
 			&dbt.Results, &dbt.Error, &dbt.MonitoringProfile,
 			&dbt.StartTime, &dbt.FinishTime, &dbt.CreatedAt, &dbt.UpdatedAt,
 			&dbt.WorkflowID, &dbt.JobID, &dbt.DependsOn, &dbt.RunIf,
-			&dbt.Kind, &dbt.Mode,
+			&dbt.Kind, &dbt.Mode, &dbt.Broadcast,
 		); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
@@ -329,6 +332,7 @@ func (r *taskRepo) toTask(dbt dbTask) (task.Task, error) {
 	if dbt.Mode != nil {
 		t.Mode = task.Mode(*dbt.Mode)
 	}
+	t.Broadcast = dbt.Broadcast
 
 	return t, nil
 }

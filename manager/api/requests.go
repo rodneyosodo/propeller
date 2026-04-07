@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/absmach/propeller/pkg/cron"
+	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/task"
 	apiutil "github.com/absmach/supermq/api/http/util"
 )
@@ -29,6 +30,10 @@ func (t *taskReq) validate() error {
 
 	if t.Priority < 0 || t.Priority > 100 {
 		return fmt.Errorf("priority must be between 0 and 100, got %d", t.Priority)
+	}
+
+	if t.Broadcast && t.PropletID != "" {
+		return fmt.Errorf("%w: broadcast and proplet_id are mutually exclusive", pkgerrors.ErrInvalidValue)
 	}
 
 	return nil

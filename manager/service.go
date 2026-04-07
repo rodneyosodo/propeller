@@ -624,6 +624,16 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 		}
 	}
 
+	if t.Broadcast {
+		if err := svc.persistTaskBeforeStart(ctx, &t); err != nil {
+			return err
+		}
+		if err := svc.publishStart(ctx, t, ""); err != nil {
+			return err
+		}
+		return svc.markTaskRunning(ctx, &t)
+	}
+
 	var p proplet.Proplet
 	switch t.PropletID {
 	case "":
@@ -1687,7 +1697,9 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 		"encrypted":          t.Encrypted,
 		"kbs_resource_path":  t.KBSResourcePath,
 		"monitoring_profile": t.MonitoringProfile,
-		"proplet_id":         propletID,
+	}
+	if propletID != "" {
+		payload["proplet_id"] = propletID
 	}
 
 	if len(t.DependsOn) > 0 {
