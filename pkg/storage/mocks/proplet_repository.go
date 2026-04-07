@@ -299,7 +299,6 @@ func (_c *MockPropletRepository_List_Call) RunAndReturn(run func(ctx context.Con
 	return _c
 }
 
-// ListByAlive provides a mock function for the type MockPropletRepository
 func (_mock *MockPropletRepository) ListByAlive(ctx context.Context, offset uint64, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
 	ret := _mock.Called(ctx, offset, limit, alive, since)
 
@@ -333,17 +332,10 @@ func (_mock *MockPropletRepository) ListByAlive(ctx context.Context, offset uint
 	return r0, r1, r2
 }
 
-// MockPropletRepository_ListByAlive_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListByAlive'
 type MockPropletRepository_ListByAlive_Call struct {
 	*mock.Call
 }
 
-// ListByAlive is a helper method to define mock.On call
-//   - ctx context.Context
-//   - offset uint64
-//   - limit uint64
-//   - alive bool
-//   - since time.Time
 func (_e *MockPropletRepository_Expecter) ListByAlive(ctx interface{}, offset interface{}, limit interface{}, alive interface{}, since interface{}) *MockPropletRepository_ListByAlive_Call {
 	return &MockPropletRepository_ListByAlive_Call{Call: _e.mock.On("ListByAlive", ctx, offset, limit, alive, since)}
 }
