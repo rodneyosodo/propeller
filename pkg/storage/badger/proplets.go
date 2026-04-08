@@ -104,10 +104,7 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 	if offset >= filteredTotal {
 		return []proplet.Proplet{}, filteredTotal, nil
 	}
-	end := offset + limit
-	if end > filteredTotal {
-		end = filteredTotal
-	}
+	end := min(offset+limit, filteredTotal)
 
 	return filtered[offset:end], filteredTotal, nil
 }

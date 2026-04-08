@@ -1762,7 +1762,6 @@ func (svc *service) listAllTasks(ctx context.Context) ([]task.Task, error) {
 	return allTasks, nil
 }
 
-
 func (svc *service) pinTaskToProplet(ctx context.Context, taskID, propletID string) error {
 	return svc.taskPropletRepo.Create(ctx, taskID, propletID)
 }
