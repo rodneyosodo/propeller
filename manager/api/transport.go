@@ -57,6 +57,12 @@ func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) ht
 				api.EncodeResponse,
 				opts...,
 			), "get-proplet-metrics").ServeHTTP)
+			r.Get("/alive-history", otelhttp.NewHandler(kithttp.NewServer(
+				getPropletAliveHistoryEndpoint(svc),
+				decodeMetricsReq("propletID"),
+				api.EncodeResponse,
+				opts...,
+			), "get-proplet-alive-history").ServeHTTP)
 		})
 	})
 

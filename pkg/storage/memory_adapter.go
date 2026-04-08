@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"time"
 
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/job"
@@ -154,6 +155,25 @@ func (r *memoryPropletRepo) List(ctx context.Context, offset, limit uint64) ([]p
 
 func (r *memoryPropletRepo) Delete(ctx context.Context, id string) error {
 	return r.storage.Delete(ctx, id)
+}
+
+func (r *memoryPropletRepo) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
+	p, err := r.Get(ctx, id)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total := uint64(len(p.AliveHistory))
+	if offset >= total {
+		return []time.Time{}, total, nil
+	}
+
+	end := offset + limit
+	if end > total {
+		end = total
+	}
+
+	return p.AliveHistory[offset:end], total, nil
 }
 
 type memoryTaskPropletRepo struct {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/proplet"
@@ -193,6 +194,10 @@ func (a *postgresPropletAdapter) Delete(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, id)
 }
 
+func (a *postgresPropletAdapter) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
+	return a.repo.GetAliveHistory(ctx, id, offset, limit)
+}
+
 type postgresTaskPropletAdapter struct {
 	repo postgres.TaskPropletRepository
 }
@@ -336,6 +341,10 @@ func (a *sqlitePropletAdapter) Delete(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, id)
 }
 
+func (a *sqlitePropletAdapter) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
+	return a.repo.GetAliveHistory(ctx, id, offset, limit)
+}
+
 type sqliteTaskPropletAdapter struct {
 	repo sqlite.TaskPropletRepository
 }
@@ -477,6 +486,10 @@ func (a *badgerPropletAdapter) List(ctx context.Context, offset, limit uint64) (
 
 func (a *badgerPropletAdapter) Delete(ctx context.Context, id string) error {
 	return a.repo.Delete(ctx, id)
+}
+
+func (a *badgerPropletAdapter) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
+	return a.repo.GetAliveHistory(ctx, id, offset, limit)
 }
 
 type badgerTaskPropletAdapter struct {

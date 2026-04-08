@@ -63,6 +63,7 @@ type PropletRepository interface {
 	Update(ctx context.Context, p proplet.Proplet) error
 	List(ctx context.Context, offset, limit uint64) ([]proplet.Proplet, uint64, error)
 	Delete(ctx context.Context, id string) error
+	GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error)
 }
 
 type TaskPropletRepository interface {

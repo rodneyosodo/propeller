@@ -12,6 +12,7 @@ import (
 var (
 	_ supermq.Response = (*propletResponse)(nil)
 	_ supermq.Response = (*listpropletResponse)(nil)
+	_ supermq.Response = (*propletAliveHistoryResponse)(nil)
 	_ supermq.Response = (*taskResponse)(nil)
 	_ supermq.Response = (*listTaskResponse)(nil)
 	_ supermq.Response = (*messageResponse)(nil)
@@ -24,7 +25,7 @@ var (
 )
 
 type propletResponse struct {
-	proplet.Proplet
+	proplet.PropletView
 
 	created bool
 	deleted bool
@@ -56,7 +57,7 @@ func (w propletResponse) Empty() bool {
 }
 
 type listpropletResponse struct {
-	proplet.PropletPage
+	proplet.PropletPageView
 }
 
 func (l listpropletResponse) Code() int {
@@ -68,6 +69,22 @@ func (l listpropletResponse) Headers() map[string]string {
 }
 
 func (l listpropletResponse) Empty() bool {
+	return false
+}
+
+type propletAliveHistoryResponse struct {
+	proplet.PropletAliveHistoryPage
+}
+
+func (r propletAliveHistoryResponse) Code() int {
+	return http.StatusOK
+}
+
+func (r propletAliveHistoryResponse) Headers() map[string]string {
+	return map[string]string{}
+}
+
+func (r propletAliveHistoryResponse) Empty() bool {
 	return false
 }
 

@@ -53,6 +53,15 @@ func (mm *metricsMiddleware) SelectProplet(ctx context.Context, t task.Task) (pr
 	return mm.svc.SelectProplet(ctx, t)
 }
 
+func (mm *metricsMiddleware) GetPropletAliveHistory(ctx context.Context, propletID string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error) {
+	defer func(begin time.Time) {
+		mm.counter.With("method", "get-proplet-alive-history").Add(1)
+		mm.latency.With("method", "get-proplet-alive-history").Observe(time.Since(begin).Seconds())
+	}(time.Now())
+
+	return mm.svc.GetPropletAliveHistory(ctx, propletID, offset, limit)
+}
+
 func (mm *metricsMiddleware) DeleteProplet(ctx context.Context, id string) error {
 	defer func(begin time.Time) {
 		mm.counter.With("method", "delete-proplet").Add(1)

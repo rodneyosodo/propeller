@@ -86,6 +86,28 @@ func (lm *loggingMiddleware) SelectProplet(ctx context.Context, t task.Task) (w 
 	return lm.svc.SelectProplet(ctx, t)
 }
 
+func (lm *loggingMiddleware) GetPropletAliveHistory(ctx context.Context, propletID string, offset, limit uint64) (resp proplet.PropletAliveHistoryPage, err error) {
+	defer func(begin time.Time) {
+		args := []any{
+			slog.String("duration", time.Since(begin).String()),
+			slog.Group("proplet",
+				slog.String("id", propletID),
+			),
+			slog.Uint64("offset", offset),
+			slog.Uint64("limit", limit),
+		}
+		if err != nil {
+			args = append(args, slog.Any("error", err))
+			lm.logger.Warn("Get proplet alive history failed", args...)
+
+			return
+		}
+		lm.logger.Info("Get proplet alive history completed successfully", args...)
+	}(time.Now())
+
+	return lm.svc.GetPropletAliveHistory(ctx, propletID, offset, limit)
+}
+
 func (lm *loggingMiddleware) DeleteProplet(ctx context.Context, id string) (err error) {
 	defer func(begin time.Time) {
 		args := []any{

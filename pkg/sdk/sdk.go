@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/absmach/propeller/pkg/proplet"
 )
 
 const CTJSON string = "application/json"
@@ -105,6 +107,13 @@ type SDK interface {
 	// example:
 	//  _ := sdk.StopJob("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
 	StopJob(jobID string) error
+
+	// GetPropletAliveHistory returns the paginated heartbeat history for a proplet.
+	//
+	// example:
+	//  page, _ := sdk.GetPropletAliveHistory("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040", 0, 10)
+	//  fmt.Println(page)
+	GetPropletAliveHistory(id string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error)
 
 	// DeleteProplet deletes a proplet by id.
 	//

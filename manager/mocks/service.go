@@ -783,6 +783,72 @@ func (_c *MockService_GetPropletMetrics_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+func (_mock *MockService) GetPropletAliveHistory(ctx context.Context, propletID string, offset uint64, limit uint64) (proplet.PropletAliveHistoryPage, error) {
+	ret := _mock.Called(ctx, propletID, offset, limit)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetPropletAliveHistory")
+	}
+
+	var r0 proplet.PropletAliveHistoryPage
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, uint64, uint64) (proplet.PropletAliveHistoryPage, error)); ok {
+		return returnFunc(ctx, propletID, offset, limit)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, uint64, uint64) proplet.PropletAliveHistoryPage); ok {
+		r0 = returnFunc(ctx, propletID, offset, limit)
+	} else {
+		r0 = ret.Get(0).(proplet.PropletAliveHistoryPage)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, uint64, uint64) error); ok {
+		r1 = returnFunc(ctx, propletID, offset, limit)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+type MockService_GetPropletAliveHistory_Call struct {
+	*mock.Call
+}
+
+func (_e *MockService_Expecter) GetPropletAliveHistory(ctx any, propletID any, offset any, limit any) *MockService_GetPropletAliveHistory_Call {
+	return &MockService_GetPropletAliveHistory_Call{Call: _e.mock.On("GetPropletAliveHistory", ctx, propletID, offset, limit)}
+}
+
+func (_c *MockService_GetPropletAliveHistory_Call) Run(run func(ctx context.Context, propletID string, offset uint64, limit uint64)) *MockService_GetPropletAliveHistory_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 uint64
+		if args[2] != nil {
+			arg2 = args[2].(uint64)
+		}
+		var arg3 uint64
+		if args[3] != nil {
+			arg3 = args[3].(uint64)
+		}
+		run(arg0, arg1, arg2, arg3)
+	})
+	return _c
+}
+
+func (_c *MockService_GetPropletAliveHistory_Call) Return(page proplet.PropletAliveHistoryPage, err error) *MockService_GetPropletAliveHistory_Call {
+	_c.Call.Return(page, err)
+	return _c
+}
+
+func (_c *MockService_GetPropletAliveHistory_Call) RunAndReturn(run func(ctx context.Context, propletID string, offset uint64, limit uint64) (proplet.PropletAliveHistoryPage, error)) *MockService_GetPropletAliveHistory_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRoundStatus provides a mock function for the type MockService
 func (_mock *MockService) GetRoundStatus(ctx context.Context, roundID string) (manager.RoundStatus, error) {
 	ret := _mock.Called(ctx, roundID)

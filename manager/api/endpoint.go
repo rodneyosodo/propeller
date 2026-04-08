@@ -26,7 +26,7 @@ func listPropletsEndpoint(svc manager.Service) endpoint.Endpoint {
 		}
 
 		return listpropletResponse{
-			PropletPage: proplets,
+			PropletPageView: proplets.View(),
 		}, nil
 	}
 }
@@ -47,8 +47,27 @@ func getPropletEndpoint(svc manager.Service) endpoint.Endpoint {
 		}
 
 		return propletResponse{
-			Proplet: node,
+			PropletView: node.View(),
 		}, nil
+	}
+}
+
+func getPropletAliveHistoryEndpoint(svc manager.Service) endpoint.Endpoint {
+	return func(ctx context.Context, request any) (any, error) {
+		req, ok := request.(metricsReq)
+		if !ok {
+			return propletAliveHistoryResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+		}
+		if err := req.validate(); err != nil {
+			return propletAliveHistoryResponse{}, errors.Join(apiutil.ErrValidation, err)
+		}
+
+		page, err := svc.GetPropletAliveHistory(ctx, req.id, req.offset, req.limit)
+		if err != nil {
+			return propletAliveHistoryResponse{}, err
+		}
+
+		return propletAliveHistoryResponse{PropletAliveHistoryPage: page}, nil
 	}
 }
 

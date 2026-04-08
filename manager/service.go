@@ -816,6 +816,20 @@ func (svc *service) GetPropletMetrics(ctx context.Context, propletID string, off
 	}, nil
 }
 
+func (svc *service) GetPropletAliveHistory(ctx context.Context, propletID string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error) {
+	history, total, err := svc.propletRepo.GetAliveHistory(ctx, propletID, offset, limit)
+	if err != nil {
+		return proplet.PropletAliveHistoryPage{}, err
+	}
+
+	return proplet.PropletAliveHistoryPage{
+		Offset:  offset,
+		Limit:   limit,
+		Total:   total,
+		History: history,
+	}, nil
+}
+
 func (svc *service) GetTaskResults(ctx context.Context, taskID string) (any, error) {
 	t, err := svc.GetTask(ctx, taskID)
 	if err != nil {

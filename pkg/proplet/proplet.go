@@ -46,6 +46,57 @@ type PropletPage struct {
 	Proplets []Proplet `json:"proplets"`
 }
 
+type PropletView struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	TaskCount   uint64          `json:"task_count"`
+	Alive       bool            `json:"alive"`
+	LastAliveAt *time.Time      `json:"last_alive_at,omitempty"`
+	Metadata    PropletMetadata `json:"metadata"`
+}
+
+func (p Proplet) View() PropletView {
+	v := PropletView{
+		ID:        p.ID,
+		Name:      p.Name,
+		TaskCount: p.TaskCount,
+		Alive:     p.Alive,
+		Metadata:  p.Metadata,
+	}
+	if n := len(p.AliveHistory); n > 0 {
+		t := p.AliveHistory[n-1]
+		v.LastAliveAt = &t
+	}
+	return v
+}
+
+type PropletPageView struct {
+	Offset   uint64        `json:"offset"`
+	Limit    uint64        `json:"limit"`
+	Total    uint64        `json:"total"`
+	Proplets []PropletView `json:"proplets"`
+}
+
+func (pp PropletPage) View() PropletPageView {
+	views := make([]PropletView, len(pp.Proplets))
+	for i, p := range pp.Proplets {
+		views[i] = p.View()
+	}
+	return PropletPageView{
+		Offset:   pp.Offset,
+		Limit:    pp.Limit,
+		Total:    pp.Total,
+		Proplets: views,
+	}
+}
+
+type PropletAliveHistoryPage struct {
+	Offset  uint64      `json:"offset"`
+	Limit   uint64      `json:"limit"`
+	Total   uint64      `json:"total"`
+	History []time.Time `json:"history"`
+}
+
 type ChunkPayload struct {
 	AppName     string `json:"app_name"`
 	ChunkIdx    int    `json:"chunk_idx"`
