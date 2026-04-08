@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/absmach/propeller/pkg/proplet"
+	"github.com/absmach/propeller/pkg/sdf"
 )
 
 const propletsEndpoint = "/proplets"
@@ -42,6 +43,22 @@ func (sdk *propSDK) GetPropletAliveHistory(id string, offset, limit uint64) (pro
 	}
 
 	return page, nil
+}
+
+func (sdk *propSDK) GetPropletSDF(id string) (sdf.Document, error) {
+	reqURL := sdk.managerURL + propletsEndpoint + "/" + id + "/sdf"
+
+	body, err := sdk.processRequest(http.MethodGet, reqURL, nil, http.StatusOK)
+	if err != nil {
+		return sdf.Document{}, err
+	}
+
+	var doc sdf.Document
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return sdf.Document{}, err
+	}
+
+	return doc, nil
 }
 
 func (sdk *propSDK) ListProplets(offset, limit uint64, status string) (PropletPage, error) {
