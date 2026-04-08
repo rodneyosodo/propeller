@@ -631,6 +631,7 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 		if err := svc.publishStart(ctx, t, ""); err != nil {
 			return err
 		}
+
 		return svc.markTaskRunning(ctx, &t)
 	}
 
