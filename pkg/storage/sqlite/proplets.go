@@ -126,7 +126,7 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	rows, err := tx.QueryContext(ctx, `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets`)
 	if err != nil {

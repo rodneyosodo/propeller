@@ -132,10 +132,10 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var total uint64
-	if err := tx.GetContext(ctx, &total, fmt.Sprintf("SELECT COUNT(*) FROM proplets %s", whereClause), since); err != nil {
+	if err := tx.GetContext(ctx, &total, "SELECT COUNT(*) FROM proplets "+whereClause, since); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
