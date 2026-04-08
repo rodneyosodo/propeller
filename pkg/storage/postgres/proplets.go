@@ -141,10 +141,7 @@ func (r *propletRepo) GetAliveHistory(ctx context.Context, id string, offset, li
 		return []time.Time{}, total, nil
 	}
 
-	end := offset + limit
-	if end > total {
-		end = total
-	}
+	end := min(offset+limit, total)
 
 	return p.AliveHistory[offset:end], total, nil
 }

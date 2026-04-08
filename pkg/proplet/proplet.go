@@ -55,7 +55,7 @@ type PropletView struct {
 	Metadata    PropletMetadata `json:"metadata"`
 }
 
-func (p Proplet) View() PropletView {
+func (p *Proplet) View() PropletView {
 	v := PropletView{
 		ID:        p.ID,
 		Name:      p.Name,
@@ -67,6 +67,7 @@ func (p Proplet) View() PropletView {
 		t := p.AliveHistory[n-1]
 		v.LastAliveAt = &t
 	}
+
 	return v
 }
 
@@ -79,9 +80,10 @@ type PropletPageView struct {
 
 func (pp PropletPage) View() PropletPageView {
 	views := make([]PropletView, len(pp.Proplets))
-	for i, p := range pp.Proplets {
-		views[i] = p.View()
+	for i := range pp.Proplets {
+		views[i] = pp.Proplets[i].View()
 	}
+
 	return PropletPageView{
 		Offset:   pp.Offset,
 		Limit:    pp.Limit,

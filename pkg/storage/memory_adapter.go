@@ -168,10 +168,7 @@ func (r *memoryPropletRepo) GetAliveHistory(ctx context.Context, id string, offs
 		return []time.Time{}, total, nil
 	}
 
-	end := offset + limit
-	if end > total {
-		end = total
-	}
+	end := min(offset+limit, total)
 
 	return p.AliveHistory[offset:end], total, nil
 }
