@@ -2,7 +2,14 @@
 name = "attestation-test"
 version = "0.1.0"
 edition = "2021"
+publish = false
 
-[[bin]]
-name = "attestation-test"
-path = "src/main.rs"
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+wit-bindgen = { version = "0.41.0", default-features = false, features = ["realloc", "macros"] }
+
+[profile.release]
+opt-level = "s"
+strip = true
