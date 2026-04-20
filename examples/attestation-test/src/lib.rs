@@ -6,20 +6,14 @@ mod bindings {
     });
 }
 
-use bindings::elastic::hal::{attestation, platform, random};
+use bindings::elastic::hal::attestation;
 use bindings::exports::elastic::hal::run::Guest;
 
 struct Component;
 
 impl Guest for Component {
     fn run() -> Vec<u8> {
-        let info = platform::get_platform_info();
-        eprintln!("platform: {} v{}", info.platform_type, info.version);
-
-        let report_data = match random::get_random_bytes(32) {
-            Ok(bytes) => bytes,
-            Err(_) => vec![0x42u8; 32],
-        };
+        let report_data = vec![0x42u8; 32];
 
         match attestation::attestation(&report_data) {
             Ok(evidence) => {
