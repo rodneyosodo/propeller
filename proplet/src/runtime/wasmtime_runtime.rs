@@ -384,7 +384,6 @@ impl WasmtimeRuntime {
                 .context("Failed to add elastic:hal interfaces to component linker")?;
         }
 
-
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
         let function_name = config.function_name.clone();
