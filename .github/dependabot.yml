@@ -30,6 +30,7 @@ updates:
   - package-ecosystem: "cargo"
     directories:
       - "proplet"
+      - "examples/attestation-test"
       - "examples/http-client"
       - "examples/http-server"
       - "examples/wasi-nn"

@@ -198,6 +198,10 @@ hal-test:
 	cd examples/hal-test && cargo build --release
 	cp examples/hal-test/target/wasm32-wasip1/release/hal-test.wasm build/hal-test.wasm
 
+attestation-test:
+	cd examples/attestation-test && cargo build --target wasm32-wasip2 --release
+	cp examples/attestation-test/target/wasm32-wasip2/release/attestation_test.wasm build/attestation-test.wasm
+
 help:
 	@echo "Usage: make <target>"
 	@echo ""
