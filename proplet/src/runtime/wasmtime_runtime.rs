@@ -134,9 +134,7 @@ impl Runtime for WasmtimeRuntime {
 
         if is_proxy {
             self.start_app_proxy(config).await
-        } else if is_hal {
-            self.start_app_component_export(config).await
-        } else if is_component && has_custom_export {
+        } else if is_hal || (is_component && has_custom_export) {
             self.start_app_component_export(config).await
         } else if is_component {
             self.start_app_component(config).await
@@ -427,7 +425,7 @@ impl WasmtimeRuntime {
                                         Some(&iface_idx),
                                         &function_name,
                                     ) {
-                                        found = instance.get_func(&mut store, &func_idx);
+                                        found = instance.get_func(&mut store, func_idx);
                                     }
                                 }
                                 break;
