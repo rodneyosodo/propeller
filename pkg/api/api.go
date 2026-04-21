@@ -42,6 +42,8 @@ func EncodeError(_ context.Context, err error, w http.ResponseWriter) {
 	switch {
 	case errors.Is(err, pkgerrors.ErrEmptyKey):
 		w.WriteHeader(http.StatusBadRequest)
+	case errors.Is(err, pkgerrors.ErrInvalidValue):
+		w.WriteHeader(http.StatusBadRequest)
 	case errors.Is(err, pkgerrors.ErrNotFound):
 		w.WriteHeader(http.StatusNotFound)
 	case errors.Is(err, pkgerrors.ErrConflict):
