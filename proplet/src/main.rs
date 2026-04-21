@@ -1,6 +1,5 @@
 mod config;
 mod hal;
-mod hal_component_linker;
 mod hal_linker;
 mod metrics;
 mod monitoring;
