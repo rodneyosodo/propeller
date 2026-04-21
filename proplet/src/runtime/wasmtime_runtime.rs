@@ -1,4 +1,5 @@
 use super::{Runtime, RuntimeContext, StartConfig};
+use crate::hal_component_linker;
 use crate::hal_linker;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
@@ -33,6 +34,12 @@ fn is_proxy_component(bytes: &[u8]) -> bool {
     bytes
         .windows(b"wasi:http/incoming-handler".len())
         .any(|w| w == b"wasi:http/incoming-handler")
+}
+
+fn is_hal_component(bytes: &[u8]) -> bool {
+    bytes
+        .windows(b"elastic:hal/run".len())
+        .any(|w| w == b"elastic:hal/run")
 }
 
 pub struct StoreData {
@@ -109,14 +116,16 @@ impl Runtime for WasmtimeRuntime {
     async fn start_app(&self, _ctx: RuntimeContext, config: StartConfig) -> Result<Vec<u8>> {
         let is_component = is_wasm_component(&config.wasm_binary);
         let is_proxy = is_component && is_proxy_component(&config.wasm_binary);
+        let is_hal = is_component && is_hal_component(&config.wasm_binary);
         info!(
-            "Starting Wasmtime runtime app: task_id={}, function={}, daemon={}, wasm_size={}, is_component={}, is_proxy={}",
+            "Starting Wasmtime runtime app: task_id={}, function={}, daemon={}, wasm_size={}, is_component={}, is_proxy={}, is_hal={}",
             config.id,
             config.function_name,
             config.daemon,
             config.wasm_binary.len(),
             is_component,
             is_proxy,
+            is_hal,
         );
 
         let has_custom_export = !config.function_name.is_empty()
@@ -125,6 +134,8 @@ impl Runtime for WasmtimeRuntime {
 
         if is_proxy {
             self.start_app_proxy(config).await
+        } else if is_hal {
+            self.start_app_component_export(config).await
         } else if is_component && has_custom_export {
             self.start_app_component_export(config).await
         } else if is_component {
@@ -268,6 +279,12 @@ impl WasmtimeRuntime {
         let _ = wasmtime_wasi_http::add_only_http_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add wasi:http to component linker: {e}"));
 
+        if self.hal_enabled {
+            let provider = Arc::new(HalProvider::with_defaults());
+            hal_component_linker::add_to_linker(&mut linker, provider)
+                .context("Failed to add elastic:hal interfaces to component linker")?;
+        }
+
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
         let tasks = self.tasks.clone();
@@ -363,6 +380,15 @@ impl WasmtimeRuntime {
         let _ = wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
 
+<<<<<<< HEAD
+=======
+        if self.hal_enabled {
+            let provider = Arc::new(HalProvider::with_defaults());
+            hal_component_linker::add_to_linker(&mut linker, provider)
+                .context("Failed to add elastic:hal interfaces to component linker")?;
+        }
+
+>>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
         let function_name = config.function_name.clone();
@@ -380,14 +406,49 @@ impl WasmtimeRuntime {
                     }
                 };
 
+<<<<<<< HEAD
                 let func = instance
                     .get_func(&mut store, &function_name)
                     .ok_or_else(|| {
+=======
+                let func = if let Some(f) = instance.get_func(&mut store, &function_name) {
+                    f
+                } else {
+                    let engine = store.engine().clone();
+                    let component_type = component.component_type();
+                    let mut found: Option<component::Func> = None;
+                    for (iface_name, item) in component_type.exports(&engine) {
+                        if let component::types::ComponentItem::ComponentInstance(iface) = item {
+                            if iface.exports(&engine).any(|(fname, fi)| {
+                                fname == function_name
+                                    && matches!(
+                                        fi,
+                                        component::types::ComponentItem::ComponentFunc(_)
+                                    )
+                            }) {
+                                if let Some(iface_idx) =
+                                    instance.get_export_index(&mut store, None, iface_name)
+                                {
+                                    if let Some(func_idx) = instance.get_export_index(
+                                        &mut store,
+                                        Some(&iface_idx),
+                                        &function_name,
+                                    ) {
+                                        found = instance.get_func(&mut store, &func_idx);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    found.ok_or_else(|| {
+>>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
                         anyhow::anyhow!(
                             "Export '{}' not found in component for task {}",
                             function_name,
                             task_id
                         )
+<<<<<<< HEAD
                     })?;
 
                 let func_ty = func.ty(&store);
@@ -399,10 +460,25 @@ impl WasmtimeRuntime {
                         "Argument count mismatch for '{}': expected {} but got {}",
                         function_name,
                         param_types.len(),
+=======
+                    })?
+                };
+
+                let func_ty = func.ty(&store);
+                let param_count = func_ty.params().count();
+                let result_count = func_ty.results().count();
+
+                if args.len() != param_count {
+                    return Err(anyhow::anyhow!(
+                        "Argument count mismatch for '{}': expected {} but got {}",
+                        function_name,
+                        param_count,
+>>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
                         args.len()
                     ));
                 }
 
+<<<<<<< HEAD
                 let wasm_args: Vec<component::Val> = args
                     .iter()
                     .zip(param_types.iter())
@@ -416,6 +492,10 @@ impl WasmtimeRuntime {
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
+=======
+                let wasm_args: Vec<component::Val> =
+                    args.iter().map(|&v| component::Val::U64(v)).collect();
+>>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
 
                 let mut results: Vec<component::Val> = (0..result_count)
                     .map(|_| component::Val::Bool(false))
@@ -426,6 +506,7 @@ impl WasmtimeRuntime {
                         anyhow::anyhow!("Failed to call export '{}': {e}", function_name)
                     })?;
 
+<<<<<<< HEAD
                 let result_string = results
                     .first()
                     .and_then(|v| wasm_wave::to_string(v).ok())
@@ -437,6 +518,31 @@ impl WasmtimeRuntime {
                 );
 
                 Ok(result_string.into_bytes())
+=======
+                let result_bytes = match results.first() {
+                    Some(component::Val::List(items)) => items
+                        .iter()
+                        .map(|v| match v {
+                            component::Val::U8(b) => *b,
+                            _ => 0u8,
+                        })
+                        .collect(),
+                    Some(component::Val::U64(v)) => v.to_le_bytes().to_vec(),
+                    Some(component::Val::U32(v)) => v.to_le_bytes().to_vec(),
+                    Some(component::Val::S64(v)) => v.to_le_bytes().to_vec(),
+                    Some(component::Val::S32(v)) => v.to_le_bytes().to_vec(),
+                    _ => Vec::new(),
+                };
+
+                info!(
+                    "Export '{}' for task {} completed, result: {} bytes",
+                    function_name,
+                    task_id,
+                    result_bytes.len()
+                );
+
+                Ok(result_bytes)
+>>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
             })
             .await;
 
