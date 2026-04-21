@@ -380,15 +380,13 @@ impl WasmtimeRuntime {
         let _ = wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
 
-<<<<<<< HEAD
-=======
         if self.hal_enabled {
             let provider = Arc::new(HalProvider::with_defaults());
             hal_component_linker::add_to_linker(&mut linker, provider)
                 .context("Failed to add elastic:hal interfaces to component linker")?;
         }
 
->>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
+
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
         let function_name = config.function_name.clone();
@@ -406,11 +404,6 @@ impl WasmtimeRuntime {
                     }
                 };
 
-<<<<<<< HEAD
-                let func = instance
-                    .get_func(&mut store, &function_name)
-                    .ok_or_else(|| {
-=======
                 let func = if let Some(f) = instance.get_func(&mut store, &function_name) {
                     f
                 } else {
@@ -442,14 +435,13 @@ impl WasmtimeRuntime {
                         }
                     }
                     found.ok_or_else(|| {
->>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
                         anyhow::anyhow!(
                             "Export '{}' not found in component for task {}",
                             function_name,
                             task_id
                         )
-<<<<<<< HEAD
-                    })?;
+                    })?
+                };
 
                 let func_ty = func.ty(&store);
                 let param_types: Vec<_> = func_ty.params().collect();
@@ -460,25 +452,10 @@ impl WasmtimeRuntime {
                         "Argument count mismatch for '{}': expected {} but got {}",
                         function_name,
                         param_types.len(),
-=======
-                    })?
-                };
-
-                let func_ty = func.ty(&store);
-                let param_count = func_ty.params().count();
-                let result_count = func_ty.results().count();
-
-                if args.len() != param_count {
-                    return Err(anyhow::anyhow!(
-                        "Argument count mismatch for '{}': expected {} but got {}",
-                        function_name,
-                        param_count,
->>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
                         args.len()
                     ));
                 }
 
-<<<<<<< HEAD
                 let wasm_args: Vec<component::Val> = args
                     .iter()
                     .zip(param_types.iter())
@@ -492,10 +469,6 @@ impl WasmtimeRuntime {
                         })
                     })
                     .collect::<Result<Vec<_>>>()?;
-=======
-                let wasm_args: Vec<component::Val> =
-                    args.iter().map(|&v| component::Val::U64(v)).collect();
->>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
 
                 let mut results: Vec<component::Val> = (0..result_count)
                     .map(|_| component::Val::Bool(false))
@@ -506,19 +479,6 @@ impl WasmtimeRuntime {
                         anyhow::anyhow!("Failed to call export '{}': {e}", function_name)
                     })?;
 
-<<<<<<< HEAD
-                let result_string = results
-                    .first()
-                    .and_then(|v| wasm_wave::to_string(v).ok())
-                    .unwrap_or_default();
-
-                info!(
-                    "Export '{}' for task {} completed, result: {}",
-                    function_name, task_id, result_string
-                );
-
-                Ok(result_string.into_bytes())
-=======
                 let result_bytes = match results.first() {
                     Some(component::Val::List(items)) => items
                         .iter()
@@ -542,7 +502,6 @@ impl WasmtimeRuntime {
                 );
 
                 Ok(result_bytes)
->>>>>>> 8048a31 (feat(proplet): add component model linker for elastic:hal interfaces)
             })
             .await;
 
