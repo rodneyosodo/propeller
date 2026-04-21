@@ -195,7 +195,12 @@ func (a *postgresPropletAdapter) Delete(ctx context.Context, id string) error {
 }
 
 func (a *postgresPropletAdapter) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
-	return a.repo.GetAliveHistory(ctx, id, offset, limit)
+	history, total, err := a.repo.GetAliveHistory(ctx, id, offset, limit)
+	if errors.Is(err, postgres.ErrPropletNotFound) {
+		return nil, 0, ErrPropletNotFound
+	}
+
+	return history, total, err
 }
 
 type postgresTaskPropletAdapter struct {
@@ -342,7 +347,12 @@ func (a *sqlitePropletAdapter) Delete(ctx context.Context, id string) error {
 }
 
 func (a *sqlitePropletAdapter) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
-	return a.repo.GetAliveHistory(ctx, id, offset, limit)
+	history, total, err := a.repo.GetAliveHistory(ctx, id, offset, limit)
+	if errors.Is(err, sqlite.ErrPropletNotFound) {
+		return nil, 0, ErrPropletNotFound
+	}
+
+	return history, total, err
 }
 
 type sqliteTaskPropletAdapter struct {
@@ -489,7 +499,12 @@ func (a *badgerPropletAdapter) Delete(ctx context.Context, id string) error {
 }
 
 func (a *badgerPropletAdapter) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
-	return a.repo.GetAliveHistory(ctx, id, offset, limit)
+	history, total, err := a.repo.GetAliveHistory(ctx, id, offset, limit)
+	if errors.Is(err, badger.ErrPropletNotFound) {
+		return nil, 0, ErrPropletNotFound
+	}
+
+	return history, total, err
 }
 
 type badgerTaskPropletAdapter struct {
