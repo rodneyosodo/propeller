@@ -277,12 +277,6 @@ impl WasmtimeRuntime {
         let _ = wasmtime_wasi_http::add_only_http_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add wasi:http to component linker: {e}"));
 
-        if self.hal_enabled {
-            let provider = Arc::new(HalProvider::with_defaults());
-            hal_component_linker::add_to_linker(&mut linker, provider)
-                .context("Failed to add elastic:hal interfaces to component linker")?;
-        }
-
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
         let tasks = self.tasks.clone();
