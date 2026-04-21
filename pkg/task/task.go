@@ -120,6 +120,7 @@ type Task struct {
 	IsRecurring       bool                       `json:"is_recurring,omitempty"`
 	Timezone          string                     `json:"timezone,omitempty"`
 	Priority          int                        `json:"priority,omitempty"`
+	Broadcast         bool                       `json:"broadcast"`
 }
 
 type TaskPage struct {
