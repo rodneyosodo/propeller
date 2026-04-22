@@ -1296,7 +1296,7 @@ async fn fetch_wasm_from_http(client: &HttpClient, url: &str) -> Result<Vec<u8>>
         binary.extend_from_slice(&chunk);
     }
 
-    info!("Fetched wasm from {}, size: {} bytes", url, binary.len());
+    debug!("Fetched wasm from {}, size: {} bytes", url, binary.len());
     Ok(binary)
 }
 
