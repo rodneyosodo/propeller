@@ -1312,46 +1312,104 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_fetch_wasm_200_ok() {
-        let server = MockServer::start().await;
-        let wasm_bytes = b"\x00asm\x01\x00\x00\x00";
+    async fn test_fetch_wasm_from_http() {
+        let wasm = b"\x00asm\x01\x00\x00\x00".to_vec();
 
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(wasm_bytes.to_vec()))
-            .mount(&server)
-            .await;
+        struct Case {
+            desc: &'static str,
+            status: u16,
+            content_type: Option<&'static str>,
+            body: Vec<u8>,
+            expect_ok: bool,
+            expect_err_contains: Option<&'static str>,
+        }
 
-        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), wasm_bytes);
-    }
+        let cases = vec![
+            Case {
+                desc: "200 with no content-type succeeds",
+                status: 200,
+                content_type: None,
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+            Case {
+                desc: "200 with application/wasm content-type succeeds",
+                status: 200,
+                content_type: Some("application/wasm"),
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+            Case {
+                desc: "200 with application/octet-stream content-type succeeds",
+                status: 200,
+                content_type: Some("application/octet-stream"),
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+            Case {
+                desc: "200 with text/html content-type is rejected",
+                status: 200,
+                content_type: Some("text/html; charset=utf-8"),
+                body: b"<html>error page</html>".to_vec(),
+                expect_ok: false,
+                expect_err_contains: Some("content type"),
+            },
+            Case {
+                desc: "404 not found is rejected",
+                status: 404,
+                content_type: None,
+                body: vec![],
+                expect_ok: false,
+                expect_err_contains: Some("404"),
+            },
+            Case {
+                desc: "500 server error is rejected",
+                status: 500,
+                content_type: None,
+                body: vec![],
+                expect_ok: false,
+                expect_err_contains: Some("500"),
+            },
+            Case {
+                desc: "chunked encoding without content-length succeeds",
+                status: 200,
+                content_type: None,
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+        ];
 
-    #[tokio::test]
-    async fn test_fetch_wasm_404() {
-        let server = MockServer::start().await;
+        for c in &cases {
+            let server = MockServer::start().await;
+            let mut template = ResponseTemplate::new(c.status).set_body_bytes(c.body.clone());
+            if let Some(ct) = c.content_type {
+                template = template.insert_header("Content-Type", ct);
+            }
+            Mock::given(method("GET"))
+                .respond_with(template)
+                .mount(&server)
+                .await;
 
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(404))
-            .mount(&server)
-            .await;
-
-        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("404"));
-    }
-
-    #[tokio::test]
-    async fn test_fetch_wasm_500() {
-        let server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(500))
-            .mount(&server)
-            .await;
-
-        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("500"));
+            let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
+            if c.expect_ok {
+                assert!(result.is_ok(), "case '{}': expected ok", c.desc);
+                assert_eq!(result.unwrap(), c.body, "case '{}': body mismatch", c.desc);
+            } else {
+                assert!(result.is_err(), "case '{}': expected error", c.desc);
+                if let Some(msg) = c.expect_err_contains {
+                    assert!(
+                        result.unwrap_err().to_string().contains(msg),
+                        "case '{}': error should contain '{}'",
+                        c.desc,
+                        msg
+                    );
+                }
+            }
+        }
     }
 
     #[tokio::test]
@@ -1367,39 +1425,5 @@ mod tests {
         let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("size limit"));
-    }
-
-    #[tokio::test]
-    async fn test_fetch_wasm_rejects_wrong_content_type() {
-        let server = MockServer::start().await;
-
-        Mock::given(method("GET"))
-            .respond_with(
-                ResponseTemplate::new(200)
-                    .insert_header("Content-Type", "text/html; charset=utf-8")
-                    .set_body_bytes(b"<html>error page</html>".to_vec()),
-            )
-            .mount(&server)
-            .await;
-
-        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
-        assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("content type"));
-    }
-
-    #[tokio::test]
-    async fn test_fetch_wasm_chunked_no_content_length() {
-        // Validates streaming accumulation when server omits Content-Length (chunked encoding)
-        let server = MockServer::start().await;
-        let wasm_bytes = b"\x00asm\x01\x00\x00\x00";
-
-        Mock::given(method("GET"))
-            .respond_with(ResponseTemplate::new(200).set_body_bytes(wasm_bytes.to_vec()))
-            .mount(&server)
-            .await;
-
-        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), wasm_bytes.as_slice());
     }
 }
