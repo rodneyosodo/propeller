@@ -40,7 +40,6 @@ func (r *roundRobin) SelectProplet(t task.Task, proplets []proplet.Proplet) (pro
 	if !p.Alive {
 		return r.SelectProplet(t, proplets)
 	}
-	p.TaskCount += 1
 
 	return p, nil
 }

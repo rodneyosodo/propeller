@@ -343,29 +343,6 @@ func (svc *service) GetJob(ctx context.Context, jobID string) ([]task.Task, erro
 }
 
 func (svc *service) ListJobs(ctx context.Context, offset, limit uint64) (JobPage, error) {
-	jobs := make([]JobSummary, 0)
-	seen := make(map[string]struct{})
-
-	if svc.jobRepo != nil {
-		storedJobs, err := svc.listAllStoredJobs(ctx)
-		if err != nil {
-			return JobPage{}, err
-		}
-
-		jobs = make([]JobSummary, 0, len(storedJobs))
-		for _, sj := range storedJobs {
-			tasks, err := svc.taskRepo.ListByJobID(ctx, sj.ID)
-			if err != nil {
-				return JobPage{}, err
-			}
-
-			summary := computeJobSummary(sj.ID, tasks)
-			summary.Name = sj.Name
-			jobs = append(jobs, summary)
-			seen[sj.ID] = struct{}{}
-		}
-	}
-
 	allTasks, err := svc.listAllTasks(ctx)
 	if err != nil {
 		return JobPage{}, err
@@ -375,6 +352,23 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64) (JobPage
 	for i := range allTasks {
 		if allTasks[i].JobID != "" {
 			jobMap[allTasks[i].JobID] = append(jobMap[allTasks[i].JobID], allTasks[i])
+		}
+	}
+
+	jobs := make([]JobSummary, 0, len(jobMap))
+	seen := make(map[string]struct{})
+	if svc.jobRepo != nil {
+		storedJobs, err := svc.listAllStoredJobs(ctx)
+		if err != nil {
+			return JobPage{}, err
+		}
+
+		for _, sj := range storedJobs {
+			tasks := jobMap[sj.ID]
+			summary := computeJobSummary(sj.ID, tasks)
+			summary.Name = sj.Name
+			jobs = append(jobs, summary)
+			seen[sj.ID] = struct{}{}
 		}
 	}
 
