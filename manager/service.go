@@ -432,10 +432,6 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64, status s
 	})
 
 	if status != "" {
-		// ComputeJobState only ever returns Pending, Running, Completed, or Failed.
-		// Skipped and Interrupted task states are collapsed: Interrupted → Failed,
-		// Scheduled → Running, all-Skipped → Completed. No job summary can carry
-		// any other state, so the map below is exhaustive.
 		statusStateMap := map[string]task.State{
 			JobStatusPending:   task.Pending,
 			JobStatusRunning:   task.Running,

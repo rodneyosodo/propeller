@@ -268,57 +268,114 @@ func TestComputeJobState(t *testing.T) {
 
 func TestListJobsFilterByStatus(t *testing.T) {
 	t.Parallel()
-	svc := newService(t)
-	_, _, err := svc.CreateJob(context.Background(), "pending-job", []task.Task{
-		{Name: "p1", State: task.Pending},
-	}, "parallel")
-	require.NoError(t, err)
 
-	_, _, err = svc.CreateJob(context.Background(), "running-job", []task.Task{
-		{Name: "r1", State: task.Running},
-	}, "parallel")
-	require.NoError(t, err)
+	cases := []struct {
+		desc          string
+		status        string
+		expectedTotal uint64
+		expectedState task.State
+		err           bool
+	}{
+		{
+			desc:          "list all jobs without filter",
+			status:        "",
+			expectedTotal: 4,
+		},
+		{
+			desc:          "filter by pending",
+			status:        manager.JobStatusPending,
+			expectedTotal: 1,
+			expectedState: task.Pending,
+		},
+		{
+			desc:          "filter by running",
+			status:        manager.JobStatusRunning,
+			expectedTotal: 1,
+			expectedState: task.Running,
+		},
+		{
+			desc:          "filter by completed",
+			status:        manager.JobStatusCompleted,
+			expectedTotal: 1,
+			expectedState: task.Completed,
+		},
+		{
+			desc:          "filter by failed",
+			status:        manager.JobStatusFailed,
+			expectedTotal: 1,
+			expectedState: task.Failed,
+		},
+		{
+			desc:   "invalid status returns error",
+			status: "invalid",
+			err:    true,
+		},
+	}
 
-	_, _, err = svc.CreateJob(context.Background(), "completed-job", []task.Task{
-		{Name: "c1", State: task.Completed},
-	}, "parallel")
-	require.NoError(t, err)
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			svc := newService(t)
+			ctx := context.Background()
 
-	_, _, err = svc.CreateJob(context.Background(), "failed-job", []task.Task{
-		{Name: "f1", State: task.Failed},
-	}, "parallel")
-	require.NoError(t, err)
+			if !tc.err {
+				for _, s := range []task.State{task.Pending, task.Running, task.Completed, task.Failed} {
+					_, _, err := svc.CreateJob(ctx, "job", []task.Task{{Name: "t", State: s}}, "parallel")
+					require.NoError(t, err)
+				}
+			}
 
-	all, err := svc.ListJobs(context.Background(), 0, 100, "")
-	require.NoError(t, err)
-	assert.Equal(t, uint64(4), all.Total)
+			page, err := svc.ListJobs(ctx, 0, 100, tc.status)
+			if tc.err {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), "invalid value provided")
 
-	page, err := svc.ListJobs(context.Background(), 0, 100, "pending")
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1), page.Total)
-	assert.Equal(t, task.Pending, page.Jobs[0].State)
-
-	page, err = svc.ListJobs(context.Background(), 0, 100, "running")
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1), page.Total)
-	assert.Equal(t, task.Running, page.Jobs[0].State)
-
-	page, err = svc.ListJobs(context.Background(), 0, 100, "completed")
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1), page.Total)
-	assert.Equal(t, task.Completed, page.Jobs[0].State)
-
-	page, err = svc.ListJobs(context.Background(), 0, 100, "failed")
-	require.NoError(t, err)
-	assert.Equal(t, uint64(1), page.Total)
-	assert.Equal(t, task.Failed, page.Jobs[0].State)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.expectedTotal, page.Total)
+			if tc.status != "" && len(page.Jobs) > 0 {
+				assert.Equal(t, tc.expectedState, page.Jobs[0].State)
+			}
+		})
+	}
 }
 
-func TestListJobsInvalidStatusFilter(t *testing.T) {
+func TestListJobsStateMapping(t *testing.T) {
 	t.Parallel()
-	svc := newService(t)
 
-	_, err := svc.ListJobs(context.Background(), 0, 100, "invalid")
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "invalid value provided")
+	cases := []struct {
+		desc          string
+		taskState     task.State
+		filterStatus  string
+		expectedTotal uint64
+	}{
+		{
+			desc:          "interrupted task maps to failed",
+			taskState:     task.Interrupted,
+			filterStatus:  manager.JobStatusFailed,
+			expectedTotal: 1,
+		},
+		{
+			desc:          "scheduled task maps to running",
+			taskState:     task.Scheduled,
+			filterStatus:  manager.JobStatusRunning,
+			expectedTotal: 1,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+			svc := newService(t)
+			ctx := context.Background()
+
+			_, _, err := svc.CreateJob(ctx, "job", []task.Task{{Name: "t", State: tc.taskState}}, "parallel")
+			require.NoError(t, err)
+
+			page, err := svc.ListJobs(ctx, 0, 100, tc.filterStatus)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expectedTotal, page.Total)
+		})
+	}
 }
