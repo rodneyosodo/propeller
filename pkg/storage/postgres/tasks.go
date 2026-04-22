@@ -52,7 +52,7 @@ const taskColumns = `id, name, state, image_url, file, cli_args, inputs, env, da
 
 func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 	query := `INSERT INTO tasks (` + taskColumns + `)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26)`
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
 	if err != nil {

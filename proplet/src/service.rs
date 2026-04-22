@@ -1,6 +1,4 @@
 use crate::config::PropletConfig;
-
-const WASM_FETCH_MAX_BYTES: usize = 100 * 1024 * 1024;
 use crate::metrics::MetricsCollector;
 use crate::monitoring::{system::SystemMonitor, ProcessMonitor};
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
@@ -8,7 +6,6 @@ use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 use crate::types::*;
 use anyhow::{Context, Result};
 use reqwest::Client as HttpClient;
-
 use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::SystemTime;
@@ -16,6 +13,8 @@ use sysinfo::System;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
+
+const WASM_FETCH_MAX_BYTES: usize = 100 * 1024 * 1024;
 
 #[derive(Debug)]
 struct ChunkAssemblyState {
