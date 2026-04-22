@@ -703,6 +703,7 @@ func (svc *service) StopTask(ctx context.Context, taskID string) error {
 		if err := svc.pubsub.Publish(ctx, topic, stopPayload); err != nil {
 			return err
 		}
+
 		return nil
 	}
 
