@@ -14,7 +14,7 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
-const WASM_FETCH_MAX_BYTES: usize = 100 * 1024 * 1024;
+const WASM_FETCH_MAX_BYTES: usize = 100 * 1024 * 1024; // 100MB
 
 #[derive(Debug)]
 struct ChunkAssemblyState {
