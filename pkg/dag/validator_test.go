@@ -236,6 +236,21 @@ func TestGetReadyTasks_FailedDependencyUnblocks(t *testing.T) {
 	}
 }
 
+func TestTopologicalSort_MissingDependency(t *testing.T) {
+	t.Parallel()
+	tasks := []task.Task{
+		{ID: "task1", DependsOn: []string{"nonexistent"}},
+	}
+
+	_, err := dag.TopologicalSort(tasks)
+	if err == nil {
+		t.Fatal("Expected error for missing dependency, got nil")
+	}
+	if !errors.Is(err, dag.ErrMissingDependency) {
+		t.Fatalf("Expected ErrMissingDependency, got: %v", err)
+	}
+}
+
 func TestTopologicalSort_SelfCycle(t *testing.T) {
 	t.Parallel()
 	tasks := []task.Task{

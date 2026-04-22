@@ -87,6 +87,10 @@ func ValidateDependenciesExist(tasks []task.Task) error {
 }
 
 func TopologicalSort(tasks []task.Task) ([]task.Task, error) {
+	if err := ValidateDependenciesExist(tasks); err != nil {
+		return nil, err
+	}
+
 	if err := ValidateDAG(tasks); err != nil {
 		return nil, err
 	}
