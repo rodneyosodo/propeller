@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/absmach/supermq/pkg/errors"
-	smqSDK "github.com/absmach/supermq/pkg/sdk"
+	"github.com/absmach/magistrala/pkg/errors"
+	smqSDK "github.com/absmach/magistrala/pkg/sdk"
 	"github.com/charmbracelet/huh"
 	toml "github.com/pelletier/go-toml"
 	"github.com/spf13/cobra"
@@ -19,7 +19,7 @@ var addPropletsCmd = &cobra.Command{
 	Long: `Add more proplets to an existing Propeller deployment without re-provisioning from scratch.
 
 Reads domain_id, channel_id, and the current proplet count from the existing config file,
-then creates new SuperMQ clients and appends their credentials to that file.
+then creates new Magistrala clients and appends their credentials to that file.
 
 Example:
   propeller-cli provision add-proplets

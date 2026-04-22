@@ -21,10 +21,10 @@ Set these before running the script:
 
 | Variable               | Description                     | Default                |
 | ---------------------- | ------------------------------- | ---------------------- |
-| `PROPLET_DOMAIN_ID`    | SuperMQ domain ID               |                        |
-| `PROPLET_CLIENT_ID`    | SuperMQ client ID               |                        |
-| `PROPLET_CLIENT_KEY`   | SuperMQ client key              |                        |
-| `PROPLET_CHANNEL_ID`   | SuperMQ channel ID              |                        |
+| `PROPLET_DOMAIN_ID`    | Magistrala domain ID            |                        |
+| `PROPLET_CLIENT_ID`    | Magistrala client ID            |                        |
+| `PROPLET_CLIENT_KEY`   | Magistrala client key           |                        |
+| `PROPLET_CHANNEL_ID`   | Magistrala channel ID           |                        |
 | `PROPLET_MQTT_ADDRESS` | MQTT broker address             | `tcp://localhost:1883` |
 | `KBS_URL`              | Key Broker Service URL          | `http://10.0.2.2:8082` |
 | `ENABLE_CVM`           | `auto`, `tdx`, `sev`, or `none` | `auto`                 |

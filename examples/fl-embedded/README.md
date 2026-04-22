@@ -14,7 +14,7 @@ The embedded proplet provides host functions that allow WASM modules to access F
 
 - TinyGo installed (for WASM compilation)
 - Go 1.21+
-- SuperMQ infrastructure running (see main `docker/compose.yaml`)
+- Magistrala infrastructure running (see main `docker/compose.yaml`)
 
 ## Building
 
@@ -67,7 +67,7 @@ curl -X POST http://localhost:7070/tasks/fl-task-embedded-1/start
 
 ## Workflow
 
-1. **Manager** creates task and publishes to SuperMQ MQTT topic: `m/{domain}/c/{channel}/control/manager/start`
+1. **Manager** creates task and publishes to Magistrala MQTT topic: `m/{domain}/c/{channel}/control/manager/start`
 
 2. **Embedded Proplet** receives start command:
    - Detects FL task via `ROUND_ID` environment variable
@@ -84,7 +84,7 @@ curl -X POST http://localhost:7070/tasks/fl-task-embedded-1/start
 
 4. **Update Submission**:
    - Proplet captures stdout (JSON update)
-   - Proplet publishes to SuperMQ MQTT: `fl/rounds/{round_id}/updates/{proplet_id}`
+   - Proplet publishes to Magistrala MQTT: `fl/rounds/{round_id}/updates/{proplet_id}`
 
 5. **Coordinator** receives update and aggregates
 
@@ -103,7 +103,7 @@ The embedded proplet logs will show:
 
 ### Monitor MQTT Topic
 
-Subscribe to the FL updates topic (connects to SuperMQ MQTT adapter):
+Subscribe to the FL updates topic (connects to Magistrala MQTT adapter):
 
 ```bash
 mosquitto_sub -h localhost -p 1883 -t "fl/rounds/round-1/updates/+"
@@ -112,5 +112,5 @@ mosquitto_sub -h localhost -p 1883 -t "fl/rounds/round-1/updates/+"
 ## Differences from Rust Proplet
 
 1. **Host Functions**: Embedded proplet uses host functions instead of environment variables
-2. **Update Submission**: Embedded proplet uses MQTT directly (via SuperMQ)
+2. **Update Submission**: Embedded proplet uses MQTT directly (via Magistrala)
 3. **Data Fetching**: Both use HTTP GET, but embedded has MQTT fallback for models

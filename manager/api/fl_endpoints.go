@@ -11,7 +11,7 @@ import (
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/pkg/api"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
-	apiutil "github.com/absmach/supermq/api/http/util"
+	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-kit/kit/endpoint"
 )

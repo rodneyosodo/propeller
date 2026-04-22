@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/0x6flab/namegenerator"
-	"github.com/absmach/supermq/pkg/errors"
-	smqSDK "github.com/absmach/supermq/pkg/sdk"
+	"github.com/absmach/magistrala/pkg/errors"
+	smqSDK "github.com/absmach/magistrala/pkg/sdk"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
@@ -27,7 +27,7 @@ var (
 
 const filePermission = 0o600
 
-func SetSuperMQSDK(sdk smqSDK.SDK) {
+func SetMagistralaSDK(sdk smqSDK.SDK) {
 	smqsdk = sdk
 }
 
@@ -217,7 +217,7 @@ var provisionCmd = &cobra.Command{
 		}
 
 		var configContent strings.Builder
-		fmt.Fprintf(&configContent, `# SuperMQ Configuration
+		fmt.Fprintf(&configContent, `# Magistrala Configuration
 
 [manager]
 domain_id = "%s"

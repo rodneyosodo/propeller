@@ -6,7 +6,7 @@ import (
 	"github.com/absmach/propeller/pkg/cron"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/task"
-	apiutil "github.com/absmach/supermq/api/http/util"
+	apiutil "github.com/absmach/magistrala/api/http/util"
 )
 
 type taskReq struct {

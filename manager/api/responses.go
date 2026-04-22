@@ -6,22 +6,22 @@ import (
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
-	"github.com/absmach/supermq"
+	"github.com/absmach/magistrala"
 )
 
 var (
-	_ supermq.Response = (*propletResponse)(nil)
-	_ supermq.Response = (*listpropletResponse)(nil)
-	_ supermq.Response = (*propletAliveHistoryResponse)(nil)
-	_ supermq.Response = (*taskResponse)(nil)
-	_ supermq.Response = (*listTaskResponse)(nil)
-	_ supermq.Response = (*messageResponse)(nil)
-	_ supermq.Response = (*taskMetricsResponse)(nil)
-	_ supermq.Response = (*propletMetricsResponse)(nil)
-	_ supermq.Response = (*workflowResponse)(nil)
-	_ supermq.Response = (*taskResultsResponse)(nil)
-	_ supermq.Response = (*jobResponse)(nil)
-	_ supermq.Response = (*listJobResponse)(nil)
+	_ magistrala.Response = (*propletResponse)(nil)
+	_ magistrala.Response = (*listpropletResponse)(nil)
+	_ magistrala.Response = (*propletAliveHistoryResponse)(nil)
+	_ magistrala.Response = (*taskResponse)(nil)
+	_ magistrala.Response = (*listTaskResponse)(nil)
+	_ magistrala.Response = (*messageResponse)(nil)
+	_ magistrala.Response = (*taskMetricsResponse)(nil)
+	_ magistrala.Response = (*propletMetricsResponse)(nil)
+	_ magistrala.Response = (*workflowResponse)(nil)
+	_ magistrala.Response = (*taskResultsResponse)(nil)
+	_ magistrala.Response = (*jobResponse)(nil)
+	_ magistrala.Response = (*listJobResponse)(nil)
 )
 
 type propletResponse struct {
