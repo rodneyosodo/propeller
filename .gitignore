@@ -23,3 +23,10 @@ examples/ml-wasm/mymodel.wasm
 *.env.bak
 *.bak
 .env.*.bak
+
+
+# Ignore Openbao data directory as it contains runtime-generated data
+docker/addons/certs/openbao/
+
+# Ignore SeaweedFS data directory as it contains runtime-generated data
+docker/data/*
