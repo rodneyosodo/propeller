@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/absmach/propeller/pkg/cron"
@@ -28,6 +29,7 @@ type cronScheduler struct {
 	logger        *slog.Logger
 	checkInterval time.Duration
 	stopChan      chan struct{}
+	stopOnce      sync.Once
 }
 
 func NewCronScheduler(tasksDB storage.TaskRepository, service Service, logger *slog.Logger) CronScheduler {
@@ -69,7 +71,7 @@ func (cs *cronScheduler) Start(ctx context.Context) error {
 }
 
 func (cs *cronScheduler) Stop() {
-	close(cs.stopChan)
+	cs.stopOnce.Do(func() { close(cs.stopChan) })
 }
 
 func (cs *cronScheduler) ScheduleTask(ctx context.Context, taskID string) error {

@@ -25,7 +25,7 @@ var (
 	fileName = "config.toml"
 )
 
-const filePermission = 0o644
+const filePermission = 0o600
 
 func SetSuperMQSDK(sdk smqSDK.SDK) {
 	smqsdk = sdk

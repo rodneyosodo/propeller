@@ -30,16 +30,12 @@ func (r *roundRobin) SelectProplet(t task.Task, proplets []proplet.Proplet) (pro
 		return proplet.Proplet{}, ErrDeadProplers
 	}
 
-	if len(proplets) == 1 {
-		return proplets[0], nil
+	for i := 0; i < len(proplets); i++ {
+		r.LastProplet = (r.LastProplet + 1) % len(proplets)
+		if proplets[r.LastProplet].Alive {
+			return proplets[r.LastProplet], nil
+		}
 	}
 
-	r.LastProplet = (r.LastProplet + 1) % len(proplets)
-
-	p := proplets[r.LastProplet]
-	if !p.Alive {
-		return r.SelectProplet(t, proplets)
-	}
-
-	return p, nil
+	return proplet.Proplet{}, ErrDeadProplers
 }
