@@ -32,6 +32,7 @@ type Service interface {
 
 	GetTaskMetrics(ctx context.Context, taskID string, offset, limit uint64) (TaskMetricsPage, error)
 	GetPropletMetrics(ctx context.Context, propletID string, offset, limit uint64) (PropletMetricsPage, error)
+	GetPropletAliveHistory(ctx context.Context, propletID string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error)
 
 	// Orchestrator/Experiment Config API (Manager acts as Orchestrator per diagram)
 	// Step 1: Configure experiment with FL Coordinator

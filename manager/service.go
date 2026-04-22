@@ -105,6 +105,10 @@ func NewService(
 func (svc *service) GetProplet(ctx context.Context, propletID string) (proplet.Proplet, error) {
 	w, err := svc.propletRepo.Get(ctx, propletID)
 	if err != nil {
+		if errors.Is(err, storage.ErrPropletNotFound) {
+			return proplet.Proplet{}, pkgerrors.ErrNotFound
+		}
+
 		return proplet.Proplet{}, err
 	}
 	w.SetAlive()
@@ -139,7 +143,7 @@ func (svc *service) SelectProplet(ctx context.Context, t task.Task) (proplet.Pro
 }
 
 func (svc *service) DeleteProplet(ctx context.Context, propletID string) error {
-	p, err := svc.propletRepo.Get(ctx, propletID)
+	p, err := svc.GetProplet(ctx, propletID)
 	if err != nil {
 		return err
 	}
@@ -816,6 +820,24 @@ func (svc *service) GetPropletMetrics(ctx context.Context, propletID string, off
 	}, nil
 }
 
+func (svc *service) GetPropletAliveHistory(ctx context.Context, propletID string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error) {
+	history, total, err := svc.propletRepo.GetAliveHistory(ctx, propletID, offset, limit)
+	if err != nil {
+		if errors.Is(err, storage.ErrPropletNotFound) {
+			return proplet.PropletAliveHistoryPage{}, pkgerrors.ErrNotFound
+		}
+
+		return proplet.PropletAliveHistoryPage{}, err
+	}
+
+	return proplet.PropletAliveHistoryPage{
+		Offset:  offset,
+		Limit:   limit,
+		Total:   total,
+		History: history,
+	}, nil
+}
+
 func (svc *service) GetTaskResults(ctx context.Context, taskID string) (any, error) {
 	t, err := svc.GetTask(ctx, taskID)
 	if err != nil {
@@ -1142,7 +1164,7 @@ func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]an
 	}
 
 	p, err := svc.GetProplet(ctx, propletID)
-	if errors.Is(err, pkgerrors.ErrNotFound) || errors.Is(err, storage.ErrPropletNotFound) {
+	if errors.Is(err, pkgerrors.ErrNotFound) {
 		return svc.createPropletHandler(ctx, msg)
 	}
 	if err != nil {

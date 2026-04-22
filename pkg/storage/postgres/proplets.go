@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/absmach/propeller/pkg/proplet"
 )
@@ -127,6 +128,22 @@ func (r *propletRepo) Delete(ctx context.Context, id string) error {
 	}
 
 	return nil
+}
+
+func (r *propletRepo) GetAliveHistory(ctx context.Context, id string, offset, limit uint64) ([]time.Time, uint64, error) {
+	p, err := r.Get(ctx, id)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	total := uint64(len(p.AliveHistory))
+	if offset >= total {
+		return []time.Time{}, total, nil
+	}
+
+	end := min(offset+limit, total)
+
+	return p.AliveHistory[offset:end], total, nil
 }
 
 func (r *propletRepo) toProplet(dbp dbProplet) (proplet.Proplet, error) {

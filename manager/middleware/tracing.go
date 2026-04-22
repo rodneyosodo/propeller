@@ -52,6 +52,17 @@ func (tm *tracing) SelectProplet(ctx context.Context, t task.Task) (resp proplet
 	return tm.svc.SelectProplet(ctx, t)
 }
 
+func (tm *tracing) GetPropletAliveHistory(ctx context.Context, propletID string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error) {
+	ctx, span := tm.tracer.Start(ctx, "get-proplet-alive-history", trace.WithAttributes(
+		attribute.String("id", propletID),
+		attribute.Int64("offset", int64(offset)),
+		attribute.Int64("limit", int64(limit)),
+	))
+	defer span.End()
+
+	return tm.svc.GetPropletAliveHistory(ctx, propletID, offset, limit)
+}
+
 func (tm *tracing) DeleteProplet(ctx context.Context, id string) (err error) {
 	ctx, span := tm.tracer.Start(ctx, "delete-proplet", trace.WithAttributes(
 		attribute.String("id", id),
