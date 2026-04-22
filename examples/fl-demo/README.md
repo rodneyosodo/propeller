@@ -56,7 +56,7 @@ From the repository root:
 
 ```bash
 cd examples/fl-demo/client-wasm
-GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go
+GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go
 cd ../../..
 ```
 
@@ -502,7 +502,7 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 
 - Check proplet logs for "DEBUG:" messages to see if weights are being updated during training
 - Verify that datasets contain valid `x` and `y` values (see "Verifying Step 5: Dataset Loading")
-- Ensure the wasm client was rebuilt after code changes: `cd examples/fl-demo/client-wasm && GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go`
+- Ensure the wasm client was rebuilt after code changes: `cd examples/fl-demo/client-wasm && GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go`
 
 ## Verifying Step 5: Dataset Loading from Local Data Store
 
