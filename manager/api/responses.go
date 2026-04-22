@@ -3,10 +3,10 @@ package api
 import (
 	"net/http"
 
+	"github.com/absmach/magistrala"
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/task"
-	"github.com/absmach/magistrala"
 )
 
 var (
