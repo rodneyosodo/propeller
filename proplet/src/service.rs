@@ -1256,6 +1256,22 @@ async fn fetch_wasm_from_http(client: &HttpClient, url: &str) -> Result<Vec<u8>>
         ));
     }
 
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.is_empty()
+        && !content_type.contains("application/wasm")
+        && !content_type.contains("application/octet-stream")
+    {
+        return Err(anyhow::anyhow!(
+            "unexpected content type '{}' fetching wasm from {} (expected application/wasm or application/octet-stream)",
+            content_type,
+            url
+        ));
+    }
+
     if let Some(content_length) = response.content_length() {
         if content_length as usize > WASM_FETCH_MAX_BYTES {
             return Err(anyhow::anyhow!(
@@ -1271,14 +1287,14 @@ async fn fetch_wasm_from_http(client: &HttpClient, url: &str) -> Result<Vec<u8>>
     let mut stream = response.bytes_stream();
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.with_context(|| format!("Failed to read response body from {}", url))?;
-        binary.extend_from_slice(&chunk);
-        if binary.len() > WASM_FETCH_MAX_BYTES {
+        if binary.len() + chunk.len() > WASM_FETCH_MAX_BYTES {
             return Err(anyhow::anyhow!(
                 "wasm response from {} exceeds size limit ({} bytes)",
                 url,
                 WASM_FETCH_MAX_BYTES
             ));
         }
+        binary.extend_from_slice(&chunk);
     }
 
     info!("Fetched wasm from {}, size: {} bytes", url, binary.len());
@@ -1351,5 +1367,39 @@ mod tests {
         let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("size limit"));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_wasm_rejects_wrong_content_type() {
+        let server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("Content-Type", "text/html; charset=utf-8")
+                    .set_body_bytes(b"<html>error page</html>".to_vec()),
+            )
+            .mount(&server)
+            .await;
+
+        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("content type"));
+    }
+
+    #[tokio::test]
+    async fn test_fetch_wasm_chunked_no_content_length() {
+        // Validates streaming accumulation when server omits Content-Length (chunked encoding)
+        let server = MockServer::start().await;
+        let wasm_bytes = b"\x00asm\x01\x00\x00\x00";
+
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(wasm_bytes.to_vec()))
+            .mount(&server)
+            .await;
+
+        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), wasm_bytes.as_slice());
     }
 }
