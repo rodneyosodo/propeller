@@ -491,7 +491,8 @@ impl PropletService {
             if req.encrypted {
                 info!("Encrypted workload with image_url: {}", req.image_url);
                 Vec::new()
-            } else if req.image_url.starts_with("http://") || req.image_url.starts_with("https://") {
+            } else if req.image_url.starts_with("http://") || req.image_url.starts_with("https://")
+            {
                 match self.fetch_wasm_from_http(&req.image_url).await {
                     Ok(binary) => binary,
                     Err(e) => {
