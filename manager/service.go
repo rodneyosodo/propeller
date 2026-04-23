@@ -39,14 +39,6 @@ const (
 	ExecutionModeConfigurable = "configurable"
 	EnvJobExecutionMode       = "JOB_EXECUTION_MODE"
 	shutdownTaskStopWait      = 200 * time.Millisecond
-
-	PropletStatusActive   = "active"
-	PropletStatusInactive = "inactive"
-
-	JobStatusPending   = "pending"
-	JobStatusRunning   = "running"
-	JobStatusCompleted = "completed"
-	JobStatusFailed    = "failed"
 )
 
 var (
@@ -125,10 +117,6 @@ func (svc *service) GetProplet(ctx context.Context, propletID string) (proplet.P
 }
 
 func (svc *service) ListProplets(ctx context.Context, offset, limit uint64, status string) (proplet.PropletPage, error) {
-	if status != "" && status != PropletStatusActive && status != PropletStatusInactive {
-		return proplet.PropletPage{}, fmt.Errorf("%w: proplet status must be %q, %q, or empty, got %q", pkgerrors.ErrInvalidValue, PropletStatusActive, PropletStatusInactive, status)
-	}
-
 	if status == "" {
 		proplets, total, err := svc.propletRepo.List(ctx, offset, limit)
 		if err != nil {
@@ -146,7 +134,12 @@ func (svc *service) ListProplets(ctx context.Context, offset, limit uint64, stat
 		}, nil
 	}
 
-	alive := status == PropletStatusActive
+	st, err := proplet.ToStatus(status)
+	if err != nil {
+		return proplet.PropletPage{}, fmt.Errorf("%w: %w", pkgerrors.ErrInvalidValue, err)
+	}
+
+	alive := st == proplet.ActiveStatus
 	since := time.Now().Add(-proplet.AliveTimeout)
 	proplets, total, err := svc.propletRepo.ListByAlive(ctx, offset, limit, alive, since)
 	if err != nil {
@@ -378,11 +371,17 @@ func (svc *service) GetJob(ctx context.Context, jobID string) ([]task.Task, erro
 }
 
 func (svc *service) ListJobs(ctx context.Context, offset, limit uint64, status string) (JobPage, error) {
-	if status != "" && status != JobStatusPending && status != JobStatusRunning && status != JobStatusCompleted && status != JobStatusFailed {
-		return JobPage{}, fmt.Errorf("%w: job status must be %q, %q, %q, %q, or empty, got %q", pkgerrors.ErrInvalidValue, JobStatusPending, JobStatusRunning, JobStatusCompleted, JobStatusFailed, status)
+	var jobStatus task.JobStatus
+	if status != "" {
+		var err error
+		jobStatus, err = task.ToJobStatus(status)
+		if err != nil {
+			return JobPage{}, fmt.Errorf("%w: %w", pkgerrors.ErrInvalidValue, err)
+		}
 	}
 
-
+	// Job state is derived from the current task set rather than stored independently,
+	// so filtering has to happen after we aggregate tasks into job summaries in memory.
 	allTasks, err := svc.listAllTasks(ctx)
 	if err != nil {
 		return JobPage{}, err
@@ -432,13 +431,7 @@ func (svc *service) ListJobs(ctx context.Context, offset, limit uint64, status s
 	})
 
 	if status != "" {
-		statusStateMap := map[string]task.State{
-			JobStatusPending:   task.Pending,
-			JobStatusRunning:   task.Running,
-			JobStatusCompleted: task.Completed,
-			JobStatusFailed:    task.Failed,
-		}
-		targetState := statusStateMap[status]
+		targetState := jobStatus.State()
 		filtered := make([]JobSummary, 0, len(jobs))
 		for i := range jobs {
 			if jobs[i].State == targetState {

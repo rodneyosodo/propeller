@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/absmach/propeller/manager"
+	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/absmach/propeller/pkg/task"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
@@ -283,25 +284,25 @@ func TestListJobsFilterByStatus(t *testing.T) {
 		},
 		{
 			desc:          "filter by pending",
-			status:        manager.JobStatusPending,
+			status:        task.PendingStatus.String(),
 			expectedTotal: 1,
 			expectedState: task.Pending,
 		},
 		{
 			desc:          "filter by running",
-			status:        manager.JobStatusRunning,
+			status:        task.RunningStatus.String(),
 			expectedTotal: 1,
 			expectedState: task.Running,
 		},
 		{
 			desc:          "filter by completed",
-			status:        manager.JobStatusCompleted,
+			status:        task.CompletedStatus.String(),
 			expectedTotal: 1,
 			expectedState: task.Completed,
 		},
 		{
 			desc:          "filter by failed",
-			status:        manager.JobStatusFailed,
+			status:        task.FailedStatus.String(),
 			expectedTotal: 1,
 			expectedState: task.Failed,
 		},
@@ -328,7 +329,8 @@ func TestListJobsFilterByStatus(t *testing.T) {
 			page, err := svc.ListJobs(ctx, 0, 100, tc.status)
 			if tc.err {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "invalid value provided")
+				assert.ErrorIs(t, err, pkgerrors.ErrInvalidValue)
+				assert.ErrorIs(t, err, task.ErrInvalidJobStatus)
 
 				return
 			}
@@ -353,13 +355,13 @@ func TestListJobsStateMapping(t *testing.T) {
 		{
 			desc:          "interrupted task maps to failed",
 			taskState:     task.Interrupted,
-			filterStatus:  manager.JobStatusFailed,
+			filterStatus:  task.FailedStatus.String(),
 			expectedTotal: 1,
 		},
 		{
 			desc:          "scheduled task maps to running",
 			taskState:     task.Scheduled,
-			filterStatus:  manager.JobStatusRunning,
+			filterStatus:  task.RunningStatus.String(),
 			expectedTotal: 1,
 		},
 	}

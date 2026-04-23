@@ -1,8 +1,48 @@
 package proplet
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
-const AliveTimeout = 10 * time.Second
+var ErrInvalidStatus = errors.New("invalid proplet status")
+
+type Status uint8
+
+const (
+	ActiveStatus Status = iota
+	InactiveStatus
+)
+
+const (
+	AliveTimeout = 10 * time.Second
+
+	Active   = "active"
+	Inactive = "inactive"
+	Unknown  = "unknown"
+)
+
+func (s Status) String() string {
+	switch s {
+	case ActiveStatus:
+		return Active
+	case InactiveStatus:
+		return Inactive
+	default:
+		return Unknown
+	}
+}
+
+func ToStatus(status string) (Status, error) {
+	switch status {
+	case Active:
+		return ActiveStatus, nil
+	case Inactive:
+		return InactiveStatus, nil
+	default:
+		return Status(0), ErrInvalidStatus
+	}
+}
 
 type PropletMetadata struct {
 	Description      string   `json:"description,omitempty"`

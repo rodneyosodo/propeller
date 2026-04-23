@@ -128,13 +128,26 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	rows, err := tx.QueryContext(ctx, `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets`)
+	sinceArg := since.Format(time.RFC3339Nano)
+
+	whereClause := `WHERE alive_history IS NOT NULL AND json_array_length(alive_history) > 0 AND unixepoch(json_extract(alive_history, '$[#-1]')) >= unixepoch(?)`
+	if !alive {
+		whereClause = `WHERE alive_history IS NULL OR json_array_length(alive_history) = 0 OR unixepoch(json_extract(alive_history, '$[#-1]')) < unixepoch(?)`
+	}
+
+	var total uint64
+	if err := tx.GetContext(ctx, &total, "SELECT COUNT(*) FROM proplets "+whereClause, sinceArg); err != nil {
+		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
+	}
+
+	query := `SELECT id, name, task_count, alive, alive_history, metadata FROM proplets ` + whereClause + ` LIMIT ? OFFSET ?`
+	rows, err := tx.QueryContext(ctx, query, sinceArg, limit, offset)
 	if err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 	defer rows.Close()
 
-	var filtered []proplet.Proplet
+	proplets := make([]proplet.Proplet, 0)
 	for rows.Next() {
 		var dbp dbProplet
 		if err := rows.Scan(&dbp.ID, &dbp.Name, &dbp.TaskCount, &dbp.Alive, &dbp.AliveHistory, &dbp.Metadata); err != nil {
@@ -144,21 +157,13 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 		if err != nil {
 			return nil, 0, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
-		isAlive := len(p.AliveHistory) > 0 && !p.AliveHistory[len(p.AliveHistory)-1].Before(since)
-		if isAlive == alive {
-			filtered = append(filtered, p)
-		}
+		proplets = append(proplets, p)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, fmt.Errorf("%w: %w", ErrDBQuery, err)
 	}
 
-	filteredTotal := uint64(len(filtered))
-	if offset >= filteredTotal {
-		return []proplet.Proplet{}, filteredTotal, nil
-	}
-
-	return filtered[offset:min(offset+limit, filteredTotal)], filteredTotal, nil
+	return proplets, total, nil
 }
 
 func (r *propletRepo) Delete(ctx context.Context, id string) error {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/absmach/propeller/manager"
+	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	mqttmocks "github.com/absmach/propeller/pkg/mqtt/mocks"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/scheduler"
@@ -40,7 +41,8 @@ func TestListPropletsFilterByStatus(t *testing.T) {
 		desc          string
 		status        string
 		expectedTotal uint64
-		expectedAlive *bool
+		expectedAlive bool
+		checkAlive    bool
 		err           bool
 	}{
 		{
@@ -50,15 +52,17 @@ func TestListPropletsFilterByStatus(t *testing.T) {
 		},
 		{
 			desc:          "list active proplets",
-			status:        manager.PropletStatusActive,
+			status:        proplet.ActiveStatus.String(),
 			expectedTotal: 1,
-			expectedAlive: boolPtr(true),
+			expectedAlive: true,
+			checkAlive:    true,
 		},
 		{
 			desc:          "list inactive proplets",
-			status:        manager.PropletStatusInactive,
+			status:        proplet.InactiveStatus.String(),
 			expectedTotal: 1,
-			expectedAlive: boolPtr(false),
+			expectedAlive: false,
+			checkAlive:    true,
 		},
 		{
 			desc:   "invalid status returns error",
@@ -91,14 +95,15 @@ func TestListPropletsFilterByStatus(t *testing.T) {
 			page, err := svc.ListProplets(ctx, 0, 100, tc.status)
 			if tc.err {
 				require.Error(t, err)
-				assert.Contains(t, err.Error(), "invalid value provided")
+				assert.ErrorIs(t, err, pkgerrors.ErrInvalidValue)
+				assert.ErrorIs(t, err, proplet.ErrInvalidStatus)
 
 				return
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.expectedTotal, page.Total)
-			if tc.expectedAlive != nil && len(page.Proplets) > 0 {
-				assert.Equal(t, *tc.expectedAlive, page.Proplets[0].Alive)
+			if tc.checkAlive && len(page.Proplets) > 0 {
+				assert.Equal(t, tc.expectedAlive, page.Proplets[0].Alive)
 			}
 		})
 	}
@@ -145,12 +150,10 @@ func TestListPropletsFilterPagination(t *testing.T) {
 				require.NoError(t, repos.Proplets.Create(ctx, p))
 			}
 
-			page, err := svc.ListProplets(ctx, tc.offset, tc.limit, manager.PropletStatusActive)
+			page, err := svc.ListProplets(ctx, tc.offset, tc.limit, proplet.ActiveStatus.String())
 			require.NoError(t, err)
 			assert.Equal(t, tc.expectedTotal, page.Total)
 			assert.Len(t, page.Proplets, tc.expectedLen)
 		})
 	}
 }
-
-func boolPtr(b bool) *bool { return &b }

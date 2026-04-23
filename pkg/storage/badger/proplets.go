@@ -83,6 +83,16 @@ const maxBadgerScan uint64 = 100000
 
 func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
 	prefix := []byte("proplet:")
+	total, err := r.db.countWithPrefix(prefix)
+	if err != nil {
+		return nil, 0, err
+	}
+	if total > maxBadgerScan {
+		return nil, 0, fmt.Errorf("%w: filtered proplet listing exceeds badger scan cap of %d records (found %d)", ErrDBQuery, maxBadgerScan, total)
+	}
+
+	// Badger cannot push liveness filtering into key iteration, so we scan the
+	// full proplet keyspace up to maxBadgerScan and paginate the filtered slice.
 	values, err := r.db.listWithPrefix(prefix, 0, maxBadgerScan)
 	if err != nil {
 		return nil, 0, err

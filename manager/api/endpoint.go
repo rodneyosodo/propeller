@@ -250,9 +250,6 @@ func listTasksEndpoint(svc manager.Service) endpoint.Endpoint {
 		if err := req.validate(); err != nil {
 			return listTaskResponse{}, errors.Join(apiutil.ErrValidation, err)
 		}
-		if req.status != "" {
-			return listTaskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidValue)
-		}
 
 		tasks, err := svc.ListTasks(ctx, req.offset, req.limit)
 		if err != nil {
