@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	stdmaps "maps"
 	"net/http"
 	"os"
 	"slices"
@@ -1895,15 +1896,7 @@ func propletMatchesConstraints(p proplet.Proplet, c plugin.PropletSelectResponse
 	}
 
 	for _, tag := range c.RequiredTags {
-		found := false
-		for _, pt := range p.Metadata.Tags {
-			if pt == tag {
-				found = true
-
-				break
-			}
-		}
-		if !found {
+		if !slices.Contains(p.Metadata.Tags, tag) {
 			return false
 		}
 	}
@@ -1946,9 +1939,7 @@ func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p pro
 			if t.Env == nil {
 				t.Env = make(map[string]string, len(resp.ExtraEnv))
 			}
-			for k, v := range resp.ExtraEnv {
-				t.Env[k] = v
-			}
+			stdmaps.Copy(t.Env, resp.ExtraEnv)
 		}
 	}
 
