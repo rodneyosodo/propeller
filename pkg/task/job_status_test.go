@@ -8,6 +8,8 @@ import (
 )
 
 func TestJobStatusString(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		desc   string
 		status task.JobStatus
@@ -47,6 +49,8 @@ func TestJobStatusString(t *testing.T) {
 }
 
 func TestToJobStatus(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		desc   string
 		value  string

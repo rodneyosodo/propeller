@@ -125,9 +125,11 @@ func (e listEntityReq) validate() error {
 		return errStatusFilterUnsupported
 	case propletStatusFilter:
 		_, err := proplet.ToStatus(e.status)
+
 		return err
 	case jobStatusFilter:
 		_, err := task.ToJobStatus(e.status)
+
 		return err
 	default:
 		return pkgerrors.ErrInvalidValue

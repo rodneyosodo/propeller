@@ -329,8 +329,8 @@ func TestListJobsFilterByStatus(t *testing.T) {
 			page, err := svc.ListJobs(ctx, 0, 100, tc.status)
 			if tc.err {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, pkgerrors.ErrInvalidValue)
-				assert.ErrorIs(t, err, task.ErrInvalidJobStatus)
+				require.ErrorIs(t, err, pkgerrors.ErrInvalidValue)
+				require.ErrorIs(t, err, task.ErrInvalidJobStatus)
 
 				return
 			}

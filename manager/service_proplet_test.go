@@ -95,8 +95,8 @@ func TestListPropletsFilterByStatus(t *testing.T) {
 			page, err := svc.ListProplets(ctx, 0, 100, tc.status)
 			if tc.err {
 				require.Error(t, err)
-				assert.ErrorIs(t, err, pkgerrors.ErrInvalidValue)
-				assert.ErrorIs(t, err, proplet.ErrInvalidStatus)
+				require.ErrorIs(t, err, pkgerrors.ErrInvalidValue)
+				require.ErrorIs(t, err, proplet.ErrInvalidStatus)
 
 				return
 			}

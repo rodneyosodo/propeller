@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/absmach/propeller/pkg/proplet"
@@ -10,6 +9,8 @@ import (
 )
 
 func TestListEntityReqValidate(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		desc string
 		req  listEntityReq
@@ -65,8 +66,10 @@ func TestListEntityReqValidate(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
 			err := tc.req.validate()
-			assert.Equal(t, tc.err, err, fmt.Sprintf("%s: expected %v got %v", tc.desc, tc.err, err))
+			assert.Equal(t, tc.err, err, "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }

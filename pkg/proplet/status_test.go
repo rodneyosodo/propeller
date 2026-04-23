@@ -8,6 +8,8 @@ import (
 )
 
 func TestStatusString(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		desc   string
 		status proplet.Status
@@ -37,6 +39,8 @@ func TestStatusString(t *testing.T) {
 }
 
 func TestToStatus(t *testing.T) {
+	t.Parallel()
+
 	cases := []struct {
 		desc   string
 		value  string
