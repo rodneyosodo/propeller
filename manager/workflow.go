@@ -47,6 +47,8 @@ func (wc *WorkflowCoordinator) EvaluateConditionalExecution(ctx context.Context,
 		return true
 
 	case task.RunIfFailure:
+		// Intentionally asymmetric with RunIfSuccess: triggers if ANY dependency
+		// failed (error-handler pattern), rather than requiring all to fail.
 		for _, depID := range t.DependsOn {
 			state, exists := parentStates[depID]
 			if exists && state == task.Failed {

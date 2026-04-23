@@ -85,6 +85,8 @@ define docker_push
 		done
 endef
 
+.DEFAULT_GOAL := all
+
 $(SERVICES):
 	$(call compile_service,$(@))
 

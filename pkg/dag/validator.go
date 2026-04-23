@@ -87,23 +87,24 @@ func ValidateDependenciesExist(tasks []task.Task) error {
 }
 
 func TopologicalSort(tasks []task.Task) ([]task.Task, error) {
+	if err := ValidateDependenciesExist(tasks); err != nil {
+		return nil, err
+	}
+
 	if err := ValidateDAG(tasks); err != nil {
 		return nil, err
 	}
 
 	taskMap := make(map[string]task.Task)
 	inDegree := make(map[string]int)
+	dependents := make(map[string][]string)
 
 	for i := range tasks {
 		t := &tasks[i]
 		taskMap[t.ID] = *t
-		inDegree[t.ID] = 0
-	}
-
-	for i := range tasks {
-		t := &tasks[i]
-		for range t.DependsOn {
-			inDegree[t.ID]++
+		inDegree[t.ID] = len(t.DependsOn)
+		for _, depID := range t.DependsOn {
+			dependents[depID] = append(dependents[depID], t.ID)
 		}
 	}
 
@@ -128,13 +129,10 @@ func TopologicalSort(tasks []task.Task) ([]task.Task, error) {
 		visited[currentID] = true
 		result = append(result, taskMap[currentID])
 
-		for i := range tasks {
-			t := &tasks[i]
-			if slices.Contains(t.DependsOn, currentID) {
-				inDegree[t.ID]--
-				if inDegree[t.ID] == 0 {
-					queue = append(queue, t.ID)
-				}
+		for _, depID := range dependents[currentID] {
+			inDegree[depID]--
+			if inDegree[depID] == 0 {
+				queue = append(queue, depID)
 			}
 		}
 	}
