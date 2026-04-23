@@ -56,7 +56,7 @@ pub struct StartRequest {
     pub daemon: bool,
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
-    #[serde(rename = "monitoringProfile", default)]
+    #[serde(rename = "monitoring_profile", default)]
     pub monitoring_profile: Option<MonitoringProfile>,
     #[serde(default)]
     pub encrypted: bool,
