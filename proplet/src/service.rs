@@ -14,6 +14,8 @@ use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn};
 
+const WASM_FETCH_MAX_BYTES: usize = 100 * 1024 * 1024; // 100MB
+
 #[derive(Debug)]
 struct ChunkAssemblyState {
     chunks: BTreeMap<usize, Vec<u8>>,
@@ -490,6 +492,18 @@ impl PropletService {
             if req.encrypted {
                 info!("Encrypted workload with image_url: {}", req.image_url);
                 Vec::new()
+            } else if req.image_url.starts_with("http://") || req.image_url.starts_with("https://")
+            {
+                match self.fetch_wasm_from_http(&req.image_url).await {
+                    Ok(binary) => binary,
+                    Err(e) => {
+                        error!("Failed to fetch wasm for task {}: {}", req.id, e);
+                        self.running_tasks.lock().await.remove(&req.id);
+                        self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
+                            .await?;
+                        return Err(e);
+                    }
+                }
             } else {
                 info!("Requesting binary from registry: {}", req.image_url);
                 self.request_binary_from_registry(&req.image_url).await?;
@@ -985,6 +999,10 @@ impl PropletService {
         }
     }
 
+    async fn fetch_wasm_from_http(&self, url: &str) -> Result<Vec<u8>> {
+        fetch_wasm_from_http(&self.http_client, url).await
+    }
+
     async fn try_assemble_chunks(&self, app_name: &str) -> Result<Option<Vec<u8>>> {
         let mut assembly = self.chunk_assembly.lock().await;
 
@@ -1219,4 +1237,194 @@ fn build_fl_update_envelope(
         "format": update_format,
         "metrics": {}
     })
+}
+
+async fn fetch_wasm_from_http(client: &HttpClient, url: &str) -> Result<Vec<u8>> {
+    use futures_util::StreamExt;
+
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .with_context(|| format!("Failed to connect to {}", url))?;
+
+    let status = response.status();
+    if status.is_client_error() || status.is_server_error() {
+        return Err(anyhow::anyhow!(
+            "HTTP {} fetching wasm from {}",
+            status,
+            url
+        ));
+    }
+
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !content_type.is_empty()
+        && !content_type.contains("application/wasm")
+        && !content_type.contains("application/octet-stream")
+    {
+        return Err(anyhow::anyhow!(
+            "unexpected content type '{}' fetching wasm from {} (expected application/wasm or application/octet-stream)",
+            content_type,
+            url
+        ));
+    }
+
+    if let Some(content_length) = response.content_length() {
+        if content_length as usize > WASM_FETCH_MAX_BYTES {
+            return Err(anyhow::anyhow!(
+                "wasm response from {} exceeds size limit ({} > {} bytes)",
+                url,
+                content_length,
+                WASM_FETCH_MAX_BYTES
+            ));
+        }
+    }
+
+    let mut binary = Vec::new();
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.with_context(|| format!("Failed to read response body from {}", url))?;
+        if binary.len() + chunk.len() > WASM_FETCH_MAX_BYTES {
+            return Err(anyhow::anyhow!(
+                "wasm response from {} exceeds size limit ({} bytes)",
+                url,
+                WASM_FETCH_MAX_BYTES
+            ));
+        }
+        binary.extend_from_slice(&chunk);
+    }
+
+    debug!("Fetched wasm from {}, size: {} bytes", url, binary.len());
+    Ok(binary)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn make_client() -> HttpClient {
+        HttpClient::new()
+    }
+
+    #[tokio::test]
+    async fn test_fetch_wasm_from_http() {
+        let wasm = b"\x00asm\x01\x00\x00\x00".to_vec();
+
+        struct Case {
+            desc: &'static str,
+            status: u16,
+            content_type: Option<&'static str>,
+            body: Vec<u8>,
+            expect_ok: bool,
+            expect_err_contains: Option<&'static str>,
+        }
+
+        let cases = vec![
+            Case {
+                desc: "200 with no content-type succeeds",
+                status: 200,
+                content_type: None,
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+            Case {
+                desc: "200 with application/wasm content-type succeeds",
+                status: 200,
+                content_type: Some("application/wasm"),
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+            Case {
+                desc: "200 with application/octet-stream content-type succeeds",
+                status: 200,
+                content_type: Some("application/octet-stream"),
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+            Case {
+                desc: "200 with text/html content-type is rejected",
+                status: 200,
+                content_type: Some("text/html; charset=utf-8"),
+                body: b"<html>error page</html>".to_vec(),
+                expect_ok: false,
+                expect_err_contains: Some("content type"),
+            },
+            Case {
+                desc: "404 not found is rejected",
+                status: 404,
+                content_type: None,
+                body: vec![],
+                expect_ok: false,
+                expect_err_contains: Some("404"),
+            },
+            Case {
+                desc: "500 server error is rejected",
+                status: 500,
+                content_type: None,
+                body: vec![],
+                expect_ok: false,
+                expect_err_contains: Some("500"),
+            },
+            Case {
+                desc: "chunked encoding without content-length succeeds",
+                status: 200,
+                content_type: None,
+                body: wasm.clone(),
+                expect_ok: true,
+                expect_err_contains: None,
+            },
+        ];
+
+        for c in &cases {
+            let server = MockServer::start().await;
+            let mut template = ResponseTemplate::new(c.status).set_body_bytes(c.body.clone());
+            if let Some(ct) = c.content_type {
+                template = template.insert_header("Content-Type", ct);
+            }
+            Mock::given(method("GET"))
+                .respond_with(template)
+                .mount(&server)
+                .await;
+
+            let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
+            if c.expect_ok {
+                assert!(result.is_ok(), "case '{}': expected ok", c.desc);
+                assert_eq!(result.unwrap(), c.body, "case '{}': body mismatch", c.desc);
+            } else {
+                assert!(result.is_err(), "case '{}': expected error", c.desc);
+                if let Some(msg) = c.expect_err_contains {
+                    assert!(
+                        result.unwrap_err().to_string().contains(msg),
+                        "case '{}': error should contain '{}'",
+                        c.desc,
+                        msg
+                    );
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fetch_wasm_streaming_exceeds_limit() {
+        let server = MockServer::start().await;
+        let over_limit_body = vec![0u8; WASM_FETCH_MAX_BYTES + 1];
+
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(over_limit_body))
+            .mount(&server)
+            .await;
+
+        let result = fetch_wasm_from_http(&make_client(), &server.uri()).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("size limit"));
+    }
 }
