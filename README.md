@@ -1,6 +1,8 @@
 # Propeller
 
-[**Propeller**](https://propeller.absmach.eu) is a cutting-edge orchestrator for **WebAssembly (Wasm)** workloads across the **Cloud-Edge continuum**. It enables seamless deployment of Wasm applications from powerful cloud servers to constrained microcontrollers, combining flexibility, security, and performance.
+[**Propeller**](https://propeller.absmach.eu) is a WebAssembly (Wasm) workload orchestrator for the Cloud-Edge continuum. It enables seamless deployment of Wasm applications from powerful cloud servers to constrained microcontrollers, combining flexibility, security, and performance.
+
+Propeller builds on top of [Magistrala](https://github.com/absmach/magistrala), an open-source IoT platform that provides identity, access control, device provisioning, data processing, and observability. Together, they form a complete solution for deploying and orchestrating Wasm workloads across distributed edge environments.
 
 ## Features
 
@@ -20,6 +22,15 @@
 2. **Register Workloads**: Push your workloads to an OCI-compliant registry for easy deployment.
 3. **Deploy Anywhere**: Use Propeller to orchestrate and manage workload deployment across the cloud, edge, and IoT devices.
 4. **Monitor & Scale**: Leverage real-time monitoring and dynamic scaling to optimize your system's performance.
+
+## Architecture
+
+Propeller consists of several key components:
+
+- **CLI**: Command-line interface for interacting with the Propeller system
+- **Manager**: Central service for task management and proplet coordination
+- **Proplet**: Worker nodes that execute WebAssembly workloads (implemented in Rust)
+- **Proxy**: Service for downloading and distributing Wasm modules from OCI registries
 
 ![Propeller Orchestration Diagram](https://propeller.absmach.eu/architecture.svg)
 
