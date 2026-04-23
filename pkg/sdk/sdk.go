@@ -132,14 +132,6 @@ type SDK interface {
 	//  fmt.Println(doc)
 	GetPropletSDF(id string) (sdf.Document, error)
 
-	// ListProplets lists proplets with optional status filter.
-	// Status can be "active", "inactive", or "" (all).
-	//
-	// example:
-	//  page, _ := sdk.ListProplets(0, 10, "")
-	//  page, _ := sdk.ListProplets(0, 10, "active")
-	ListProplets(offset uint64, limit uint64, status string) (PropletPage, error)
-
 	// DeleteProplet deletes a proplet by id.
 	//
 	// example:
