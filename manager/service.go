@@ -156,6 +156,10 @@ func (svc *service) DeleteProplet(ctx context.Context, propletID string) error {
 }
 
 func (svc *service) CreateTask(ctx context.Context, t task.Task) (task.Task, error) {
+	if t.Broadcast && t.PropletID != "" {
+		return task.Task{}, errors.New("proplet_id must not be set when broadcast is true")
+	}
+
 	if len(t.DependsOn) > 0 && t.WorkflowID == "" {
 		return task.Task{}, errors.New("workflow_id is required when depends_on is specified")
 	}
@@ -689,6 +693,20 @@ func (svc *service) StopTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
+	stopPayload := map[string]any{
+		"id":        t.ID,
+		"broadcast": t.Broadcast,
+	}
+
+	if t.Broadcast {
+		topic := svc.baseTopic + "/control/manager/stop"
+		if err := svc.pubsub.Publish(ctx, topic, stopPayload); err != nil {
+			return err
+		}
+
+		return nil
+	}
+
 	propletID, err := svc.taskPropletRepo.Get(ctx, taskID)
 	if err != nil {
 		return err
@@ -698,10 +716,7 @@ func (svc *service) StopTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	stopPayload := map[string]any{
-		"id":         t.ID,
-		"proplet_id": propletID,
-	}
+	stopPayload["proplet_id"] = propletID
 
 	topic := svc.baseTopic + "/control/manager/stop"
 	if err := svc.pubsub.Publish(ctx, topic, stopPayload); err != nil {
@@ -1720,6 +1735,7 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 		"encrypted":          t.Encrypted,
 		"kbs_resource_path":  t.KBSResourcePath,
 		"monitoring_profile": t.MonitoringProfile,
+		"broadcast":          t.Broadcast,
 	}
 	if propletID != "" {
 		payload["proplet_id"] = propletID

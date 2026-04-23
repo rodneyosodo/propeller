@@ -430,9 +430,11 @@ impl PropletService {
         })?;
         req.validate()?;
 
-        if let Some(target_id) = &req.proplet_id {
-            if target_id != &self.config.client_id {
-                return Ok(());
+        if !req.broadcast {
+            if let Some(ref target_id) = req.proplet_id {
+                if target_id != &self.config.client_id {
+                    return Ok(());
+                }
             }
         }
 

@@ -119,8 +119,8 @@ type Task struct {
 	NextRun           time.Time                  `json:"next_run"`
 	IsRecurring       bool                       `json:"is_recurring,omitempty"`
 	Timezone          string                     `json:"timezone,omitempty"`
+	Broadcast         bool                       `json:"broadcast,omitempty"`
 	Priority          int                        `json:"priority,omitempty"`
-	Broadcast         bool                       `json:"broadcast"`
 }
 
 type TaskPage struct {

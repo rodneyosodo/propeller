@@ -66,6 +66,8 @@ pub struct StartRequest {
     pub mode: Option<String>,
     #[serde(default)]
     pub proplet_id: Option<String>,
+    #[serde(default)]
+    pub broadcast: bool,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -312,6 +314,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         assert!(req.validate().is_ok());
@@ -334,6 +337,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         assert!(req.validate().is_ok());
@@ -356,6 +360,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let result = req.validate();
@@ -380,6 +385,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let result = req.validate();
@@ -404,6 +410,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let result = req.validate();
@@ -431,6 +438,7 @@ mod tests {
             kbs_resource_path: Some("default/key1/value".to_string()),
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         assert!(req.validate().is_ok());
@@ -453,6 +461,7 @@ mod tests {
             kbs_resource_path: Some("default/key1/value".to_string()),
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let result = req.validate();
@@ -480,6 +489,7 @@ mod tests {
             kbs_resource_path: Some("default/key1/value".to_string()),
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let result = req.validate();
@@ -737,6 +747,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         assert_eq!(req.env.as_ref().unwrap().len(), 2);
@@ -802,6 +813,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let json = serde_json::to_string(&req).unwrap();
