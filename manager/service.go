@@ -21,6 +21,7 @@ import (
 	"github.com/absmach/propeller/pkg/job"
 	"github.com/absmach/propeller/pkg/maps"
 	"github.com/absmach/propeller/pkg/mqtt"
+	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/scheduler"
 	"github.com/absmach/propeller/pkg/sdf"
@@ -60,6 +61,7 @@ type service struct {
 	flCoordinatorURL string
 	httpClient       *http.Client
 	coordinator      *WorkflowCoordinator
+	plugins          plugin.Registry
 	shuttingDown     atomic.Bool
 	wg               sync.WaitGroup
 }
@@ -67,7 +69,7 @@ type service struct {
 func NewService(
 	repos *storage.Repositories,
 	s scheduler.Scheduler, pubsub mqtt.PubSub,
-	domainID, channelID, coordinatorURL string, logger *slog.Logger,
+	domainID, channelID, coordinatorURL string, logger *slog.Logger, plugins plugin.Registry,
 ) (Service, CronScheduler) {
 	var httpClient *http.Client
 	if coordinatorURL != "" {
@@ -91,6 +93,7 @@ func NewService(
 		logger:           logger,
 		flCoordinatorURL: coordinatorURL,
 		httpClient:       httpClient,
+		plugins:          plugins,
 	}
 	svc.coordinator = NewWorkflowCoordinator(repos.Tasks, svc, logger)
 
@@ -702,10 +705,15 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 		return svc.markTaskRunning(ctx, &t)
 	}
 
+	constraints, err := svc.runOnBeforePropletSelect(ctx, t)
+	if err != nil {
+		return err
+	}
+
 	var p proplet.Proplet
 	switch t.PropletID {
 	case "":
-		p, err = svc.SelectProplet(ctx, t)
+		p, err = svc.selectPropletWithConstraints(ctx, t, constraints)
 		if err != nil {
 			return err
 		}
@@ -717,6 +725,10 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 		if !p.Alive {
 			return fmt.Errorf("specified proplet %s is not alive", t.PropletID)
 		}
+	}
+
+	if err := svc.runOnBeforeDispatch(ctx, &t, p); err != nil {
+		return err
 	}
 
 	if err := svc.pinTaskToProplet(ctx, taskID, p.ID); err != nil {
@@ -1286,6 +1298,8 @@ func (svc *service) updateResultsHandler(ctx context.Context, msg map[string]any
 		return err
 	}
 
+	svc.notifyTaskComplete(ctx, t)
+
 	if t.JobID == "" {
 		if err := svc.coordinator.OnTaskCompletion(ctx, taskID); err != nil {
 			svc.logger.ErrorContext(ctx, "failed to trigger workflow coordinator", "task_id", taskID, "error", err)
@@ -1817,6 +1831,165 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 	topic := svc.baseTopic + "/control/manager/start"
 
 	return svc.pubsub.Publish(ctx, topic, payload)
+}
+
+func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (plugin.PropletSelectResponse, error) {
+	if svc.plugins == nil {
+		return plugin.PropletSelectResponse{Allow: true}, nil
+	}
+
+	merged := plugin.PropletSelectResponse{Allow: true}
+	req := plugin.PropletSelectRequest{Task: toPluginTaskInfo(t)}
+
+	for _, p := range svc.plugins.List() {
+		resp, err := p.OnBeforePropletSelect(ctx, req)
+		if err != nil {
+			svc.logger.ErrorContext(ctx, "plugin on_before_proplet_select failed", "plugin", p.Name(), "error", err)
+
+			return plugin.PropletSelectResponse{}, fmt.Errorf("plugin %s on_before_proplet_select: %w", p.Name(), err)
+		}
+		if !resp.Allow {
+			reason := resp.Reason
+			if reason == "" {
+				reason = "proplet selection blocked by plugin"
+			}
+
+			return plugin.PropletSelectResponse{}, errors.New(reason)
+		}
+		merged.RequiredTags = append(merged.RequiredTags, resp.RequiredTags...)
+		if resp.MinMemoryBytes != nil {
+			if merged.MinMemoryBytes == nil || *resp.MinMemoryBytes > *merged.MinMemoryBytes {
+				merged.MinMemoryBytes = resp.MinMemoryBytes
+			}
+		}
+	}
+
+	return merged, nil
+}
+
+func (svc *service) selectPropletWithConstraints(ctx context.Context, t task.Task, constraints plugin.PropletSelectResponse) (proplet.Proplet, error) {
+	proplets, _, err := svc.propletRepo.List(ctx, defOffset, defLimit)
+	if err != nil {
+		return proplet.Proplet{}, err
+	}
+
+	candidates := make([]proplet.Proplet, 0, len(proplets))
+	for i := range proplets {
+		p := proplets[i]
+		p.SetAlive()
+		if !p.Alive {
+			continue
+		}
+		if !propletMatchesConstraints(p, constraints) {
+			continue
+		}
+		candidates = append(candidates, p)
+	}
+
+	return svc.scheduler.SelectProplet(t, candidates)
+}
+
+func propletMatchesConstraints(p proplet.Proplet, c plugin.PropletSelectResponse) bool {
+	if c.MinMemoryBytes != nil && p.Metadata.TotalMemoryBytes < *c.MinMemoryBytes {
+		return false
+	}
+
+	for _, tag := range c.RequiredTags {
+		found := false
+		for _, pt := range p.Metadata.Tags {
+			if pt == tag {
+				found = true
+
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return true
+}
+
+func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p proplet.Proplet) error {
+	if svc.plugins == nil {
+		return nil
+	}
+
+	req := plugin.DispatchRequest{
+		Task: toPluginTaskInfo(*t),
+		Proplet: plugin.PropletInfo{
+			ID:               p.ID,
+			Name:             p.Name,
+			Tags:             p.Metadata.Tags,
+			TotalMemoryBytes: p.Metadata.TotalMemoryBytes,
+			Location:         p.Metadata.Location,
+		},
+	}
+
+	for _, pl := range svc.plugins.List() {
+		resp, err := pl.OnBeforeDispatch(ctx, req)
+		if err != nil {
+			svc.logger.ErrorContext(ctx, "plugin on_before_dispatch failed", "plugin", pl.Name(), "error", err)
+
+			return fmt.Errorf("plugin %s on_before_dispatch: %w", pl.Name(), err)
+		}
+		if !resp.Allow {
+			reason := resp.Reason
+			if reason == "" {
+				reason = "dispatch blocked by plugin"
+			}
+
+			return errors.New(reason)
+		}
+		if len(resp.ExtraEnv) > 0 {
+			if t.Env == nil {
+				t.Env = make(map[string]string, len(resp.ExtraEnv))
+			}
+			for k, v := range resp.ExtraEnv {
+				t.Env[k] = v
+			}
+		}
+	}
+
+	return nil
+}
+
+func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
+	if svc.plugins == nil {
+		return
+	}
+
+	evt := plugin.TaskEvent{
+		Task:    toPluginTaskInfo(t),
+		Success: t.State == task.Completed,
+		Error:   t.Error,
+	}
+
+	for _, p := range svc.plugins.List() {
+		go func(pl plugin.Plugin) {
+			if err := pl.OnTaskComplete(ctx, evt); err != nil {
+				svc.logger.WarnContext(ctx, "plugin on_task_complete failed", "plugin", pl.Name(), "error", err)
+			}
+		}(p)
+	}
+}
+
+func toPluginTaskInfo(t task.Task) plugin.TaskInfo {
+	return plugin.TaskInfo{
+		ID:        t.ID,
+		Name:      t.Name,
+		Kind:      string(t.Kind),
+		ImageURL:  t.ImageURL,
+		Inputs:    []string(t.Inputs),
+		CLIArgs:   t.CLIArgs,
+		Env:       t.Env,
+		PropletID: t.PropletID,
+		Priority:  t.Priority,
+		Daemon:    t.Daemon,
+		Encrypted: t.Encrypted,
+		CreatedAt: t.CreatedAt,
+	}
 }
 
 func (svc *service) bumpPropletTaskCount(ctx context.Context, p proplet.Proplet, delta int64) error {
