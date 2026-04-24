@@ -4,9 +4,9 @@
 name: "propeller"
 
 networks:
-  supermq-base-net:
+  magistrala-base-net:
     external: true
-    name: supermq-base-net
+    name: magistrala-base-net
 
 services:
   manager:
@@ -53,7 +53,7 @@ services:
     volumes:
       - ./config.toml:/config.toml
     networks:
-      - supermq-base-net
+      - magistrala-base-net
 
   # Proplet - WebAssembly edge runtime
   # Available images:
@@ -106,7 +106,7 @@ services:
     # Uncomment for wasi-nn image (OpenVINO requires x86_64)
     # platform: linux/amd64
     networks:
-      - supermq-base-net
+      - magistrala-base-net
 
   proxy:
     image: ghcr.io/absmach/propeller/proxy:${PROP_RELEASE_TAG}
@@ -115,7 +115,7 @@ services:
     environment:
       PROXY_LOG_LEVEL: ${PROXY_LOG_LEVEL}
       PROXY_INSTANCE_ID: ${PROXY_INSTANCE_ID}
-      PROXY_MQTT_ADDRESS: ${PROXY_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROXY_MQTT_ADDRESS: ${PROXY_MQTT_ADDRESS:-tcp://nginx:1883}
       PROXY_MQTT_QOS: ${PROXY_MQTT_QOS}
       PROXY_MQTT_TIMEOUT: ${PROXY_MQTT_TIMEOUT}
       PROXY_DOMAIN_ID: ${PROXY_DOMAIN_ID}
@@ -131,4 +131,4 @@ services:
     volumes:
       - ./config.toml:/config.toml
     networks:
-      - supermq-base-net
+      - magistrala-base-net

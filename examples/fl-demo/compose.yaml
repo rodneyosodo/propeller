@@ -1,5 +1,5 @@
 # FL Demo Extension for docker/compose.yaml
-# This file extends the base SuperMQ + Propeller setup with FL-specific services
+# This file extends the base Magistrala + Propeller setup with FL-specific services
 #
 # Usage (from repository root):
 #     docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d
@@ -7,7 +7,7 @@
 # To build and start:
 #     docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d --build
 #
-# Note: Requires docker/.env file with SuperMQ configuration variables.
+# Note: Requires docker/.env file with Magistrala configuration variables.
 # IMPORTANT: When using multiple -f files, Docker Compose resolves build contexts relative
 # to the FIRST file's directory (docker/). So we use '..' to go from docker/ to project root.
 # Commands must be run from the repository root.
@@ -29,7 +29,7 @@ services:
     volumes:
       - local-registry-data:/var/lib/registry
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     restart: on-failure
 
   model-registry:
@@ -45,7 +45,7 @@ services:
       MODELS_DIR: /tmp/fl-models
       REGISTRY_PORT: "8081"
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     restart: on-failure
 
   local-data-store:
@@ -67,7 +67,7 @@ services:
       # Alternative: use FL_DATASET_PARTICIPANTS="uuid1,uuid2,uuid3" if preferred
       FL_DATASET_PARTICIPANTS: ${FL_DATASET_PARTICIPANTS:-}
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     restart: on-failure
 
   aggregator:
@@ -80,7 +80,7 @@ services:
     environment:
       AGGREGATOR_PORT: "8082"
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     restart: on-failure
 
   coordinator-http:
@@ -105,7 +105,7 @@ services:
     volumes:
       - fl-models:/tmp/fl-models
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     restart: on-failure
 
   # ============================================================================
@@ -215,7 +215,7 @@ services:
       MODEL_REGISTRY_URL: http://model-registry:8081
       COORDINATOR_URL: http://coordinator-http:8080
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     healthcheck:
       disable: true
 
@@ -250,7 +250,7 @@ services:
       MODEL_REGISTRY_URL: http://model-registry:8081
       COORDINATOR_URL: http://coordinator-http:8080
     networks:
-      - supermq-base-net
+      - magistrala-base-net
     healthcheck:
       disable: true
 

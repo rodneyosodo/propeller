@@ -15,7 +15,7 @@ package main
 //    # Or manually extract coefficients from mymodel.pkl and update model_gen.go
 //
 // 3. Build as WASM:
-//    GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o mymodel.wasm main.go model_gen.go
+//    GOOS=wasip2 GOARCH=wasm go build -o mymodel.wasm main.go model_gen.go
 //
 // 4. Use with Propeller:
 //    # The WASM module can be deployed via Propeller manager

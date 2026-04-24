@@ -18,9 +18,9 @@ WASMTIME_VERSION ?= 42.0.1
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 	go build -ldflags "-s -w \
-	-X 'github.com/absmach/supermq.BuildTime=$(TIME)' \
-	-X 'github.com/absmach/supermq.Version=$(VERSION)' \
-	-X 'github.com/absmach/supermq.Commit=$(COMMIT)'" \
+	-X 'github.com/absmach/magistrala.BuildTime=$(TIME)' \
+	-X 'github.com/absmach/magistrala.Version=$(VERSION)' \
+	-X 'github.com/absmach/magistrala.Commit=$(COMMIT)'" \
 	-o ${BUILD_DIR}/$(1) cmd/$(1)/main.go
 endef
 
@@ -131,7 +131,7 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) docker_proplet_wasinn push_proplet_wasinn mocks start-supermq stop-supermq start-propeller stop-propeller start-all stop-all
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) docker_proplet_wasinn push_proplet_wasinn mocks start-magistrala stop-magistrala start-propeller stop-propeller start-all stop-all
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat http-client http-server filesystem
 
 clean:
@@ -154,10 +154,10 @@ test-all:
 	go test -v ./...
 	cd proplet && cargo test --release
 
-start-supermq:
+start-magistrala:
 	docker compose -f docker/compose.yaml --env-file docker/.env up -d
 
-stop-supermq:
+stop-magistrala:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
 start-propeller:
@@ -175,7 +175,7 @@ stop-all:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
 $(EXAMPLES):
-	GOTOOLCHAIN=go1.25.8 GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasi examples/$@/$@.go
+	GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/$@.wasm -target wasi examples/$@/$@.go
 
 addition-wat:
 	@wat2wasm examples/addition-wat/addition.wat -o build/addition-wat.wasm
@@ -208,29 +208,29 @@ help:
 	@echo "Usage: make <target>"
 	@echo ""
 	@echo "Targets:"
-	@echo "  <service>:        build the binary for the service i.e manager, proplet, cli"
-	@echo "  all:              build all binaries (Go: manager, cli; Rust: proplet)"
-	@echo "  proplet:          build the Rust proplet binary"
-	@echo "  http-client:      build the WASI P2 HTTP client example (requires PROPLET_HTTP_ENABLED=true)"
-	@echo "  http-server:      build the WASI P2 HTTP server example (requires PROPLET_HTTP_ENABLED=true, daemon=true)"
-	@echo "  filesystem:       build the WASI P1 filesystem example (requires PROPLET_DIRS=/tmp)"
-	@echo "  install:          install the binary i.e copies to GOBIN"
-	@echo "  clean:            clean the build directory and Rust target"
-	@echo "  lint:             run golangci-lint"
-	@echo "  test:             run FL unit and integration tests"
-	@echo "  test-all:         run all tests (Go and Rust)"
-	@echo "  dockers:          build and push all Docker images (Go and Rust services)"
-	@echo "  dockers_dev:      build all Go service dev Docker images"
-	@echo "  dockers_rust:     build all Rust service Docker images"
-	@echo "  dockers_rust_dev: build all Rust service dev Docker images"
+	@echo "  <service>:             build the binary for the service i.e manager, proplet, cli"
+	@echo "  all:                   build all binaries (Go: manager, cli; Rust: proplet)"
+	@echo "  proplet:               build the Rust proplet binary"
+	@echo "  http-client:           build the WASI P2 HTTP client example (requires PROPLET_HTTP_ENABLED=true)"
+	@echo "  http-server:           build the WASI P2 HTTP server example (requires PROPLET_HTTP_ENABLED=true, daemon=true)"
+	@echo "  filesystem:            build the WASI P1 filesystem example (requires PROPLET_DIRS=/tmp)"
+	@echo "  install:               install the binary i.e copies to GOBIN"
+	@echo "  clean:                 clean the build directory and Rust target"
+	@echo "  lint:                  run golangci-lint"
+	@echo "  test:                  run FL unit and integration tests"
+	@echo "  test-all:              run all tests (Go and Rust)"
+	@echo "  dockers:               build and push all Docker images (Go and Rust services)"
+	@echo "  dockers_dev:           build all Go service dev Docker images"
+	@echo "  dockers_rust:          build all Rust service Docker images"
+	@echo "  dockers_rust_dev:      build all Rust service dev Docker images"
 	@echo "  docker_proplet_wasinn: build proplet wasi-nn Docker image"
 	@echo "  push_proplet_wasinn:   push proplet:wasi-nn Docker image"
-	@echo "  latest:           build and push all Go service Docker images"
-	@echo "  start-supermq:    start SuperMQ services only"
-	@echo "  stop-supermq:     stop SuperMQ services only"
-	@echo "  start-propeller:  start Propeller services only (requires provisioned config.toml)"
-	@echo "  stop-propeller:   stop Propeller services only"
-	@echo "  start-all:        start SuperMQ and Propeller services (requires provisioned config.toml)"
-	@echo "  stop-all:         stop SuperMQ and Propeller services"
-	@echo "  mocks:            generate mockery mocks for all interfaces"
-	@echo "  help:             display this help message"
+	@echo "  latest:                build and push all Go service Docker images"
+	@echo "  start-magistrala:      start Magistrala services only"
+	@echo "  stop-magistrala:       stop Magistrala services only"
+	@echo "  start-propeller:       start Propeller services only (requires provisioned config.toml)"
+	@echo "  stop-propeller:        stop Propeller services only"
+	@echo "  start-all:             start Magistrala and Propeller services (requires provisioned config.toml)"
+	@echo "  stop-all:              stop Magistrala and Propeller services"
+	@echo "  mocks:                 generate mockery mocks for all interfaces"
+	@echo "  help:                  display this help message"

@@ -27,8 +27,8 @@ cargo build --release
 | `PROPLET_MQTT_TIMEOUT`          | MQTT operation timeout (seconds)                          | `30`                   |
 | `PROPLET_MQTT_QOS`              | MQTT Quality of Service level                             | `2`                    |
 | `PROPLET_LIVELINESS_INTERVAL`   | Heartbeat interval in seconds                             | `10`                   |
-| `PROPLET_DOMAIN_ID`             | SuperMQ domain ID                                         |                        |
-| `PROPLET_CHANNEL_ID`            | SuperMQ channel ID                                        |                        |
+| `PROPLET_DOMAIN_ID`             | Magistrala domain ID                                      |                        |
+| `PROPLET_CHANNEL_ID`            | Magistrala channel ID                                     |                        |
 | `PROPLET_CLIENT_ID`             | MQTT client ID                                            |                        |
 | `PROPLET_CLIENT_KEY`            | MQTT client key                                           |                        |
 | `PROPLET_EXTERNAL_WASM_RUNTIME` | Path to external Wasm runtime; uses Wasmtime if unset     | `""` (empty)           |

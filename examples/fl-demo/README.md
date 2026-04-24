@@ -1,6 +1,6 @@
 # Production FL Demo - Quick Start Guide
 
-This guide covers running the production-grade Federated Learning (FL) demo application using the full SuperMQ stack.
+This guide covers running the production-grade Federated Learning (FL) demo application using the full Magistrala stack.
 
 > **IMPORTANT**: This document contains placeholders (e.g., `YOUR_GITHUB_USERNAME`, `ghp_xxxxx`, UUID placeholders) that you must replace with your own values. Please search for and update all placeholders before following the instructions.
 
@@ -8,7 +8,7 @@ This guide covers running the production-grade Federated Learning (FL) demo appl
 
 - Docker and Docker Compose
 - Python 3 (for provisioning script)
-- `docker/.env` file with SuperMQ configuration
+- `docker/.env` file with Magistrala configuration
 - GitHub account with Personal Access Token (PAT) for GHCR (if using GHCR for WASM storage)
 
 ## Quick Start Overview
@@ -20,7 +20,7 @@ For a complete end-to-end test, follow these steps in order:
 1. **[Build and Push WASM Client](#step-1-build-and-push-wasm-client)** - Build the FL client WASM and push to GHCR
 2. **[Configure GHCR Authentication [ONE-TIME]](#step-2-configure-ghcr-authentication-one-time)** - Set up authentication for private GHCR packages
 3. **[Build and Start Services](#step-3-build-and-start-services)** - Build Docker images and start all services
-4. **[Provision SuperMQ Resources [ONE-TIME]](#step-4-provision-supermq-resources-one-time)** - Create domain, channel, and clients (one-time setup)
+4. **[Provision Magistrala Resources [ONE-TIME]](#step-4-provision-magistrala-resources-one-time)** - Create domain, channel, and clients (one-time setup)
 5. **[Recreate Services After Provisioning](#step-5-recreate-services-after-provisioning)** - Recreate services to pick up new credentials
 6. **[Initialize Model Registry](#step-6-initialize-model-registry)** - Create initial model (version 0)
 7. **[Run FL Round](#step-7-trigger-a-federated-learning-round)** - Configure and start a federated learning round
@@ -31,10 +31,10 @@ For automated testing, use the [Complete Test Script](#complete-test-script) at 
 
 ## Understanding CLIENT_IDs vs Instance IDs
 
-**IMPORTANT**: When configuring FL experiments, you must use **SuperMQ CLIENT_IDs** (UUIDs), not instance IDs.
+**IMPORTANT**: When configuring FL experiments, you must use **Magistrala CLIENT_IDs** (UUIDs), not instance IDs.
 
 - **Instance IDs**: `"proplet-1"`, `"proplet-2"`, `"proplet-3"` - These are just labels for identification
-- **CLIENT_IDs**: `"3fe95a65-74f1-4ede-bf20-ef565f04cecb"` - These are the actual SuperMQ client credentials that proplets use to register with the manager
+- **CLIENT_IDs**: `"3fe95a65-74f1-4ede-bf20-ef565f04cecb"` - These are the actual Magistrala client credentials that proplets use to register with the manager
 
 Proplets register themselves using their CLIENT_ID (from `PROPLET_CLIENT_ID`, `PROPLET_2_CLIENT_ID`, `PROPLET_3_CLIENT_ID` in your `docker/.env` file). The manager tracks proplets by these CLIENT_IDs.
 
@@ -56,7 +56,7 @@ From the repository root:
 
 ```bash
 cd examples/fl-demo/client-wasm
-GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go
+GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go
 cd ../../..
 ```
 
@@ -180,7 +180,7 @@ This builds:
 
 - `propeller-manager:local` - Manager with FL endpoints
 - `propeller-proplet:local` - Proplet with FL endpoints (used by all proplet instances)
-- `supermq-coordinator-http` - Coordinator with MQTT authentication support
+- `magistrala-coordinator-http` - Coordinator with MQTT authentication support
 
 > **Note**: Building these images may take several minutes, especially the Rust-based proplet. Subsequent builds will be faster due to Docker layer caching.
 
@@ -202,15 +202,15 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 
 This starts:
 
-- Full SuperMQ production stack (Auth, Domains, Clients, Channels, RabbitMQ, NATS, MQTT Adapter, Nginx)
+- Full Magistrala production stack (Auth, Domains, Clients, Channels, RabbitMQ, NATS, MQTT Adapter, Nginx)
 - FL-specific services (Model Registry, Aggregator, Local Data Store, Coordinator)
 - Propeller services (Manager, Proplets, Proxy)
 
-## Step 4: Provision SuperMQ Resources [ONE-TIME]
+## Step 4: Provision Magistrala Resources [ONE-TIME]
 
-**One-time setup**: This creates persistent data in SuperMQ databases. Only needs to be repeated if you remove Docker volumes (e.g., `docker compose down -v`).
+**One-time setup**: This creates persistent data in Magistrala databases. Only needs to be repeated if you remove Docker volumes (e.g., `docker compose down -v`).
 
-**IMPORTANT**: Before the manager and proplets can connect to MQTT, you must provision the necessary SuperMQ resources (domain, channel, and clients).
+**IMPORTANT**: Before the manager and proplets can connect to MQTT, you must provision the necessary Magistrala resources (domain, channel, and clients).
 
 > **When to provision**:
 >
@@ -365,7 +365,7 @@ curl http://localhost:8084/models/0
 > ```
 
 ```bash
-# IMPORTANT: Export CLIENT_IDs from docker/.env (SuperMQ client IDs, NOT instance IDs)
+# IMPORTANT: Export CLIENT_IDs from docker/.env (Magistrala client IDs, NOT instance IDs)
 # The participants array must use UUIDs, not "proplet-1", "proplet-2", "proplet-3"
 export PROPLET_CLIENT_ID=$(grep '^PROPLET_CLIENT_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
 export PROPLET_2_CLIENT_ID=$(grep '^PROPLET_2_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
@@ -502,7 +502,7 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 
 - Check proplet logs for "DEBUG:" messages to see if weights are being updated during training
 - Verify that datasets contain valid `x` and `y` values (see "Verifying Step 5: Dataset Loading")
-- Ensure the wasm client was rebuilt after code changes: `cd examples/fl-demo/client-wasm && GOTOOLCHAIN=go1.25.8 GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go`
+- Ensure the wasm client was rebuilt after code changes: `cd examples/fl-demo/client-wasm && GOOS=wasip2 GOARCH=wasm go build -o fl-client.wasm fl-client.go`
 
 ## Verifying Step 5: Dataset Loading from Local Data Store
 
@@ -717,7 +717,7 @@ The script:
 **One-time setup** ([ONE-TIME] - do once, persists in Docker volumes):
 
 - **Step 2**: Configure GHCR Authentication - Only needed once unless credentials change
-- **Step 4**: Provision SuperMQ Resources - Only needed once unless you run `docker compose down -v` (removes volumes)
+- **Step 4**: Provision Magistrala Resources - Only needed once unless you run `docker compose down -v` (removes volumes)
 
 **Runtime steps** (repeat for each test/round):
 
@@ -865,7 +865,7 @@ If you see this error in manager logs:
 }
 ```
 
-**Root Cause**: The `participants` array in ConfigureExperiment is using instance IDs (`"proplet-1"`, `"proplet-2"`, `"proplet-3"`) instead of SuperMQ CLIENT_IDs (UUIDs).
+**Root Cause**: The `participants` array in ConfigureExperiment is using instance IDs (`"proplet-1"`, `"proplet-2"`, `"proplet-3"`) instead of Magistrala CLIENT_IDs (UUIDs).
 
 **Solution**:
 
@@ -899,7 +899,7 @@ If you see this error in manager logs:
 
    You should see 3 "launched task" messages with UUID proplet_ids, not warnings about "proplet not found".
 
-**Why this happens**: Proplets register themselves with their SuperMQ CLIENT_ID (UUID), not their instance ID. The manager looks up proplets by the ID they registered with, so you must use CLIENT_IDs in the participants array.
+**Why this happens**: Proplets register themselves with their Magistrala CLIENT_ID (UUID), not their instance ID. The manager looks up proplets by the ID they registered with, so you must use CLIENT_IDs in the participants array.
 
 ### "Round timeout exceeded" with 0 updates - WASM Not Executing
 

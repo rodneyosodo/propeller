@@ -56,7 +56,7 @@ pub struct StartRequest {
     pub daemon: bool,
     #[serde(default)]
     pub env: Option<HashMap<String, String>>,
-    #[serde(rename = "monitoringProfile", default)]
+    #[serde(rename = "monitoring_profile", default)]
     pub monitoring_profile: Option<MonitoringProfile>,
     #[serde(default)]
     pub encrypted: bool,
@@ -843,6 +843,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         assert!(req.validate().is_ok());
@@ -865,6 +866,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         assert!(req.validate().is_ok());
@@ -887,6 +889,7 @@ mod tests {
             kbs_resource_path: None,
             mode: None,
             proplet_id: None,
+            broadcast: false,
         };
 
         let result = req.validate();

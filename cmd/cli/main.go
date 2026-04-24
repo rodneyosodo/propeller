@@ -3,9 +3,9 @@ package main
 import (
 	"log"
 
+	smqsdk "github.com/absmach/magistrala/pkg/sdk"
 	"github.com/absmach/propeller/cli"
 	"github.com/absmach/propeller/pkg/sdk"
-	smqsdk "github.com/absmach/supermq/pkg/sdk"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +44,7 @@ func main() {
 				smqSDKConf.MsgContentType = smqsdk.ContentType(msgContentType)
 			}
 			sdk := smqsdk.NewSDK(smqSDKConf)
-			cli.SetSuperMQSDK(sdk)
+			cli.SetMagistralaSDK(sdk)
 		},
 	}
 

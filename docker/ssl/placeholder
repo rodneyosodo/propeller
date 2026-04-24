@@ -1,5 +1,4 @@
 # Copyright (c) Abstract Machines
 # SPDX-License-Identifier: Apache-2.0
 
-snippets/mqtt-upstream.conf
-snippets/mqtt-ws-upstream.conf
+optional bind-mount placeholder
