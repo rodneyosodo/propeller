@@ -8,6 +8,7 @@ import (
 
 	"github.com/absmach/magistrala"
 	apiutil "github.com/absmach/magistrala/api/http/util"
+
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 )
 
