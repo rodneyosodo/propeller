@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"github.com/absmach/magistrala"
-	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	apiutil "github.com/absmach/magistrala/api/http/util"
+	pkgerrors "github.com/absmach/propeller/pkg/errors"
 )
 
 const (
