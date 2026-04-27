@@ -14,11 +14,11 @@ import (
 const propletsEndpoint = "/proplets"
 
 type Proplet struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	TaskCount uint64    `json:"task_count"`
-	Alive     bool      `json:"alive"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	TaskCount   uint64     `json:"task_count"`
+	Alive       bool       `json:"alive"`
+	LastAliveAt *time.Time `json:"last_alive_at,omitempty"`
 }
 
 type PropletPage struct {

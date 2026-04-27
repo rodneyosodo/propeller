@@ -132,9 +132,11 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 
 	// Use '$[' || (json_array_length-1) || ']' instead of '$[#-1]' to support
 	// SQLite < 3.38.0 (the last-element shorthand was added in 3.38, Feb 2022).
-	whereClause := `WHERE alive_history IS NOT NULL AND json_array_length(alive_history) > 0 AND unixepoch(json_extract(alive_history, '$[' || (json_array_length(alive_history) - 1) || ']')) >= unixepoch(?)`
+	// Use strftime('%s',...) instead of unixepoch() for the same reason: unixepoch()
+	// was also added in 3.38.0, while strftime has been available since SQLite 2.8.
+	whereClause := `WHERE alive_history IS NOT NULL AND json_array_length(alive_history) > 0 AND CAST(strftime('%s', json_extract(alive_history, '$[' || (json_array_length(alive_history) - 1) || ']')) AS INTEGER) >= CAST(strftime('%s', ?) AS INTEGER)`
 	if !alive {
-		whereClause = `WHERE alive_history IS NULL OR json_array_length(alive_history) = 0 OR unixepoch(json_extract(alive_history, '$[' || (json_array_length(alive_history) - 1) || ']')) < unixepoch(?)`
+		whereClause = `WHERE alive_history IS NULL OR json_array_length(alive_history) = 0 OR CAST(strftime('%s', json_extract(alive_history, '$[' || (json_array_length(alive_history) - 1) || ']')) AS INTEGER) < CAST(strftime('%s', ?) AS INTEGER)`
 	}
 
 	var total uint64
