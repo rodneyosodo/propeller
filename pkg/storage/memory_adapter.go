@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
@@ -64,7 +65,7 @@ func (r *memoryTaskRepo) List(ctx context.Context, offset, limit uint64) ([]task
 }
 
 func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error) {
-	data, _, err := r.storage.List(ctx, 0, maxMemoryFetch)
+	data, _, err := r.storage.List(ctx, 0, math.MaxUint64)
 	if err != nil {
 		return nil, err
 	}
@@ -84,7 +85,7 @@ func (r *memoryTaskRepo) ListByWorkflowID(ctx context.Context, workflowID string
 }
 
 func (r *memoryTaskRepo) ListByJobID(ctx context.Context, jobID string) ([]task.Task, error) {
-	data, _, err := r.storage.List(ctx, 0, maxMemoryFetch)
+	data, _, err := r.storage.List(ctx, 0, math.MaxUint64)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +155,7 @@ func (r *memoryPropletRepo) List(ctx context.Context, offset, limit uint64) ([]p
 }
 
 func (r *memoryPropletRepo) ListByAlive(ctx context.Context, offset, limit uint64, alive bool, since time.Time) ([]proplet.Proplet, uint64, error) {
-	data, _, err := r.storage.List(ctx, 0, maxMemoryFetch)
+	data, _, err := r.storage.List(ctx, 0, math.MaxUint64)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -278,8 +279,6 @@ func (r *memoryJobRepo) List(ctx context.Context, offset, limit uint64) ([]job.J
 func (r *memoryJobRepo) Delete(ctx context.Context, id string) error {
 	return r.storage.Delete(ctx, id)
 }
-
-const maxMemoryFetch = 100000
 
 type memoryMetricsRepo struct {
 	storage Storage

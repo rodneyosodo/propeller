@@ -370,6 +370,9 @@ func (svc *service) GetJob(ctx context.Context, jobID string) ([]task.Task, erro
 	return svc.getJobTasks(ctx, jobID)
 }
 
+// ListJobs is O(total tasks): job state is derived in-memory from the full task
+// set, so a status filter does not reduce storage I/O — every task is fetched
+// and aggregated before the filtered slice is built.
 func (svc *service) ListJobs(ctx context.Context, offset, limit uint64, status string) (JobPage, error) {
 	var jobStatus task.JobStatus
 	if status != "" {

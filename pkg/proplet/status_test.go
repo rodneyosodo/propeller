@@ -28,7 +28,7 @@ func TestStatusString(t *testing.T) {
 		{
 			desc:   "unknown status",
 			status: proplet.Status(100),
-			value:  proplet.Unknown,
+			value:  "unknown",
 		},
 	}
 

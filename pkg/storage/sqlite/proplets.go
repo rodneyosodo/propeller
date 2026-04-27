@@ -130,9 +130,11 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 
 	sinceArg := since.Format(time.RFC3339Nano)
 
-	whereClause := `WHERE alive_history IS NOT NULL AND json_array_length(alive_history) > 0 AND unixepoch(json_extract(alive_history, '$[#-1]')) >= unixepoch(?)`
+	// Use '$[' || (json_array_length-1) || ']' instead of '$[#-1]' to support
+	// SQLite < 3.38.0 (the last-element shorthand was added in 3.38, Feb 2022).
+	whereClause := `WHERE alive_history IS NOT NULL AND json_array_length(alive_history) > 0 AND unixepoch(json_extract(alive_history, '$[' || (json_array_length(alive_history) - 1) || ']')) >= unixepoch(?)`
 	if !alive {
-		whereClause = `WHERE alive_history IS NULL OR json_array_length(alive_history) = 0 OR unixepoch(json_extract(alive_history, '$[#-1]')) < unixepoch(?)`
+		whereClause = `WHERE alive_history IS NULL OR json_array_length(alive_history) = 0 OR unixepoch(json_extract(alive_history, '$[' || (json_array_length(alive_history) - 1) || ']')) < unixepoch(?)`
 	}
 
 	var total uint64

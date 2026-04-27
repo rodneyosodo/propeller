@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/absmach/propeller/pkg/proplet"
@@ -87,13 +88,18 @@ func (r *propletRepo) ListByAlive(ctx context.Context, offset, limit uint64, ali
 	if err != nil {
 		return nil, 0, err
 	}
+	scanLimit := total
 	if total > maxBadgerScan {
-		return nil, 0, fmt.Errorf("%w: filtered proplet listing exceeds badger scan cap of %d records (found %d)", ErrDBQuery, maxBadgerScan, total)
+		// Badger has no index for liveness filtering; a full keyspace scan is
+		// required. Beyond maxBadgerScan records the scan is truncated and results
+		// will be incomplete. TODO: consider an indexed approach for large deployments.
+		slog.Warn("Badger ListByAlive scan truncated", "total", total, "cap", maxBadgerScan)
+		scanLimit = maxBadgerScan
 	}
 
 	// Badger cannot push liveness filtering into key iteration, so we scan the
-	// full proplet keyspace up to maxBadgerScan and paginate the filtered slice.
-	values, err := r.db.listWithPrefix(prefix, 0, maxBadgerScan)
+	// full proplet keyspace up to scanLimit and paginate the filtered slice.
+	values, err := r.db.listWithPrefix(prefix, 0, scanLimit)
 	if err != nil {
 		return nil, 0, err
 	}

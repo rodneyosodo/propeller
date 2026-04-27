@@ -19,7 +19,9 @@ const (
 
 	Active   = "active"
 	Inactive = "inactive"
-	Unknown  = "unknown"
+	// unknown is unexported: it is only used as the default String() return value
+	// and is not a valid ?status= filter value (ToStatus rejects it with ErrInvalidStatus).
+	unknown = "unknown"
 )
 
 func (s Status) String() string {
@@ -29,7 +31,7 @@ func (s Status) String() string {
 	case InactiveStatus:
 		return Inactive
 	default:
-		return Unknown
+		return unknown
 	}
 }
 
