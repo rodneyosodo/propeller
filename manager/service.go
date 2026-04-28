@@ -1869,7 +1869,7 @@ func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (
 }
 
 func (svc *service) selectPropletWithConstraints(ctx context.Context, t task.Task, constraints plugin.PropletSelectResponse) (proplet.Proplet, error) {
-	proplets, _, err := svc.propletRepo.List(ctx, defOffset, defLimit)
+	proplets, err := svc.listAllActiveProplets(ctx)
 	if err != nil {
 		return proplet.Proplet{}, err
 	}
@@ -1877,10 +1877,6 @@ func (svc *service) selectPropletWithConstraints(ctx context.Context, t task.Tas
 	candidates := make([]proplet.Proplet, 0, len(proplets))
 	for i := range proplets {
 		p := proplets[i]
-		p.SetAlive()
-		if !p.Alive {
-			continue
-		}
 		if !propletMatchesConstraints(p, constraints) {
 			continue
 		}
