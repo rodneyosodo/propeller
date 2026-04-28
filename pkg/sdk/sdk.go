@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/absmach/propeller/pkg/proplet"
+	"github.com/absmach/propeller/pkg/sdf"
 )
 
 const CTJSON string = "application/json"
@@ -117,13 +118,19 @@ type SDK interface {
 	//  fmt.Println(page)
 	GetPropletAliveHistory(id string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error)
 
-	// ListProplets lists proplets with optional status filter.
-	// Status can be "active", "inactive", or "" (all).
+	// ListProplets returns a paginated list of proplets, optionally filtered by status.
 	//
 	// example:
 	//  page, _ := sdk.ListProplets(0, 10, "")
-	//  page, _ := sdk.ListProplets(0, 10, "active")
-	ListProplets(offset uint64, limit uint64, status string) (PropletPage, error)
+	//  fmt.Println(page)
+	ListProplets(offset, limit uint64, status string) (PropletPage, error)
+
+	// GetPropletSDF returns the SDF description of a proplet.
+	//
+	// example:
+	//  doc, _ := sdk.GetPropletSDF("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(doc)
+	GetPropletSDF(id string) (sdf.Document, error)
 
 	// DeleteProplet deletes a proplet by id.
 	//

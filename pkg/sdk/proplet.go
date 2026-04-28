@@ -4,15 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/absmach/propeller/pkg/proplet"
+	"github.com/absmach/propeller/pkg/sdf"
 )
 
 const propletsEndpoint = "/proplets"
 
+// Proplet is the SDK-facing shape of a proplet. It intentionally differs from
+// proplet.Proplet: it exposes CreatedAt (surfaced by the list endpoint) and
+// omits AliveHistory and Metadata, which are internal fields not needed by SDK
+// callers. Keep in sync with the manager list response when fields change.
 type Proplet struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
@@ -21,6 +25,8 @@ type Proplet struct {
 	LastAliveAt *time.Time `json:"last_alive_at,omitempty"`
 }
 
+// PropletPage mirrors the manager list response. Uses the SDK Proplet type
+// rather than proplet.PropletPage to match the fields declared above.
 type PropletPage struct {
 	Offset   uint64    `json:"offset"`
 	Limit    uint64    `json:"limit"`
@@ -29,9 +35,9 @@ type PropletPage struct {
 }
 
 func (sdk *propSDK) GetPropletAliveHistory(id string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error) {
-	reqURL := fmt.Sprintf("%s%s/%s/alive-history?offset=%d&limit=%d", sdk.managerURL, propletsEndpoint, id, offset, limit)
+	url := fmt.Sprintf("%s%s/%s/alive-history?offset=%d&limit=%d", sdk.managerURL, propletsEndpoint, id, offset, limit)
 
-	body, err := sdk.processRequest(http.MethodGet, reqURL, nil, http.StatusOK)
+	body, err := sdk.processRequest(http.MethodGet, url, nil, http.StatusOK)
 	if err != nil {
 		return proplet.PropletAliveHistoryPage{}, err
 	}
@@ -44,6 +50,22 @@ func (sdk *propSDK) GetPropletAliveHistory(id string, offset, limit uint64) (pro
 	return page, nil
 }
 
+func (sdk *propSDK) GetPropletSDF(id string) (sdf.Document, error) {
+	url := sdk.managerURL + propletsEndpoint + "/" + id + "/sdf"
+
+	body, err := sdk.processRequest(http.MethodGet, url, nil, http.StatusOK)
+	if err != nil {
+		return sdf.Document{}, err
+	}
+
+	var doc sdf.Document
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return sdf.Document{}, err
+	}
+
+	return doc, nil
+}
+
 func (sdk *propSDK) ListProplets(offset, limit uint64, status string) (PropletPage, error) {
 	params := make([]string, 0)
 	if offset > 0 {
@@ -53,15 +75,15 @@ func (sdk *propSDK) ListProplets(offset, limit uint64, status string) (PropletPa
 		params = append(params, fmt.Sprintf("limit=%d", limit))
 	}
 	if status != "" {
-		params = append(params, "status="+url.QueryEscape(status))
+		params = append(params, "status="+status)
 	}
 	query := ""
 	if len(params) > 0 {
 		query = "?" + strings.Join(params, "&")
 	}
-	reqURL := sdk.managerURL + propletsEndpoint + query
+	url := sdk.managerURL + propletsEndpoint + query
 
-	body, err := sdk.processRequest(http.MethodGet, reqURL, nil, http.StatusOK)
+	body, err := sdk.processRequest(http.MethodGet, url, nil, http.StatusOK)
 	if err != nil {
 		return PropletPage{}, err
 	}
@@ -75,9 +97,9 @@ func (sdk *propSDK) ListProplets(offset, limit uint64, status string) (PropletPa
 }
 
 func (sdk *propSDK) DeleteProplet(id string) error {
-	reqURL := sdk.managerURL + propletsEndpoint + "/" + id
+	url := sdk.managerURL + propletsEndpoint + "/" + id
 
-	if _, err := sdk.processRequest(http.MethodDelete, reqURL, nil, http.StatusNoContent); err != nil {
+	if _, err := sdk.processRequest(http.MethodDelete, url, nil, http.StatusNoContent); err != nil {
 		return err
 	}
 
