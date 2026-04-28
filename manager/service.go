@@ -29,8 +29,6 @@ import (
 )
 
 const (
-	defOffset                 = 0
-	defLimit                  = 100
 	aliveHistoryLimit         = 10
 	defaultPriority           = 50
 	defaultTimezone           = "UTC"
@@ -42,7 +40,7 @@ const (
 )
 
 var (
-	baseTopic       = "m/%s/c/%s"
+	baseTopicFmt    = "m/%s/c/%s"
 	namegen         = namegenerator.NewGenerator()
 	errShuttingDown = errors.New("service is shutting down")
 )
@@ -68,9 +66,8 @@ type service struct {
 func NewService(
 	repos *storage.Repositories,
 	s scheduler.Scheduler, pubsub mqtt.PubSub,
-	domainID, channelID string, logger *slog.Logger,
+	domainID, channelID, coordinatorURL string, logger *slog.Logger,
 ) (Service, CronScheduler) {
-	coordinatorURL := os.Getenv("COORDINATOR_URL")
 	var httpClient *http.Client
 	if coordinatorURL != "" {
 		httpClient = &http.Client{
@@ -78,7 +75,7 @@ func NewService(
 		}
 		logger.Info("HTTP FL Coordinator enabled", "url", coordinatorURL)
 	} else {
-		logger.Warn("COORDINATOR_URL not configured - FL features will not be available")
+		logger.Warn("MANAGER_COORDINATOR_URL not configured - FL features will not be available")
 	}
 
 	svc := &service{
@@ -88,7 +85,7 @@ func NewService(
 		jobRepo:          repos.Jobs,
 		metricsRepo:      repos.Metrics,
 		scheduler:        s,
-		baseTopic:        fmt.Sprintf(baseTopic, domainID, channelID),
+		baseTopic:        fmt.Sprintf(baseTopicFmt, domainID, channelID),
 		pubsub:           pubsub,
 		logger:           logger,
 		flCoordinatorURL: coordinatorURL,
@@ -158,12 +155,12 @@ func (svc *service) ListProplets(ctx context.Context, offset, limit uint64, stat
 }
 
 func (svc *service) SelectProplet(ctx context.Context, t task.Task) (proplet.Proplet, error) {
-	proplets, err := svc.ListProplets(ctx, defOffset, defLimit, "")
+	proplets, err := svc.listAllActiveProplets(ctx)
 	if err != nil {
 		return proplet.Proplet{}, err
 	}
 
-	return svc.scheduler.SelectProplet(t, proplets.Proplets)
+	return svc.scheduler.SelectProplet(t, proplets)
 }
 
 func (svc *service) DeleteProplet(ctx context.Context, propletID string) error {
@@ -565,7 +562,16 @@ func ComputeJobState(tasks []task.Task) task.State {
 }
 
 func (svc *service) GetTask(ctx context.Context, taskID string) (task.Task, error) {
-	return svc.taskRepo.Get(ctx, taskID)
+	t, err := svc.taskRepo.Get(ctx, taskID)
+	if err != nil {
+		if errors.Is(err, storage.ErrTaskNotFound) {
+			return task.Task{}, pkgerrors.ErrNotFound
+		}
+
+		return task.Task{}, err
+	}
+
+	return t, nil
 }
 
 func (svc *service) ListTasks(ctx context.Context, offset, limit uint64) (task.TaskPage, error) {
@@ -1232,7 +1238,7 @@ func (svc *service) updateLivenessHandler(ctx context.Context, msg map[string]an
 	p.Alive = true
 	p.AliveHistory = append(p.AliveHistory, time.Now())
 	if len(p.AliveHistory) > aliveHistoryLimit {
-		p.AliveHistory = p.AliveHistory[1:]
+		p.AliveHistory = p.AliveHistory[len(p.AliveHistory)-aliveHistoryLimit:]
 	}
 	if err := svc.propletRepo.Update(ctx, p); err != nil {
 		return err
@@ -1255,10 +1261,11 @@ func (svc *service) updateResultsHandler(ctx context.Context, msg map[string]any
 		return err
 	}
 
+	now := time.Now()
 	t.Results = msg["results"]
 	t.State = task.Completed
-	t.UpdatedAt = time.Now()
-	t.FinishTime = time.Now()
+	t.UpdatedAt = now
+	t.FinishTime = now
 
 	if errMsg, ok := msg["error"].(string); ok && errMsg != "" {
 		t.Error = errMsg
@@ -1734,24 +1741,28 @@ func (svc *service) parseMemoryMetrics(data map[string]any) proplet.MemoryMetric
 	return metrics
 }
 
-func (svc *service) listAllTasks(ctx context.Context) ([]task.Task, error) {
+// listAllTasksFromRepo paginates through all tasks in the given repository.
+func listAllTasksFromRepo(ctx context.Context, repo storage.TaskRepository) ([]task.Task, error) {
 	const pageSize uint64 = 100
-	var allTasks []task.Task
+	var all []task.Task
 	var offset uint64
-
 	for {
-		tasks, total, err := svc.taskRepo.List(ctx, offset, pageSize)
+		page, total, err := repo.List(ctx, offset, pageSize)
 		if err != nil {
 			return nil, err
 		}
-		allTasks = append(allTasks, tasks...)
-		offset += uint64(len(tasks))
-		if offset >= total || len(tasks) == 0 {
+		all = append(all, page...)
+		offset += uint64(len(page))
+		if offset >= total || len(page) == 0 {
 			break
 		}
 	}
 
-	return allTasks, nil
+	return all, nil
+}
+
+func (svc *service) listAllTasks(ctx context.Context) ([]task.Task, error) {
+	return listAllTasksFromRepo(ctx, svc.taskRepo)
 }
 
 func (svc *service) pinTaskToProplet(ctx context.Context, taskID, propletID string) error {
@@ -1916,4 +1927,26 @@ func (svc *service) waitForActiveTasks(ctx context.Context) error {
 		case <-ticker.C:
 		}
 	}
+}
+
+func (svc *service) listAllActiveProplets(ctx context.Context) ([]proplet.Proplet, error) {
+	const pageSize uint64 = 100
+	since := time.Now().Add(-proplet.AliveTimeout)
+	var all []proplet.Proplet
+	for offset := uint64(0); ; {
+		page, total, err := svc.propletRepo.ListByAlive(ctx, offset, pageSize, true, since)
+		if err != nil {
+			return nil, err
+		}
+		for i := range page {
+			page[i].SetAlive()
+		}
+		all = append(all, page...)
+		offset += uint64(len(page))
+		if offset >= total || len(page) == 0 {
+			break
+		}
+	}
+
+	return all, nil
 }

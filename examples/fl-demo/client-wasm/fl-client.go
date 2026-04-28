@@ -21,7 +21,7 @@ func main() {
 	roundID := os.Getenv("ROUND_ID")
 	modelURI := os.Getenv("MODEL_URI")
 	hyperparamsJSON := os.Getenv("HYPERPARAMS")
-	coordinatorURL := os.Getenv("COORDINATOR_URL")
+	coordinatorURL := os.Getenv("MANAGER_COORDINATOR_URL")
 	modelRegistryURL := os.Getenv("MODEL_REGISTRY_URL")
 	propletID := os.Getenv("PROPLET_ID")
 

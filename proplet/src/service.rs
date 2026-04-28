@@ -786,16 +786,16 @@ impl PropletService {
             };
 
             if let Some(round_id) = env.get("ROUND_ID") {
-                // COORDINATOR_URL is required for FML tasks (when ROUND_ID is present)
+                // MANAGER_COORDINATOR_URL is required for FML tasks (when ROUND_ID is present)
                 // Use environment variables only - no fallbacks, must be set in .env file
                 let coordinator_url = match env
-                    .get("COORDINATOR_URL")
+                    .get("MANAGER_COORDINATOR_URL")
                     .cloned()
-                    .or_else(|| std::env::var("COORDINATOR_URL").ok())
+                    .or_else(|| std::env::var("MANAGER_COORDINATOR_URL").ok())
                 {
                     Some(url) => url,
                     None => {
-                        error!("COORDINATOR_URL not set. Must be provided via environment variable in .env file for FML tasks.");
+                        error!("MANAGER_COORDINATOR_URL not set. Must be provided via environment variable in .env file for FML tasks.");
                         return;
                     }
                 };

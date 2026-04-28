@@ -11,6 +11,11 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
 
+type lwtMessage struct {
+	Status    string `json:"status"`
+	PropletID string `json:"proplet_id"`
+}
+
 const (
 	connTimeout    = 10
 	reconnTimeout  = 1
@@ -28,7 +33,6 @@ var (
 	errEmptyID            = errors.New("empty ID")
 
 	aliveTopicTemplate = "m/%s/c/%s/control/proplet/alive"
-	lwtPayloadTemplate = `{"status":"offline","proplet_id":"%s"}`
 )
 
 type pubsub struct {
@@ -173,8 +177,11 @@ func newClient(address, id, username, password, domainID, channelID string, time
 
 	if channelID != "" {
 		topic := fmt.Sprintf(aliveTopicTemplate, domainID, channelID)
-		lwtPayload := fmt.Sprintf(lwtPayloadTemplate, id)
-		opts.SetWill(topic, lwtPayload, 0, false)
+		lwtPayload, err := json.Marshal(lwtMessage{Status: "offline", PropletID: id})
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal LWT payload: %w", err)
+		}
+		opts.SetWill(topic, string(lwtPayload), 0, false)
 	}
 
 	opts.SetOnConnectHandler(func(_ mqtt.Client) {
@@ -221,12 +228,16 @@ func (ps *pubsub) mqttHandler(h Handler) mqtt.MessageHandler {
 		var msg map[string]any
 		if err := json.Unmarshal(m.Payload(), &msg); err != nil {
 			ps.logger.Warn(fmt.Sprintf("Failed to unmarshal received message: %s", err))
+			// Ack malformed messages; redelivery cannot fix a bad payload.
+			m.Ack()
 
 			return
 		}
 
 		if err := h(m.Topic(), msg); err != nil {
 			ps.logger.Warn(fmt.Sprintf("Failed to handle MQTT message: %s", err))
+			// Do not ack on handler error so the broker can redeliver for transient failures.
+			return
 		}
 
 		m.Ack()

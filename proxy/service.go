@@ -14,11 +14,8 @@ const (
 	chunkBuffer       = 10
 	containerChanSize = 100
 
-	connTimeout    = 10
-	reconnTimeout  = 1
-	disconnTimeout = 250
-	PubTopic       = "m/%s/c/%s/registry/server"
-	SubTopic       = "m/%s/c/%s/registry/proplet"
+	PubTopic = "m/%s/c/%s/registry/server"
+	SubTopic = "m/%s/c/%s/registry/proplet"
 
 	maxConcurrentFetches = 50
 )
@@ -31,10 +28,9 @@ type ProxyService struct {
 	logger        *slog.Logger
 	containerChan chan string
 	dataChan      chan proplet.ChunkPayload
+	mu            sync.Mutex
 	fetching      map[string]bool
-	fetchingMu    sync.Mutex
 	activeFetches int
-	activeFetchMu sync.Mutex
 }
 
 func NewService(ctx context.Context, pubsub pkgmqtt.PubSub, domainID, channelID string, httpCfg HTTPProxyConfig, logger *slog.Logger) (*ProxyService, error) {
@@ -60,42 +56,32 @@ func (s *ProxyService) StreamHTTP(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case containerName := <-s.containerChan:
-			s.activeFetchMu.Lock()
+			s.mu.Lock()
 			if s.activeFetches >= maxConcurrentFetches {
-				s.activeFetchMu.Unlock()
-				s.logger.Debug("maximum concurrent fetches reached, queuing request",
+				s.mu.Unlock()
+				s.logger.Error("maximum concurrent fetches reached, dropping container request",
 					slog.String("container", containerName),
 					slog.Int("max_concurrent", maxConcurrentFetches))
 
 				continue
 			}
-			s.activeFetches++
-			s.activeFetchMu.Unlock()
-
-			s.fetchingMu.Lock()
 			if s.fetching[containerName] {
-				s.fetchingMu.Unlock()
-				s.activeFetchMu.Lock()
-				s.activeFetches--
-				s.activeFetchMu.Unlock()
+				s.mu.Unlock()
 				s.logger.Debug("already fetching container, skipping duplicate request",
 					slog.String("container", containerName))
 
 				continue
 			}
-
+			s.activeFetches++
 			s.fetching[containerName] = true
-			s.fetchingMu.Unlock()
+			s.mu.Unlock()
 
 			go func(name string) {
 				defer func() {
-					s.fetchingMu.Lock()
+					s.mu.Lock()
 					delete(s.fetching, name)
-					s.fetchingMu.Unlock()
-
-					s.activeFetchMu.Lock()
 					s.activeFetches--
-					s.activeFetchMu.Unlock()
+					s.mu.Unlock()
 				}()
 
 				s.logger.Info("fetching container from registry",
