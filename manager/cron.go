@@ -104,23 +104,7 @@ func (cs *cronScheduler) UnscheduleTask(ctx context.Context, taskID string) erro
 }
 
 func (cs *cronScheduler) listAllTasks(ctx context.Context) ([]task.Task, error) {
-	const pageSize uint64 = 100
-	var allTasks []task.Task
-	var offset uint64
-
-	for {
-		tasks, total, err := cs.tasksDB.List(ctx, offset, pageSize)
-		if err != nil {
-			return nil, err
-		}
-		allTasks = append(allTasks, tasks...)
-		offset += uint64(len(tasks))
-		if offset >= total || len(tasks) == 0 {
-			break
-		}
-	}
-
-	return allTasks, nil
+	return listAllTasksFromRepo(ctx, cs.tasksDB)
 }
 
 func (cs *cronScheduler) processScheduledTasks(ctx context.Context) error {

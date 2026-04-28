@@ -51,7 +51,7 @@ curl -X POST http://localhost:7070/tasks \
     "env": {
       "ROUND_ID": "round-1",
       "MODEL_URI": "fl/models/global_model_v0",
-      "COORDINATOR_URL": "http://coordinator-http:8080",
+      "MANAGER_COORDINATOR_URL": "http://coordinator-http:8080",
       "MODEL_REGISTRY_URL": "http://model-registry:8081",
       "DATA_STORE_URL": "http://local-data-store:8083",
       "HYPERPARAMS": "{\"epochs\":1,\"lr\":0.01,\"batch_size\":16}"

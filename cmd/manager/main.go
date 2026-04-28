@@ -38,17 +38,18 @@ const (
 )
 
 type config struct {
-	LogLevel    string        `env:"MANAGER_LOG_LEVEL"           envDefault:"info"`
-	MQTTAddress string        `env:"MANAGER_MQTT_ADDRESS"        envDefault:"tcp://localhost:1883"`
-	MQTTQoS     uint8         `env:"MANAGER_MQTT_QOS"            envDefault:"2"`
-	MQTTTimeout time.Duration `env:"MANAGER_MQTT_TIMEOUT"        envDefault:"30s"`
-	DomainID    string        `env:"MANAGER_DOMAIN_ID"`
-	ChannelID   string        `env:"MANAGER_CHANNEL_ID"`
-	ClientID    string        `env:"MANAGER_CLIENT_ID"`
-	ClientKey   string        `env:"MANAGER_CLIENT_KEY"`
-	Server      server.Config
-	OTELURL     url.URL `env:"MANAGER_OTEL_URL"`
-	TraceRatio  float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
+	LogLevel       string        `env:"MANAGER_LOG_LEVEL"           envDefault:"info"`
+	MQTTAddress    string        `env:"MANAGER_MQTT_ADDRESS"        envDefault:"tcp://localhost:1883"`
+	MQTTQoS        uint8         `env:"MANAGER_MQTT_QOS"            envDefault:"2"`
+	MQTTTimeout    time.Duration `env:"MANAGER_MQTT_TIMEOUT"        envDefault:"30s"`
+	DomainID       string        `env:"MANAGER_DOMAIN_ID"`
+	ChannelID      string        `env:"MANAGER_CHANNEL_ID"`
+	ClientID       string        `env:"MANAGER_CLIENT_ID"`
+	ClientKey      string        `env:"MANAGER_CLIENT_KEY"`
+	CoordinatorURL string        `env:"MANAGER_COORDINATOR_URL"`
+	Server         server.Config
+	OTELURL        url.URL `env:"MANAGER_OTEL_URL"`
+	TraceRatio     float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
 }
 
 func main() {
@@ -149,6 +150,7 @@ func main() {
 		mqttPubSub,
 		cfg.DomainID,
 		cfg.ChannelID,
+		cfg.CoordinatorURL,
 		logger,
 	)
 	svc = middleware.Logging(logger, svc)
@@ -161,6 +163,10 @@ func main() {
 		exitCode = 1
 
 		return
+	}
+
+	if err := svc.RecoverInterruptedTasks(ctx); err != nil {
+		logger.Warn("failed to recover interrupted tasks from previous run", slog.Any("error", err))
 	}
 
 	g.Go(func() error {

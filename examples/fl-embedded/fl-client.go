@@ -46,7 +46,7 @@ func main() {
 
 	modelURI := os.Getenv("MODEL_URI")
 	hyperparamsJSON := os.Getenv("HYPERPARAMS")
-	coordinatorURL := os.Getenv("COORDINATOR_URL")
+	coordinatorURL := os.Getenv("MANAGER_COORDINATOR_URL")
 	if coordinatorURL == "" {
 		coordinatorURL = "http://coordinator-http:8080"
 	}

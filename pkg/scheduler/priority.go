@@ -1,7 +1,7 @@
 package scheduler
 
 import (
-	"sort"
+	"slices"
 
 	"github.com/absmach/propeller/pkg/task"
 )
@@ -12,22 +12,32 @@ func GetReadyTasksByPriority(tasks []task.Task) []task.Task {
 	sorted := make([]task.Task, len(tasks))
 	copy(sorted, tasks)
 
-	sort.Slice(sorted, func(i, j int) bool {
-		priorityI := sorted[i].Priority
-		priorityJ := sorted[j].Priority
-
-		if priorityI == 0 {
-			priorityI = defaultPriority
+	slices.SortFunc(sorted, func(a, b task.Task) int {
+		pa, pb := a.Priority, b.Priority
+		if pa == 0 {
+			pa = defaultPriority
 		}
-		if priorityJ == 0 {
-			priorityJ = defaultPriority
+		if pb == 0 {
+			pb = defaultPriority
 		}
 
-		if priorityI != priorityJ {
-			return priorityI > priorityJ
+		if pa != pb {
+			// Higher priority first.
+			if pa > pb {
+				return -1
+			}
+
+			return 1
 		}
 
-		return sorted[i].CreatedAt.Before(sorted[j].CreatedAt)
+		if a.CreatedAt.Before(b.CreatedAt) {
+			return -1
+		}
+		if a.CreatedAt.After(b.CreatedAt) {
+			return 1
+		}
+
+		return 0
 	})
 
 	return sorted

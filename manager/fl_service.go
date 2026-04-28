@@ -29,7 +29,7 @@ func (svc *service) ConfigureExperiment(ctx context.Context, config ExperimentCo
 	}
 
 	if svc.flCoordinatorURL == "" || svc.httpClient == nil {
-		return errors.New("COORDINATOR_URL must be configured for HTTP-based FL coordination")
+		return errors.New("MANAGER_COORDINATOR_URL must be configured for HTTP-based FL coordination")
 	}
 
 	configJSON, err := json.Marshal(config)
@@ -84,7 +84,7 @@ func (svc *service) GetFLTask(ctx context.Context, roundID, propletID string) (F
 	}
 
 	if svc.flCoordinatorURL == "" || svc.httpClient == nil {
-		return FLTask{}, errors.New("COORDINATOR_URL must be configured")
+		return FLTask{}, errors.New("MANAGER_COORDINATOR_URL must be configured")
 	}
 
 	u, err := url.Parse(svc.flCoordinatorURL + "/task")
@@ -132,7 +132,7 @@ func (svc *service) PostFLUpdate(ctx context.Context, update FLUpdate) error {
 	}
 
 	if svc.flCoordinatorURL == "" || svc.httpClient == nil {
-		return errors.New("COORDINATOR_URL must be configured")
+		return errors.New("MANAGER_COORDINATOR_URL must be configured")
 	}
 
 	updateJSON, err := json.Marshal(update)
@@ -179,7 +179,7 @@ func (svc *service) GetRoundStatus(ctx context.Context, roundID string) (RoundSt
 	}
 
 	if svc.flCoordinatorURL == "" || svc.httpClient == nil {
-		return RoundStatus{}, errors.New("COORDINATOR_URL must be configured")
+		return RoundStatus{}, errors.New("MANAGER_COORDINATOR_URL must be configured")
 	}
 
 	u, err := url.Parse(fmt.Sprintf("%s/rounds/%s/complete", svc.flCoordinatorURL, url.PathEscape(roundID)))

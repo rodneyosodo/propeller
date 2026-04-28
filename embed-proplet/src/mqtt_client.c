@@ -111,7 +111,8 @@ static void prepare_fds(struct mqtt_client *client) {
 static void clear_fds(void) { nfds = 0; }
 
 /* Forward declarations */
-static int http_get_json(const char *url, char *response_buffer, size_t buffer_size);
+static int http_get_json(const char *url, char *response_buffer,
+                         size_t buffer_size);
 static int extract_model_version_from_uri(const char *uri);
 
 static int poll_mqtt_socket(struct mqtt_client *client, int timeout) {
@@ -179,14 +180,17 @@ static void mqtt_event_handler(struct mqtt_client *client,
 
     const struct mqtt_utf8 *rtopic = &pub->message.topic.topic;
     char topic_str[256];
-    snprintf(topic_str, sizeof(topic_str), "%.*s", (int)rtopic->size, rtopic->utf8);
+    snprintf(topic_str, sizeof(topic_str), "%.*s", (int)rtopic->size,
+             rtopic->utf8);
     topic_str[sizeof(topic_str) - 1] = '\0';
 
     if (g_current_task.is_fml_task && strlen(g_current_task.model_uri) > 0 &&
         strcmp(topic_str, g_current_task.model_uri) == 0) {
-      LOG_INF("Received model from topic: %s (payload: %d bytes)", topic_str, (int)pub->message.payload.len);
+      LOG_INF("Received model from topic: %s (payload: %d bytes)", topic_str,
+              (int)pub->message.payload.len);
 
-      size_t payload_size = MIN(pub->message.payload.len, sizeof(g_current_task.model_data) - 1);
+      size_t payload_size =
+          MIN(pub->message.payload.len, sizeof(g_current_task.model_data) - 1);
       memcpy(g_current_task.model_data, payload, payload_size);
       g_current_task.model_data[payload_size] = '\0';
       g_current_task.model_data_fetched = true;
@@ -197,7 +201,7 @@ static void mqtt_event_handler(struct mqtt_client *client,
       }
       LOG_INF("Model data stored (size: %zu bytes)", payload_size);
     } else if (rtopic->size == strlen(start_topic) &&
-        memcmp(rtopic->utf8, start_topic, rtopic->size) == 0) {
+               memcmp(rtopic->utf8, start_topic, rtopic->size) == 0) {
       handle_start_command(payload);
     } else if (rtopic->size == strlen(stop_topic) &&
                memcmp(rtopic->utf8, stop_topic, rtopic->size) == 0) {
@@ -524,7 +528,7 @@ void handle_start_command(const char *payload) {
   t.data_store_url[0] = '\0';
   t.model_data[0] = '\0';
   t.dataset_data[0] = '\0';
-  
+
   const char *pid = g_proplet_id;
   strncpy(t.proplet_id, pid, sizeof(t.proplet_id) - 1);
   t.proplet_id[sizeof(t.proplet_id) - 1] = '\0';
@@ -532,32 +536,42 @@ void handle_start_command(const char *payload) {
   if (env != NULL && cJSON_IsObject(env)) {
     cJSON *round_id_env = cJSON_GetObjectItemCaseSensitive(env, "ROUND_ID");
     cJSON *model_uri_env = cJSON_GetObjectItemCaseSensitive(env, "MODEL_URI");
-    cJSON *hyperparams_env = cJSON_GetObjectItemCaseSensitive(env, "HYPERPARAMS");
-    cJSON *coordinator_url_env = cJSON_GetObjectItemCaseSensitive(env, "COORDINATOR_URL");
-    cJSON *model_registry_url_env = cJSON_GetObjectItemCaseSensitive(env, "MODEL_REGISTRY_URL");
-    cJSON *data_store_url_env = cJSON_GetObjectItemCaseSensitive(env, "DATA_STORE_URL");
-    
+    cJSON *hyperparams_env =
+        cJSON_GetObjectItemCaseSensitive(env, "HYPERPARAMS");
+    cJSON *coordinator_url_env =
+        cJSON_GetObjectItemCaseSensitive(env, "MANAGER_COORDINATOR_URL");
+    cJSON *model_registry_url_env =
+        cJSON_GetObjectItemCaseSensitive(env, "MODEL_REGISTRY_URL");
+    cJSON *data_store_url_env =
+        cJSON_GetObjectItemCaseSensitive(env, "DATA_STORE_URL");
+
     if (cJSON_IsString(coordinator_url_env)) {
-      strncpy(t.coordinator_url, coordinator_url_env->valuestring, sizeof(t.coordinator_url) - 1);
+      strncpy(t.coordinator_url, coordinator_url_env->valuestring,
+              sizeof(t.coordinator_url) - 1);
       t.coordinator_url[sizeof(t.coordinator_url) - 1] = '\0';
     } else {
-      strncpy(t.coordinator_url, "http://coordinator-http:8080", sizeof(t.coordinator_url) - 1);
+      strncpy(t.coordinator_url, "http://coordinator-http:8080",
+              sizeof(t.coordinator_url) - 1);
       t.coordinator_url[sizeof(t.coordinator_url) - 1] = '\0';
     }
 
     if (cJSON_IsString(model_registry_url_env)) {
-      strncpy(t.model_registry_url, model_registry_url_env->valuestring, sizeof(t.model_registry_url) - 1);
+      strncpy(t.model_registry_url, model_registry_url_env->valuestring,
+              sizeof(t.model_registry_url) - 1);
       t.model_registry_url[sizeof(t.model_registry_url) - 1] = '\0';
     } else {
-      strncpy(t.model_registry_url, "http://model-registry:8081", sizeof(t.model_registry_url) - 1);
+      strncpy(t.model_registry_url, "http://model-registry:8081",
+              sizeof(t.model_registry_url) - 1);
       t.model_registry_url[sizeof(t.model_registry_url) - 1] = '\0';
     }
 
     if (cJSON_IsString(data_store_url_env)) {
-      strncpy(t.data_store_url, data_store_url_env->valuestring, sizeof(t.data_store_url) - 1);
+      strncpy(t.data_store_url, data_store_url_env->valuestring,
+              sizeof(t.data_store_url) - 1);
       t.data_store_url[sizeof(t.data_store_url) - 1] = '\0';
     } else {
-      strncpy(t.data_store_url, "http://local-data-store:8083", sizeof(t.data_store_url) - 1);
+      strncpy(t.data_store_url, "http://local-data-store:8083",
+              sizeof(t.data_store_url) - 1);
       t.data_store_url[sizeof(t.data_store_url) - 1] = '\0';
     }
 
@@ -575,17 +589,21 @@ void handle_start_command(const char *payload) {
     }
 
     if (cJSON_IsString(hyperparams_env)) {
-      strncpy(t.hyperparams, hyperparams_env->valuestring, sizeof(t.hyperparams) - 1);
+      strncpy(t.hyperparams, hyperparams_env->valuestring,
+              sizeof(t.hyperparams) - 1);
       t.hyperparams[sizeof(t.hyperparams) - 1] = '\0';
     }
-    
+
     // FL task configuration from environment variables
-    cJSON *fl_round_id_env = cJSON_GetObjectItemCaseSensitive(env, "FL_ROUND_ID");
+    cJSON *fl_round_id_env =
+        cJSON_GetObjectItemCaseSensitive(env, "FL_ROUND_ID");
     cJSON *fl_format_env = cJSON_GetObjectItemCaseSensitive(env, "FL_FORMAT");
-    cJSON *fl_num_samples_env = cJSON_GetObjectItemCaseSensitive(env, "FL_NUM_SAMPLES");
+    cJSON *fl_num_samples_env =
+        cJSON_GetObjectItemCaseSensitive(env, "FL_NUM_SAMPLES");
 
     if (cJSON_IsString(fl_round_id_env)) {
-      strncpy(t.fl_round_id_str, fl_round_id_env->valuestring, sizeof(t.fl_round_id_str) - 1);
+      strncpy(t.fl_round_id_str, fl_round_id_env->valuestring,
+              sizeof(t.fl_round_id_str) - 1);
       t.fl_round_id_str[sizeof(t.fl_round_id_str) - 1] = '\0';
     }
     if (cJSON_IsString(fl_format_env)) {
@@ -597,7 +615,8 @@ void handle_start_command(const char *payload) {
       t.fl_format[MAX_NAME_LEN - 1] = '\0';
     }
     if (cJSON_IsString(fl_num_samples_env)) {
-      strncpy(t.fl_num_samples_str, fl_num_samples_env->valuestring, sizeof(t.fl_num_samples_str) - 1);
+      strncpy(t.fl_num_samples_str, fl_num_samples_env->valuestring,
+              sizeof(t.fl_num_samples_str) - 1);
       t.fl_num_samples_str[sizeof(t.fl_num_samples_str) - 1] = '\0';
     } else {
       strncpy(t.fl_num_samples_str, "1", sizeof(t.fl_num_samples_str) - 1);
@@ -616,19 +635,20 @@ void handle_start_command(const char *payload) {
     LOG_INF("FML Task: round_id=%s, model_uri=%s", t.round_id, t.model_uri);
     if (strlen(t.model_uri) > 0) {
       struct mqtt_topic model_topic = {
-        .topic = {.utf8 = (char *)t.model_uri, .size = strlen(t.model_uri)},
-        .qos = MQTT_QOS_1_AT_LEAST_ONCE,
+          .topic = {.utf8 = (char *)t.model_uri, .size = strlen(t.model_uri)},
+          .qos = MQTT_QOS_1_AT_LEAST_ONCE,
       };
       struct mqtt_subscription_list sub_list = {
-        .list = &model_topic,
-        .list_count = 1,
-        .message_id = sys_rand32_get() & 0xFFFF,
+          .list = &model_topic,
+          .list_count = 1,
+          .message_id = sys_rand32_get() & 0xFFFF,
       };
       int ret = mqtt_subscribe(&client_ctx, &sub_list);
       if (ret == 0) {
         LOG_INF("Subscribed to model topic: %s", t.model_uri);
       } else {
-        LOG_ERR("Failed to subscribe to model topic: %s (error: %d)", t.model_uri, ret);
+        LOG_ERR("Failed to subscribe to model topic: %s (error: %d)",
+                t.model_uri, ret);
       }
     }
   }
@@ -641,52 +661,61 @@ void handle_start_command(const char *payload) {
   if (t.is_fml_task && strlen(t.model_uri) > 0) {
     int model_version = extract_model_version_from_uri(t.model_uri);
     char model_url[512];
-    snprintf(model_url, sizeof(model_url), "%s/models/%d", 
-             t.model_registry_url, model_version);
-    
+    snprintf(model_url, sizeof(model_url), "%s/models/%d", t.model_registry_url,
+             model_version);
+
     LOG_INF("FL/FML task: Fetching model from registry: %s", model_url);
-    
+
     char http_response[4096];
     if (http_get_json(model_url, http_response, sizeof(http_response)) == 0) {
       size_t response_len = strlen(http_response);
       if (response_len >= sizeof(g_current_task.model_data) - 1) {
-        LOG_ERR("Model data too large (%zu >= %zu), cannot store, training will fail",
+        LOG_ERR("Model data too large (%zu >= %zu), cannot store, training "
+                "will fail",
                 response_len, sizeof(g_current_task.model_data) - 1);
       } else {
         strncpy(g_current_task.model_data, http_response,
                 sizeof(g_current_task.model_data) - 1);
         g_current_task.model_data[sizeof(g_current_task.model_data) - 1] = '\0';
         g_current_task.model_data_fetched = true;
-        LOG_INF("Successfully fetched model v%d via HTTP and stored in MODEL_DATA", model_version);
+        LOG_INF(
+            "Successfully fetched model v%d via HTTP and stored in MODEL_DATA",
+            model_version);
       }
     } else {
-      LOG_WRN("HTTP model fetch failed, will use MQTT subscription for model topic: %s", t.model_uri);
+      LOG_WRN("HTTP model fetch failed, will use MQTT subscription for model "
+              "topic: %s",
+              t.model_uri);
     }
   }
 
   if (t.is_fml_task && strlen(t.proplet_id) > 0) {
     char dataset_url[512];
-    snprintf(dataset_url, sizeof(dataset_url), "%s/datasets/%s", 
+    snprintf(dataset_url, sizeof(dataset_url), "%s/datasets/%s",
              t.data_store_url, t.proplet_id);
-    
-    LOG_INF("FL/FML task: Fetching dataset for proplet_id=%s from: %s", 
+
+    LOG_INF("FL/FML task: Fetching dataset for proplet_id=%s from: %s",
             t.proplet_id, dataset_url);
-    
+
     char http_response[4096];
     if (http_get_json(dataset_url, http_response, sizeof(http_response)) == 0) {
       size_t response_len = strlen(http_response);
       if (response_len >= sizeof(g_current_task.dataset_data) - 1) {
-        LOG_ERR("Dataset data too large (%zu >= %zu), cannot store, training will fail",
+        LOG_ERR("Dataset data too large (%zu >= %zu), cannot store, training "
+                "will fail",
                 response_len, sizeof(g_current_task.dataset_data) - 1);
       } else {
         strncpy(g_current_task.dataset_data, http_response,
                 sizeof(g_current_task.dataset_data) - 1);
-        g_current_task.dataset_data[sizeof(g_current_task.dataset_data) - 1] = '\0';
+        g_current_task.dataset_data[sizeof(g_current_task.dataset_data) - 1] =
+            '\0';
         g_current_task.dataset_data_fetched = true;
-        LOG_INF("Successfully fetched dataset via HTTP and stored in DATASET_DATA");
+        LOG_INF(
+            "Successfully fetched dataset via HTTP and stored in DATASET_DATA");
       }
     } else {
-      LOG_WRN("HTTP dataset fetch failed for proplet_id=%s (WASM client may use synthetic data)",
+      LOG_WRN("HTTP dataset fetch failed for proplet_id=%s (WASM client may "
+              "use synthetic data)",
               t.proplet_id);
     }
   }
@@ -766,7 +795,8 @@ void handle_stop_command(const char *payload) {
   cJSON_Delete(json);
 }
 
-static int http_get_json(const char *url, char *response_buffer, size_t buffer_size) {
+static int http_get_json(const char *url, char *response_buffer,
+                         size_t buffer_size) {
   int sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (sock < 0) {
     LOG_ERR("Failed to create socket for HTTP GET: %d", sock);
@@ -776,22 +806,22 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
   char host[256] = {0};
   int port = 80;
   char path[512] = {0};
-  
+
   if (strncmp(url, "http://", 7) != 0) {
     LOG_ERR("Only http:// URLs are supported, got: %s", url);
     zsock_close(sock);
     return -1;
   }
-  
+
   const char *host_start = url + 7;
   const char *port_start = strchr(host_start, ':');
   const char *path_start = strchr(host_start, '/');
-  
+
   if (port_start && (!path_start || port_start < path_start)) {
     size_t host_len = port_start - host_start;
     strncpy(host, host_start, MIN(host_len, sizeof(host) - 1));
     port = atoi(port_start + 1);
-    
+
     if (path_start) {
       strncpy(path, path_start, MIN(strlen(path_start), sizeof(path) - 1));
     } else {
@@ -809,7 +839,7 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
   struct sockaddr_in addr;
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
-  
+
   int ret = net_addr_pton(AF_INET, host, &addr.sin_addr);
   if (ret != 0) {
     LOG_ERR("Failed to resolve hostname %s: %d", host, ret);
@@ -834,18 +864,18 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
 
   char request[2048];
   int request_len = snprintf(request, sizeof(request),
-           "GET %s HTTP/1.1\r\n"
-           "Host: %s\r\n"
-           "Connection: close\r\n"
-           "\r\n",
-           path, host);
+                             "GET %s HTTP/1.1\r\n"
+                             "Host: %s\r\n"
+                             "Connection: close\r\n"
+                             "\r\n",
+                             path, host);
 
   if (request_len < 0 || request_len >= (int)sizeof(request)) {
     LOG_ERR("HTTP request too long or formatting error: %d", request_len);
     zsock_close(sock);
     return -1;
   }
-  
+
   ret = zsock_send(sock, request, strlen(request), 0);
   if (ret < 0) {
     LOG_ERR("Failed to send HTTP request: %d", ret);
@@ -859,7 +889,7 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
   char header_buffer[1024] = {0};
   size_t header_buffer_len = 0;
   int http_status_code = 0;
-  
+
   while (total_received < buffer_size - 1) {
     char chunk[512];
     ret = zsock_recv(sock, chunk, sizeof(chunk) - 1, 0);
@@ -867,7 +897,7 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
       break;
     }
     chunk[ret] = '\0';
-    
+
     if (!headers_complete) {
       size_t header_space = sizeof(header_buffer) - header_buffer_len - 1;
       size_t copy_len = MIN((size_t)ret, header_space);
@@ -921,16 +951,19 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
         if (body_start_in_chunk < (size_t)ret) {
           size_t body_len = ret - body_start_in_chunk;
           if (total_received + body_len < buffer_size - 1) {
-            memcpy(response_buffer + total_received, chunk + body_start_in_chunk, body_len);
+            memcpy(response_buffer + total_received,
+                   chunk + body_start_in_chunk, body_len);
             total_received += body_len;
           }
         }
       } else if (header_buffer_len >= sizeof(header_buffer) - 1) {
         LOG_ERR("HTTP headers too long or malformed");
-        size_t body_len = (size_t)ret - (sizeof(header_buffer) - 1 - header_buffer_len);
+        size_t body_len =
+            (size_t)ret - (sizeof(header_buffer) - 1 - header_buffer_len);
         if (body_len > 0 && total_received + body_len < buffer_size - 1) {
           memcpy(response_buffer + total_received,
-                 chunk + (sizeof(header_buffer) - 1 - header_buffer_len), body_len);
+                 chunk + (sizeof(header_buffer) - 1 - header_buffer_len),
+                 body_len);
           total_received += body_len;
         }
         zsock_close(sock);
@@ -941,20 +974,20 @@ static int http_get_json(const char *url, char *response_buffer, size_t buffer_s
       memcpy(response_buffer + total_received, chunk, copy_len);
       total_received += copy_len;
     }
-    
+
     if (content_length > 0 && total_received >= content_length) {
       break;
     }
   }
-  
+
   response_buffer[total_received] = '\0';
   zsock_close(sock);
-  
+
   if (total_received == 0) {
     LOG_WRN("No data received from HTTP GET %s", url);
     return -1;
   }
-  
+
   LOG_INF("HTTP GET %s successful, received %zu bytes", url, total_received);
   return 0;
 }
@@ -963,21 +996,21 @@ static int extract_model_version_from_uri(const char *uri) {
   if (!uri || strlen(uri) == 0) {
     return 0;
   }
-  
+
   const char *last_part = strrchr(uri, '/');
   if (!last_part) {
     last_part = uri;
   } else {
     last_part++;
   }
-  
+
   const char *v_prefix = strstr(last_part, "global_model_v");
   if (v_prefix) {
     const char *version_str = v_prefix + strlen("global_model_v");
     int version = atoi(version_str);
     return version;
   }
-  
+
   int version = 0;
   for (size_t i = 0; i < strlen(last_part); i++) {
     if (last_part[i] >= '0' && last_part[i] <= '9') {
@@ -986,7 +1019,7 @@ static int extract_model_version_from_uri(const char *uri) {
       break;
     }
   }
-  
+
   return version;
 }
 
@@ -1160,8 +1193,8 @@ int publish_discovery(const char *domain_id, const char *proplet_id,
   if (iface != NULL) {
     struct net_if_ipv4 *ipv4 = iface->config.ip.ipv4;
     if (ipv4 != NULL) {
-      net_addr_ntop(AF_INET, &ipv4->unicast[0].ipv4.address.in_addr,
-                    ip_str, sizeof(ip_str));
+      net_addr_ntop(AF_INET, &ipv4->unicast[0].ipv4.address.in_addr, ip_str,
+                    sizeof(ip_str));
     }
   }
 
@@ -1278,61 +1311,61 @@ static void json_escape_string(char *dest, size_t dest_size, const char *src) {
   size_t j = 0;
   for (size_t i = 0; src[i] != '\0' && j < dest_size - 1; i++) {
     switch (src[i]) {
-      case '"':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = '"';
-        }
-        break;
-      case '\\':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = '\\';
-        }
-        break;
-      case '\b':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = 'b';
-        }
-        break;
-      case '\f':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = 'f';
-        }
-        break;
-      case '\n':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = 'n';
-        }
-        break;
-      case '\r':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = 'r';
-        }
-        break;
-      case '\t':
-        if (j + 2 < dest_size) {
-          dest[j++] = '\\';
-          dest[j++] = 't';
-        }
-        break;
-      default:
-        if (j < dest_size - 1) {
-          dest[j++] = src[i];
-        }
-        break;
+    case '"':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = '"';
+      }
+      break;
+    case '\\':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = '\\';
+      }
+      break;
+    case '\b':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = 'b';
+      }
+      break;
+    case '\f':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = 'f';
+      }
+      break;
+    case '\n':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = 'n';
+      }
+      break;
+    case '\r':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = 'r';
+      }
+      break;
+    case '\t':
+      if (j + 2 < dest_size) {
+        dest[j++] = '\\';
+        dest[j++] = 't';
+      }
+      break;
+    default:
+      if (j < dest_size - 1) {
+        dest[j++] = src[i];
+      }
+      break;
     }
   }
   dest[j] = '\0';
 }
 
 void publish_results_with_error(const char *domain_id, const char *channel_id,
-                                 const char *task_id, const char *results,
-                                 const char *error_msg) {
+                                const char *task_id, const char *results,
+                                const char *error_msg) {
   char results_payload[2048];
   char escaped_error[MAX_ERROR_MSG_LEN * 2];
   const char *pid = g_proplet_id;
@@ -1348,68 +1381,68 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
     if (results && strlen(results) > 0) {
       update_json = cJSON_Parse(results);
     }
-    
+
     char update_topic[256];
     snprintf(update_topic, sizeof(update_topic), "fl/rounds/%s/updates/%s",
              g_current_task.round_id, pid);
-    
+
     if (error_msg) {
       snprintf(results_payload, sizeof(results_payload),
-        "{"
-        "\"round_id\":\"%s\","
-        "\"proplet_id\":\"%s\","
-        "\"base_model_uri\":\"%s\","
-        "\"num_samples\":0,"
-        "\"metrics\":{},"
-        "\"update\":{},"
-        "\"error\":\"%s\""
-        "}",
-        g_current_task.round_id,
-        pid,
-        g_current_task.model_uri,
-        escaped_error
-      );
+               "{"
+               "\"round_id\":\"%s\","
+               "\"proplet_id\":\"%s\","
+               "\"base_model_uri\":\"%s\","
+               "\"num_samples\":0,"
+               "\"metrics\":{},"
+               "\"update\":{},"
+               "\"error\":\"%s\""
+               "}",
+               g_current_task.round_id, pid, g_current_task.model_uri,
+               escaped_error);
     } else if (update_json) {
-      cJSON *round_id_obj = cJSON_GetObjectItemCaseSensitive(update_json, "round_id");
-      cJSON *proplet_id_obj = cJSON_GetObjectItemCaseSensitive(update_json, "proplet_id");
-      cJSON *base_model_uri_obj = cJSON_GetObjectItemCaseSensitive(update_json, "base_model_uri");
-      
+      cJSON *round_id_obj =
+          cJSON_GetObjectItemCaseSensitive(update_json, "round_id");
+      cJSON *proplet_id_obj =
+          cJSON_GetObjectItemCaseSensitive(update_json, "proplet_id");
+      cJSON *base_model_uri_obj =
+          cJSON_GetObjectItemCaseSensitive(update_json, "base_model_uri");
+
       if (!round_id_obj) {
-        cJSON_AddStringToObject(update_json, "round_id", g_current_task.round_id);
+        cJSON_AddStringToObject(update_json, "round_id",
+                                g_current_task.round_id);
       }
       if (!proplet_id_obj) {
         cJSON_AddStringToObject(update_json, "proplet_id", pid);
       }
       if (!base_model_uri_obj && strlen(g_current_task.model_uri) > 0) {
-        cJSON_AddStringToObject(update_json, "base_model_uri", g_current_task.model_uri);
+        cJSON_AddStringToObject(update_json, "base_model_uri",
+                                g_current_task.model_uri);
       }
-      
+
       char *json_str = cJSON_PrintUnformatted(update_json);
       if (json_str) {
         strncpy(results_payload, json_str, sizeof(results_payload));
         cJSON_free(json_str);
       } else {
         snprintf(results_payload, sizeof(results_payload),
-          "{\"round_id\":\"%s\",\"proplet_id\":\"%s\",\"base_model_uri\":\"%s\",\"num_samples\":0,\"metrics\":{},\"update\":{}}",
-          g_current_task.round_id, pid, g_current_task.model_uri);
+                 "{\"round_id\":\"%s\",\"proplet_id\":\"%s\",\"base_model_"
+                 "uri\":\"%s\",\"num_samples\":0,\"metrics\":{},\"update\":{}}",
+                 g_current_task.round_id, pid, g_current_task.model_uri);
       }
       cJSON_Delete(update_json);
     } else {
       snprintf(results_payload, sizeof(results_payload),
-        "{"
-        "\"round_id\":\"%s\","
-        "\"proplet_id\":\"%s\","
-        "\"base_model_uri\":\"%s\","
-        "\"num_samples\":0,"
-        "\"metrics\":{},"
-        "\"update\":{}"
-        "}",
-        g_current_task.round_id,
-        pid,
-        g_current_task.model_uri
-      );
+               "{"
+               "\"round_id\":\"%s\","
+               "\"proplet_id\":\"%s\","
+               "\"base_model_uri\":\"%s\","
+               "\"num_samples\":0,"
+               "\"metrics\":{},"
+               "\"update\":{}"
+               "}",
+               g_current_task.round_id, pid, g_current_task.model_uri);
     }
-    
+
     if (publish_direct(update_topic, results_payload) != 0) {
       LOG_ERR("Failed to publish FML update to %s", update_topic);
     } else {
@@ -1419,14 +1452,14 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
   }
 
   // Check if this is an FL task (has ROUND_ID)
-  bool is_fl_task = (strlen(g_current_task.round_id) > 0 || 
+  bool is_fl_task = (strlen(g_current_task.round_id) > 0 ||
                      strlen(g_current_task.fl_round_id_str) > 0);
-  
+
   if (is_fl_task && strcmp(g_current_task.mode, "train") == 0) {
 
     char update_b64[MAX_UPDATE_B64_LEN];
     size_t encoded_len = 0;
-    
+
     size_t results_len = results ? strlen(results) : 0;
     if (results_len == 0 && !error_msg) {
       LOG_ERR("FL task has empty results and no error message");
@@ -1434,15 +1467,16 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
     }
 
     if (results_len > (MAX_UPDATE_B64_LEN * 3 / 4)) {
-      LOG_ERR("FL update payload too large: %zu bytes (max: %d)", 
-              results_len, (MAX_UPDATE_B64_LEN * 3 / 4));
+      LOG_ERR("FL update payload too large: %zu bytes (max: %d)", results_len,
+              (MAX_UPDATE_B64_LEN * 3 / 4));
       error_msg = "Update payload exceeds size limit";
       results_len = 0;
     }
 
     if (results_len > 0) {
-      int ret = base64_encode((uint8_t *)update_b64, sizeof(update_b64), &encoded_len,
-                             (const uint8_t *)results, results_len);
+      int ret =
+          base64_encode((uint8_t *)update_b64, sizeof(update_b64), &encoded_len,
+                        (const uint8_t *)results, results_len);
       if (ret < 0) {
         LOG_ERR("Failed to encode results as base64");
         error_msg = "Failed to encode update as base64";
@@ -1465,64 +1499,55 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
     }
 
     const char *pid = g_proplet_id;
-    const char *format = (strlen(g_current_task.fl_format) > 0) ? 
-                        g_current_task.fl_format : "f32-delta";
-    uint64_t num_samples = strtoull(g_current_task.fl_num_samples_str, NULL, 10);
+    const char *format = (strlen(g_current_task.fl_format) > 0)
+                             ? g_current_task.fl_format
+                             : "f32-delta";
+    uint64_t num_samples =
+        strtoull(g_current_task.fl_num_samples_str, NULL, 10);
     if (num_samples == 0) {
       num_samples = 1;
     }
 
     // Get round_id from ROUND_ID env var (stored in fl_round_id_str)
-    const char *round_id_str = (strlen(g_current_task.fl_round_id_str) > 0) ?
-                               g_current_task.fl_round_id_str : 
-                               (strlen(g_current_task.round_id) > 0) ?
-                               g_current_task.round_id : "";
+    const char *round_id_str = (strlen(g_current_task.fl_round_id_str) > 0)
+                                   ? g_current_task.fl_round_id_str
+                               : (strlen(g_current_task.round_id) > 0)
+                                   ? g_current_task.round_id
+                                   : "";
 
     if (error_msg) {
       snprintf(results_payload, sizeof(results_payload),
-        "{"
-        "\"task_id\":\"%s\","
-        "\"results\":{"
-          "\"task_id\":\"%s\","
-          "\"round_id\":\"%s\","
-          "\"proplet_id\":\"%s\","
-          "\"num_samples\":%llu,"
-          "\"update_b64\":\"\","
-          "\"format\":\"%s\","
-          "\"metrics\":{}"
-        "},"
-        "\"error\":\"%s\""
-        "}",
-        task_id,
-        task_id,
-        round_id_str,
-        pid,
-        (unsigned long long)num_samples,
-        format,
-        escaped_error
-      );
+               "{"
+               "\"task_id\":\"%s\","
+               "\"results\":{"
+               "\"task_id\":\"%s\","
+               "\"round_id\":\"%s\","
+               "\"proplet_id\":\"%s\","
+               "\"num_samples\":%llu,"
+               "\"update_b64\":\"\","
+               "\"format\":\"%s\","
+               "\"metrics\":{}"
+               "},"
+               "\"error\":\"%s\""
+               "}",
+               task_id, task_id, round_id_str, pid,
+               (unsigned long long)num_samples, format, escaped_error);
     } else {
       snprintf(results_payload, sizeof(results_payload),
-        "{"
-        "\"task_id\":\"%s\","
-        "\"results\":{"
-          "\"task_id\":\"%s\","
-          "\"round_id\":\"%s\","
-          "\"proplet_id\":\"%s\","
-          "\"num_samples\":%llu,"
-          "\"update_b64\":\"%s\","
-          "\"format\":\"%s\","
-          "\"metrics\":{}"
-        "}"
-        "}",
-        task_id,
-        task_id,
-        round_id_str,
-        pid,
-        (unsigned long long)num_samples,
-        update_b64,
-        format
-      );
+               "{"
+               "\"task_id\":\"%s\","
+               "\"results\":{"
+               "\"task_id\":\"%s\","
+               "\"round_id\":\"%s\","
+               "\"proplet_id\":\"%s\","
+               "\"num_samples\":%llu,"
+               "\"update_b64\":\"%s\","
+               "\"format\":\"%s\","
+               "\"metrics\":{}"
+               "}"
+               "}",
+               task_id, task_id, round_id_str, pid,
+               (unsigned long long)num_samples, update_b64, format);
     }
 
     LOG_INF("Publishing FL update envelope for task: %s (round=%s, error=%s)",
@@ -1534,14 +1559,15 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
     } else {
       escaped_results[0] = '\0';
     }
-    
+
     if (error_msg) {
       snprintf(results_payload, sizeof(results_payload),
-               "{\"task_id\":\"%s\",\"results\":\"%s\",\"error\":\"%s\"}", 
+               "{\"task_id\":\"%s\",\"results\":\"%s\",\"error\":\"%s\"}",
                task_id, escaped_results, escaped_error);
     } else {
       snprintf(results_payload, sizeof(results_payload),
-               "{\"task_id\":\"%s\",\"results\":\"%s\"}", task_id, escaped_results);
+               "{\"task_id\":\"%s\",\"results\":\"%s\"}", task_id,
+               escaped_results);
     }
   }
 

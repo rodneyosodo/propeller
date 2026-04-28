@@ -22,6 +22,7 @@ import (
 const (
 	maxFileSize = 1024 * 1024 * 100
 	fileKey     = "file"
+	wasmMagic   = "\x00asm"
 )
 
 func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) http.Handler {
@@ -281,6 +282,9 @@ func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
 	data, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
+	}
+	if len(data) < 4 || string(data[:4]) != wasmMagic {
+		return nil, errors.Join(apiutil.ErrValidation, errors.New("invalid WASM file: missing magic bytes"))
 	}
 	req.File = data
 	req.ID = chi.URLParam(r, "taskID")
