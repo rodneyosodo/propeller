@@ -159,7 +159,7 @@ func main() {
 		}
 	}()
 
-	svc, cronScheduler := manager.NewService(
+	svc, cronScheduler, workflowCoordinator := manager.NewService(
 		repos,
 		scheduler.NewRoundRobin(),
 		mqttPubSub,
@@ -174,6 +174,11 @@ func main() {
 	svc = middleware.Tracing(tracer, svc)
 	counter, latency := prometheus.MakeMetrics(svcName, "api")
 	svc = middleware.Metrics(counter, latency, svc)
+	// Wire the fully-wrapped service back into cron and workflow coordinator so
+	// that cron- and workflow-triggered StartTask calls flow through the full
+	// middleware chain (plugin authorize, logging, tracing, metrics).
+	cronScheduler.SetService(svc)
+	workflowCoordinator.SetService(svc)
 
 	if err := svc.Subscribe(ctx); err != nil {
 		logger.Error("failed to subscribe to manager channel", slog.String("error", err.Error()))

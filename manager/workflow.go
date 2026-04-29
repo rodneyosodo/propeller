@@ -25,6 +25,13 @@ func NewWorkflowCoordinator(taskRepo storage.TaskRepository, service Service, lo
 	}
 }
 
+// SetService replaces the Service reference used to start workflow tasks.
+// Call this after all middleware wrapping is complete so workflow-triggered
+// StartTask calls flow through the full plugin middleware chain.
+func (wc *WorkflowCoordinator) SetService(svc Service) {
+	wc.service = svc
+}
+
 func (wc *WorkflowCoordinator) EvaluateConditionalExecution(ctx context.Context, t task.Task, parentStates map[string]task.State) bool {
 	if len(t.DependsOn) == 0 {
 		return true

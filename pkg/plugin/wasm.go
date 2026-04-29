@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/tetratelabs/wazero"
 	"github.com/tetratelabs/wazero/api"
@@ -22,6 +23,8 @@ const (
 	exportOnBeforeDispatch = "on_before_dispatch"
 	exportOnStart          = "on_task_start"
 	exportOnComplete       = "on_task_complete"
+
+	pluginCallTimeout = 5 * time.Second
 )
 
 type wasmPlugin struct {
@@ -176,7 +179,10 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn api.Function, input, output 
 	}
 	defer p.freeBuffer(ctx, inPtr, uint32(len(data)))
 
-	results, err := fn.Call(ctx, uint64(inPtr), uint64(len(data)))
+	callCtx, cancel := context.WithTimeout(ctx, pluginCallTimeout)
+	defer cancel()
+
+	results, err := fn.Call(callCtx, uint64(inPtr), uint64(len(data)))
 	if err != nil {
 		return fmt.Errorf("plugin %s call: %w", p.name, err)
 	}

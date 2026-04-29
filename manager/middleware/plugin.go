@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"sync"
 
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/pkg/plugin"
@@ -16,6 +17,7 @@ type pluginMiddleware struct {
 
 	registry plugin.Registry
 	logger   *slog.Logger
+	wg       sync.WaitGroup
 }
 
 func Plugin(registry plugin.Registry, logger *slog.Logger, svc manager.Service) manager.Service {
@@ -93,6 +95,21 @@ func (pm *pluginMiddleware) StopTask(ctx context.Context, taskID string) error {
 	return pm.Service.StopTask(ctx, taskID)
 }
 
+func (pm *pluginMiddleware) Shutdown(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		pm.wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-ctx.Done():
+		pm.logger.WarnContext(ctx, "shutdown timeout waiting for plugin notification goroutines")
+	}
+
+	return pm.Service.Shutdown(ctx)
+}
+
 func (pm *pluginMiddleware) authorize(ctx context.Context, action plugin.Action, info plugin.TaskInfo) error {
 	plugins := pm.registry.List()
 	if len(plugins) == 0 {
@@ -158,11 +175,11 @@ func (pm *pluginMiddleware) notifyStart(ctx context.Context, info plugin.TaskInf
 	detached := context.WithoutCancel(ctx)
 	plugins := pm.registry.List()
 	for _, p := range plugins {
-		go func(pl plugin.Plugin) {
-			if err := pl.OnTaskStart(detached, plugin.TaskEvent{Task: info}); err != nil {
-				pm.logger.WarnContext(detached, "plugin on_task_start failed", "plugin", pl.Name(), "error", err)
+		pm.wg.Go(func() {
+			if err := p.OnTaskStart(detached, plugin.TaskEvent{Task: info}); err != nil {
+				pm.logger.WarnContext(detached, "plugin on_task_start failed", "plugin", p.Name(), "error", err)
 			}
-		}(p)
+		})
 	}
 }
 

@@ -21,11 +21,16 @@ type CronScheduler interface {
 	Stop()
 	ScheduleTask(ctx context.Context, taskID string) error
 	UnscheduleTask(ctx context.Context, taskID string) error
+	// SetService replaces the Service reference used to start scheduled tasks.
+	// Call this after all middleware wrapping is complete so cron-triggered
+	// StartTask calls flow through the full plugin middleware chain.
+	SetService(svc Service)
 }
 
 type cronScheduler struct {
 	tasksDB       storage.TaskRepository
 	service       Service
+	mu            sync.RWMutex
 	logger        *slog.Logger
 	checkInterval time.Duration
 	stopChan      chan struct{}
@@ -103,6 +108,12 @@ func (cs *cronScheduler) UnscheduleTask(ctx context.Context, taskID string) erro
 	return nil
 }
 
+func (cs *cronScheduler) SetService(svc Service) {
+	cs.mu.Lock()
+	cs.service = svc
+	cs.mu.Unlock()
+}
+
 func (cs *cronScheduler) listAllTasks(ctx context.Context) ([]task.Task, error) {
 	return listAllTasksFromRepo(ctx, cs.tasksDB)
 }
@@ -160,7 +171,11 @@ func (cs *cronScheduler) triggerScheduledTask(ctx context.Context, t task.Task) 
 		slog.String("task_id", t.ID),
 		slog.String("name", t.Name))
 
-	if err := cs.service.StartTask(ctx, t.ID); err != nil {
+	cs.mu.RLock()
+	svc := cs.service
+	cs.mu.RUnlock()
+
+	if err := svc.StartTask(ctx, t.ID); err != nil {
 		return fmt.Errorf("failed to start scheduled task: %w", err)
 	}
 

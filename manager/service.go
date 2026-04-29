@@ -71,7 +71,7 @@ func NewService(
 	repos *storage.Repositories,
 	s scheduler.Scheduler, pubsub mqtt.PubSub,
 	domainID, channelID, coordinatorURL string, logger *slog.Logger, plugins plugin.Registry,
-) (Service, CronScheduler) {
+) (Service, CronScheduler, *WorkflowCoordinator) {
 	var httpClient *http.Client
 	if coordinatorURL != "" {
 		httpClient = &http.Client{
@@ -96,12 +96,13 @@ func NewService(
 		httpClient:       httpClient,
 		plugins:          plugins,
 	}
-	svc.coordinator = NewWorkflowCoordinator(repos.Tasks, svc, logger)
+	coordinator := NewWorkflowCoordinator(repos.Tasks, svc, logger)
+	svc.coordinator = coordinator
 
 	cronSched := NewCronScheduler(repos.Tasks, svc, logger)
 	svc.cronScheduler = cronSched
 
-	return svc, cronSched
+	return svc, cronSched, coordinator
 }
 
 func (svc *service) GetProplet(ctx context.Context, propletID string) (proplet.Proplet, error) {
@@ -1956,11 +1957,11 @@ func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
 	}
 
 	for _, p := range svc.plugins.List() {
-		go func(pl plugin.Plugin) {
-			if err := pl.OnTaskComplete(detached, evt); err != nil {
-				svc.logger.WarnContext(detached, "plugin on_task_complete failed", "plugin", pl.Name(), "error", err)
+		svc.wg.Go(func() {
+			if err := p.OnTaskComplete(detached, evt); err != nil {
+				svc.logger.WarnContext(detached, "plugin on_task_complete failed", "plugin", p.Name(), "error", err)
 			}
-		}(p)
+		})
 	}
 }
 
