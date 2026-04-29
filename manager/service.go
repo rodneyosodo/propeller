@@ -1836,10 +1836,6 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 }
 
 func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (plugin.PropletSelectResponse, error) {
-	if svc.plugins == nil {
-		return plugin.PropletSelectResponse{Allow: true}, nil
-	}
-
 	merged := plugin.PropletSelectResponse{Allow: true}
 	req := plugin.PropletSelectRequest{Context: plugin.AuthFromContext(ctx), Task: toPluginTaskInfo(t)}
 
@@ -1902,10 +1898,6 @@ func propletMatchesConstraints(p proplet.Proplet, c plugin.PropletSelectResponse
 }
 
 func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p proplet.Proplet) error {
-	if svc.plugins == nil {
-		return nil
-	}
-
 	req := plugin.DispatchRequest{
 		Context: plugin.AuthFromContext(ctx),
 		Task:    toPluginTaskInfo(*t),
@@ -1945,10 +1937,6 @@ func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p pro
 }
 
 func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
-	if svc.plugins == nil {
-		return
-	}
-
 	detached := context.WithoutCancel(ctx)
 	evt := plugin.TaskEvent{
 		Task:    toPluginTaskInfo(t),

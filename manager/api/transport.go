@@ -375,7 +375,7 @@ func decodeWorkflowReq(_ context.Context, r *http.Request) (any, error) {
 
 func authContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID := r.Header.Get("X-User-ID")
+		userID := r.Header.Get("X-User-Id")
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if userID != "" || token != "" {
 			ctx := plugin.ContextWithAuth(r.Context(), plugin.AuthContext{

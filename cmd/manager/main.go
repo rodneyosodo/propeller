@@ -153,13 +153,11 @@ func main() {
 
 		return
 	}
-	if pluginRegistry != nil {
-		defer func() {
-			if err := pluginRegistry.Close(context.Background()); err != nil {
-				logger.Error("plugin registry close error", slog.Any("error", err))
-			}
-		}()
-	}
+	defer func() {
+		if err := pluginRegistry.Close(context.Background()); err != nil {
+			logger.Error("plugin registry close error", slog.Any("error", err))
+		}
+	}()
 
 	svc, cronScheduler, workflowCoordinator := manager.NewService(
 		repos,
@@ -171,9 +169,7 @@ func main() {
 		logger,
 		pluginRegistry,
 	)
-	if pluginRegistry != nil {
-		svc = middleware.Plugin(pluginRegistry, logger, svc)
-	}
+	svc = middleware.Plugin(pluginRegistry, logger, svc)
 	svc = middleware.Logging(logger, svc)
 	svc = middleware.Tracing(tracer, svc)
 	counter, latency := prometheus.MakeMetrics(svcName, "api")

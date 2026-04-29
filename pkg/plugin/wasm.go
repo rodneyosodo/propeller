@@ -77,13 +77,13 @@ func (w *slogWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (w *slogWriter) Flush() {
+func (w *slogWriter) Flush(ctx context.Context) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if len(w.buf) > 0 {
 		line := string(bytes.TrimRight(w.buf, "\r\n"))
 		if line != "" {
-			w.logger.Log(context.Background(), w.level, line, "plugin", w.plugin)
+			w.logger.Log(ctx, w.level, line, "plugin", w.plugin)
 		}
 		w.buf = w.buf[:0]
 	}
@@ -149,8 +149,8 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 func (p *wasmPlugin) Name() string { return p.name }
 
 func (p *wasmPlugin) Close(ctx context.Context) error {
-	p.stdout.Flush()
-	p.stderr.Flush()
+	p.stdout.Flush(ctx)
+	p.stderr.Flush(ctx)
 
 	return p.runtime.Close(ctx)
 }

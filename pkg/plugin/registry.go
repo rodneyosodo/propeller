@@ -16,11 +16,11 @@ type staticRegistry struct {
 }
 
 func LoadDirectory(ctx context.Context, dir string, logger *slog.Logger) (Registry, error) {
-	if dir == "" {
-		return nil, nil
-	}
-
 	r := &staticRegistry{logger: logger}
+
+	if dir == "" {
+		return r, nil
+	}
 
 	info, err := os.Stat(dir)
 	if err != nil {
