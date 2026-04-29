@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"slices"
 	"sync"
 
 	"github.com/absmach/propeller/manager"
@@ -95,6 +96,56 @@ func (pm *pluginMiddleware) StopTask(ctx context.Context, taskID string) error {
 	return pm.Service.StopTask(ctx, taskID)
 }
 
+func (pm *pluginMiddleware) CreateWorkflow(ctx context.Context, tasks []task.Task) ([]task.Task, error) {
+	for i := range tasks {
+		if err := pm.authorize(ctx, plugin.ActionCreate, toTaskInfo(tasks[i])); err != nil {
+			return nil, err
+		}
+	}
+
+	return pm.Service.CreateWorkflow(ctx, tasks)
+}
+
+func (pm *pluginMiddleware) CreateJob(ctx context.Context, name string, tasks []task.Task, executionMode string) (string, []task.Task, error) {
+	for i := range tasks {
+		if err := pm.authorize(ctx, plugin.ActionCreate, toTaskInfo(tasks[i])); err != nil {
+			return "", nil, err
+		}
+	}
+
+	return pm.Service.CreateJob(ctx, name, tasks, executionMode)
+}
+
+func (pm *pluginMiddleware) StartJob(ctx context.Context, jobID string) error {
+	tasks, err := pm.GetJob(ctx, jobID)
+	if err != nil {
+		return err
+	}
+
+	for i := range tasks {
+		if err := pm.authorize(ctx, plugin.ActionStart, toTaskInfo(tasks[i])); err != nil {
+			return err
+		}
+	}
+
+	return pm.Service.StartJob(ctx, jobID)
+}
+
+func (pm *pluginMiddleware) StopJob(ctx context.Context, jobID string) error {
+	tasks, err := pm.GetJob(ctx, jobID)
+	if err != nil {
+		return err
+	}
+
+	for i := range tasks {
+		if err := pm.authorize(ctx, plugin.ActionStop, toTaskInfo(tasks[i])); err != nil {
+			return err
+		}
+	}
+
+	return pm.Service.StopJob(ctx, jobID)
+}
+
 func (pm *pluginMiddleware) Shutdown(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
@@ -163,8 +214,10 @@ func (pm *pluginMiddleware) enrich(ctx context.Context, info plugin.TaskInfo) pl
 		if resp.Priority != nil {
 			merged.Priority = resp.Priority
 		}
-		if len(resp.Inputs) > 0 {
-			merged.Inputs = resp.Inputs
+		for _, v := range resp.Inputs {
+			if !slices.Contains(merged.Inputs, v) {
+				merged.Inputs = append(merged.Inputs, v)
+			}
 		}
 	}
 

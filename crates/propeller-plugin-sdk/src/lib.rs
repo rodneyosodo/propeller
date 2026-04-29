@@ -84,6 +84,65 @@ pub struct TaskEvent {
     pub error: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PropletInfo {
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
+    #[serde(default)]
+    pub total_memory_bytes: u64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub location: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PropletSelectRequest {
+    pub context: AuthContext,
+    pub task: TaskInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PropletSelectResponse {
+    pub allow: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_memory_bytes: Option<u64>,
+}
+
+impl Default for PropletSelectResponse {
+    fn default() -> Self {
+        Self { allow: true, reason: None, required_tags: Vec::new(), min_memory_bytes: None }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct DispatchRequest {
+    pub context: AuthContext,
+    pub task: TaskInfo,
+    pub proplet: PropletInfo,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DispatchResponse {
+    pub allow: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra_env: HashMap<String, String>,
+}
+
+impl Default for DispatchResponse {
+    fn default() -> Self {
+        Self { allow: true, reason: None, extra_env: HashMap::new() }
+    }
+}
+
 pub trait Plugin: Default + 'static {
     fn authorize(&self, req: AuthorizeRequest) -> AuthorizeResponse {
         let _ = req;
@@ -93,6 +152,16 @@ pub trait Plugin: Default + 'static {
     fn enrich(&self, req: EnrichRequest) -> EnrichResponse {
         let _ = req;
         EnrichResponse::default()
+    }
+
+    fn on_before_proplet_select(&self, req: PropletSelectRequest) -> PropletSelectResponse {
+        let _ = req;
+        PropletSelectResponse::default()
+    }
+
+    fn on_before_dispatch(&self, req: DispatchRequest) -> DispatchResponse {
+        let _ = req;
+        DispatchResponse::default()
     }
 
     fn on_task_start(&self, evt: TaskEvent) {
@@ -192,6 +261,36 @@ macro_rules! register_plugin {
                 match $crate::__private::serde_json::from_slice::<$crate::EnrichRequest>(&bytes) {
                     Ok(req) => $crate::Plugin::enrich(_propeller_plugin(), req),
                     Err(_) => $crate::EnrichResponse::default(),
+                };
+            let out = $crate::__private::serde_json::to_vec(&resp)
+                .unwrap_or_else(|_| b"{}".to_vec());
+            $crate::__private::write_bytes(&out)
+        }
+
+        #[no_mangle]
+        pub unsafe extern "C" fn on_before_proplet_select(ptr: u32, len: u32) -> u64 {
+            let bytes = $crate::__private::read_bytes(ptr, len);
+            let resp = match $crate::__private::serde_json::from_slice::<
+                $crate::PropletSelectRequest,
+            >(&bytes)
+            {
+                Ok(req) => $crate::Plugin::on_before_proplet_select(_propeller_plugin(), req),
+                Err(_) => $crate::PropletSelectResponse::default(),
+            };
+            let out = $crate::__private::serde_json::to_vec(&resp)
+                .unwrap_or_else(|_| b"{}".to_vec());
+            $crate::__private::write_bytes(&out)
+        }
+
+        #[no_mangle]
+        pub unsafe extern "C" fn on_before_dispatch(ptr: u32, len: u32) -> u64 {
+            let bytes = $crate::__private::read_bytes(ptr, len);
+            let resp =
+                match $crate::__private::serde_json::from_slice::<$crate::DispatchRequest>(
+                    &bytes,
+                ) {
+                    Ok(req) => $crate::Plugin::on_before_dispatch(_propeller_plugin(), req),
+                    Err(_) => $crate::DispatchResponse::default(),
                 };
             let out = $crate::__private::serde_json::to_vec(&resp)
                 .unwrap_or_else(|_| b"{}".to_vec());
