@@ -84,7 +84,8 @@ impl PluginRegistry {
                 }
                 Ok(_) => {}
                 Err(e) => {
-                    warn!("Plugin authorize error (treating as allow): {}", e);
+                    warn!("Plugin authorize error (failing closed): {}", e);
+                    return Ok(Some(format!("plugin error: {e}")));
                 }
             }
         }
