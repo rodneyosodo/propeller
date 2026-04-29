@@ -296,7 +296,7 @@ func TestPluginMiddleware_DeleteTask_Authorize(t *testing.T) {
 			err := mw.DeleteTask(context.Background(), "task-1")
 			if tc.wantErr {
 				require.Error(t, err)
-				assert.Equal(t, "no", err.Error())
+				assert.Equal(t, "plugin mock-plugin: no", err.Error())
 			} else {
 				require.NoError(t, err)
 			}

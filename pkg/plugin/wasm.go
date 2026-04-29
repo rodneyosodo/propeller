@@ -217,6 +217,9 @@ func (p *wasmPlugin) writeBuffer(ctx context.Context, data []byte) (uint32, erro
 	}
 
 	ptr := uint32(results[0])
+	if ptr == 0 {
+		return 0, errors.New("plugin alloc returned null pointer")
+	}
 	if !p.module.Memory().Write(ptr, data) {
 		return 0, errors.New("plugin memory write failed")
 	}

@@ -2,6 +2,7 @@ package plugin
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -70,12 +71,12 @@ func (r *staticRegistry) List() []Plugin {
 }
 
 func (r *staticRegistry) Close(ctx context.Context) error {
-	var firstErr error
+	var errs []error
 	for _, p := range r.plugins {
-		if err := p.Close(ctx); err != nil && firstErr == nil {
-			firstErr = err
+		if err := p.Close(ctx); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	return firstErr
+	return errors.Join(errs...)
 }

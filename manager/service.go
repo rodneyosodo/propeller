@@ -1840,7 +1840,7 @@ func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (
 	}
 
 	merged := plugin.PropletSelectResponse{Allow: true}
-	req := plugin.PropletSelectRequest{Task: toPluginTaskInfo(t)}
+	req := plugin.PropletSelectRequest{Context: plugin.AuthFromContext(ctx), Task: toPluginTaskInfo(t)}
 
 	for _, p := range svc.plugins.List() {
 		resp, err := p.OnBeforePropletSelect(ctx, req)
@@ -1906,7 +1906,8 @@ func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p pro
 	}
 
 	req := plugin.DispatchRequest{
-		Task: toPluginTaskInfo(*t),
+		Context: plugin.AuthFromContext(ctx),
+		Task:    toPluginTaskInfo(*t),
 		Proplet: plugin.PropletInfo{
 			ID:               p.ID,
 			Name:             p.Name,
@@ -1947,6 +1948,7 @@ func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
 		return
 	}
 
+	detached := context.WithoutCancel(ctx)
 	evt := plugin.TaskEvent{
 		Task:    toPluginTaskInfo(t),
 		Success: t.State == task.Completed,
@@ -1955,8 +1957,8 @@ func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
 
 	for _, p := range svc.plugins.List() {
 		go func(pl plugin.Plugin) {
-			if err := pl.OnTaskComplete(ctx, evt); err != nil {
-				svc.logger.WarnContext(ctx, "plugin on_task_complete failed", "plugin", pl.Name(), "error", err)
+			if err := pl.OnTaskComplete(detached, evt); err != nil {
+				svc.logger.WarnContext(detached, "plugin on_task_complete failed", "plugin", pl.Name(), "error", err)
 			}
 		}(p)
 	}

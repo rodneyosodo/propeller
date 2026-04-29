@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -11,18 +10,6 @@ import (
 	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/task"
 )
-
-type authKey struct{}
-
-func ContextWithAuth(ctx context.Context, auth plugin.AuthContext) context.Context {
-	return context.WithValue(ctx, authKey{}, auth)
-}
-
-func authFromContext(ctx context.Context) plugin.AuthContext {
-	v, _ := ctx.Value(authKey{}).(plugin.AuthContext)
-
-	return v
-}
 
 type pluginMiddleware struct {
 	manager.Service
@@ -113,7 +100,7 @@ func (pm *pluginMiddleware) authorize(ctx context.Context, action plugin.Action,
 	}
 
 	req := plugin.AuthorizeRequest{
-		Context: withAction(authFromContext(ctx), action),
+		Context: withAction(plugin.AuthFromContext(ctx), action),
 		Task:    info,
 	}
 
@@ -130,7 +117,7 @@ func (pm *pluginMiddleware) authorize(ctx context.Context, action plugin.Action,
 				reason = "denied by plugin"
 			}
 
-			return errors.New(reason)
+			return fmt.Errorf("plugin %s: %s", p.Name(), reason)
 		}
 	}
 
@@ -140,7 +127,7 @@ func (pm *pluginMiddleware) authorize(ctx context.Context, action plugin.Action,
 func (pm *pluginMiddleware) enrich(ctx context.Context, info plugin.TaskInfo) plugin.EnrichResponse {
 	plugins := pm.registry.List()
 	merged := plugin.EnrichResponse{}
-	auth := authFromContext(ctx)
+	auth := plugin.AuthFromContext(ctx)
 
 	for _, p := range plugins {
 		resp, err := p.Enrich(ctx, plugin.EnrichRequest{Context: auth, Task: info})
@@ -168,11 +155,12 @@ func (pm *pluginMiddleware) enrich(ctx context.Context, info plugin.TaskInfo) pl
 }
 
 func (pm *pluginMiddleware) notifyStart(ctx context.Context, info plugin.TaskInfo) {
+	detached := context.WithoutCancel(ctx)
 	plugins := pm.registry.List()
 	for _, p := range plugins {
 		go func(pl plugin.Plugin) {
-			if err := pl.OnTaskStart(ctx, plugin.TaskEvent{Task: info}); err != nil {
-				pm.logger.WarnContext(ctx, "plugin on_task_start failed", "plugin", pl.Name(), "error", err)
+			if err := pl.OnTaskStart(detached, plugin.TaskEvent{Task: info}); err != nil {
+				pm.logger.WarnContext(detached, "plugin on_task_start failed", "plugin", pl.Name(), "error", err)
 			}
 		}(p)
 	}

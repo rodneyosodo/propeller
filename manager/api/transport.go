@@ -12,7 +12,6 @@ import (
 	"github.com/absmach/magistrala"
 	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/absmach/propeller/manager"
-	"github.com/absmach/propeller/manager/middleware"
 	"github.com/absmach/propeller/pkg/api"
 	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/go-chi/chi/v5"
@@ -276,6 +275,7 @@ func decodeTaskReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
 	var req taskReq
+	r.Body = http.MaxBytesReader(nil, r.Body, maxFileSize)
 	if err := r.ParseMultipartForm(maxFileSize); err != nil {
 		return nil, err
 	}
@@ -378,7 +378,7 @@ func authContextMiddleware(next http.Handler) http.Handler {
 		userID := r.Header.Get("X-User-Id")
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if userID != "" || token != "" {
-			ctx := middleware.ContextWithAuth(r.Context(), plugin.AuthContext{
+			ctx := plugin.ContextWithAuth(r.Context(), plugin.AuthContext{
 				UserID: userID,
 				Token:  token,
 			})
