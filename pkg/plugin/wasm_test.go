@@ -2,6 +2,7 @@ package plugin_test
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"testing"
 
@@ -18,7 +19,7 @@ func TestExamplePluginRoundTrip(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	p, err := plugin.LoadWasm(ctx, "plugin-auth", examplePluginPath)
+	p, err := plugin.LoadWasm(ctx, "plugin-auth", examplePluginPath, slog.Default())
 	if err != nil {
 		t.Fatalf("LoadWasm: %v", err)
 	}

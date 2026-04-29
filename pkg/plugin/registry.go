@@ -49,7 +49,7 @@ func LoadDirectory(ctx context.Context, dir string, logger *slog.Logger) (Regist
 		path := filepath.Join(dir, e.Name())
 		name := strings.TrimSuffix(e.Name(), ".wasm")
 
-		p, err := LoadWasm(ctx, name, path)
+		p, err := LoadWasm(ctx, name, path, logger)
 		if err != nil {
 			logger.ErrorContext(ctx, "failed to load plugin", "path", path, "error", err)
 

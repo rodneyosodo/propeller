@@ -1,10 +1,12 @@
 package plugin
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sync"
 	"time"
@@ -42,8 +44,39 @@ type wasmPlugin struct {
 	mu             sync.Mutex
 }
 
-func LoadWasm(ctx context.Context, name, path string) (Plugin, error) {
-	bytes, err := os.ReadFile(path)
+// slogWriter is a line-buffered io.Writer that emits each complete line as a
+// slog record. This prevents plugin stdout/stderr from bypassing structured
+// logging and makes it clear in logs which plugin produced the output.
+type slogWriter struct {
+	logger *slog.Logger
+	level  slog.Level
+	plugin string
+	mu     sync.Mutex
+	buf    []byte
+}
+
+func (w *slogWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	w.buf = append(w.buf, p...)
+	for {
+		idx := bytes.IndexByte(w.buf, '\n')
+		if idx < 0 {
+			break
+		}
+		line := string(bytes.TrimRight(w.buf[:idx], "\r"))
+		w.buf = w.buf[idx+1:]
+		if line != "" {
+			w.logger.Log(context.Background(), w.level, line, "plugin", w.plugin)
+		}
+	}
+
+	return len(p), nil
+}
+
+func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plugin, error) {
+	wasmBytes, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read plugin %s: %w", path, err)
 	}
@@ -55,12 +88,15 @@ func LoadWasm(ctx context.Context, name, path string) (Plugin, error) {
 		return nil, fmt.Errorf("wasi instantiate: %w", err)
 	}
 
+	stdout := &slogWriter{logger: logger, level: slog.LevelInfo, plugin: name}
+	stderr := &slogWriter{logger: logger, level: slog.LevelWarn, plugin: name}
+
 	cfg := wazero.NewModuleConfig().
-		WithStdout(os.Stdout).
-		WithStderr(os.Stderr).
+		WithStdout(stdout).
+		WithStderr(stderr).
 		WithName(name)
 
-	mod, err := rt.InstantiateWithConfig(ctx, bytes, cfg)
+	mod, err := rt.InstantiateWithConfig(ctx, wasmBytes, cfg)
 	if err != nil {
 		_ = rt.Close(ctx)
 
@@ -201,12 +237,12 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn api.Function, input, output 
 	}
 	defer p.freeBuffer(ctx, outPtr, outLen)
 
-	bytes, ok := p.module.Memory().Read(outPtr, outLen)
+	buf, ok := p.module.Memory().Read(outPtr, outLen)
 	if !ok {
 		return errors.New("plugin memory read failed")
 	}
 
-	if err := json.Unmarshal(bytes, output); err != nil {
+	if err := json.Unmarshal(buf, output); err != nil {
 		return fmt.Errorf("unmarshal plugin output: %w", err)
 	}
 
