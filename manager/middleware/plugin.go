@@ -185,7 +185,7 @@ func (pm *pluginMiddleware) authorize(ctx context.Context, action plugin.Action,
 				reason = "denied by plugin"
 			}
 
-			return fmt.Errorf("plugin %s: %s", p.Name(), reason)
+			return fmt.Errorf("%s", reason)
 		}
 	}
 
