@@ -42,6 +42,8 @@ type wasmPlugin struct {
 	onStart        api.Function
 	onDone         api.Function
 	mu             sync.Mutex
+	stdout         *slogWriter
+	stderr         *slogWriter
 }
 
 // slogWriter is a line-buffered io.Writer that emits each complete line as a
@@ -73,6 +75,18 @@ func (w *slogWriter) Write(p []byte) (int, error) {
 	}
 
 	return len(p), nil
+}
+
+func (w *slogWriter) Flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.buf) > 0 {
+		line := string(bytes.TrimRight(w.buf, "\r\n"))
+		if line != "" {
+			w.logger.Log(context.Background(), w.level, line, "plugin", w.plugin)
+		}
+		w.buf = w.buf[:0]
+	}
 }
 
 func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plugin, error) {
@@ -115,6 +129,8 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 		beforeDispatch: mod.ExportedFunction(exportOnBeforeDispatch),
 		onStart:        mod.ExportedFunction(exportOnStart),
 		onDone:         mod.ExportedFunction(exportOnComplete),
+		stdout:         stdout,
+		stderr:         stderr,
 	}
 
 	if p.alloc == nil || p.free == nil {
@@ -123,12 +139,19 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 		return nil, fmt.Errorf("plugin %s missing required exports: %s, %s", name, exportAlloc, exportFree)
 	}
 
+	if p.auth == nil {
+		logger.WarnContext(ctx, "plugin loaded without authorize export — all requests will be permitted", "plugin", name)
+	}
+
 	return p, nil
 }
 
 func (p *wasmPlugin) Name() string { return p.name }
 
 func (p *wasmPlugin) Close(ctx context.Context) error {
+	p.stdout.Flush()
+	p.stderr.Flush()
+
 	return p.runtime.Close(ctx)
 }
 
