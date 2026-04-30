@@ -6,14 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
+	"runtime"
 	"sync"
-	"time"
 
-	"github.com/tetratelabs/wazero"
-	"github.com/tetratelabs/wazero/api"
-	"github.com/tetratelabs/wazero/imports/wasi_snapshot_preview1"
+	"github.com/bytecodealliance/wasmtime-go"
 )
 
 const (
@@ -25,25 +24,28 @@ const (
 	exportOnBeforeDispatch = "on_before_dispatch"
 	exportOnStart          = "on_task_start"
 	exportOnComplete       = "on_task_complete"
-
-	pluginCallTimeout = 5 * time.Second
 )
 
 type wasmPlugin struct {
 	name           string
-	runtime        wazero.Runtime
-	module         api.Module
-	alloc          api.Function
-	free           api.Function
-	auth           api.Function
-	enrich         api.Function
-	beforeSelect   api.Function
-	beforeDispatch api.Function
-	onStart        api.Function
-	onDone         api.Function
+	engine         *wasmtime.Engine
+	store          *wasmtime.Store
+	instance       *wasmtime.Instance
+	alloc          *wasmtime.Func
+	free           *wasmtime.Func
+	auth           *wasmtime.Func
+	enrich         *wasmtime.Func
+	beforeSelect   *wasmtime.Func
+	beforeDispatch *wasmtime.Func
+	onStart        *wasmtime.Func
+	onDone         *wasmtime.Func
 	mu             sync.Mutex
 	stdout         *slogWriter
 	stderr         *slogWriter
+	stdoutFile     *os.File
+	stderrFile     *os.File
+	stdoutOffset   int64
+	stderrOffset   int64
 }
 
 // slogWriter is a line-buffered io.Writer that emits each complete line as a
@@ -95,46 +97,92 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 		return nil, fmt.Errorf("read plugin %s: %w", path, err)
 	}
 
-	rt := wazero.NewRuntime(ctx)
-	if _, err := wasi_snapshot_preview1.Instantiate(ctx, rt); err != nil {
-		_ = rt.Close(ctx)
+	cfg := wasmtime.NewConfig()
+	cfg.SetEpochInterruption(true)
+	engine := wasmtime.NewEngineWithConfig(cfg)
 
-		return nil, fmt.Errorf("wasi instantiate: %w", err)
+	module, err := wasmtime.NewModule(engine, wasmBytes)
+	if err != nil {
+		return nil, fmt.Errorf("compile plugin %s: %w", name, err)
 	}
 
-	stdout := &slogWriter{logger: logger, level: slog.LevelInfo, plugin: name}
-	stderr := &slogWriter{logger: logger, level: slog.LevelWarn, plugin: name}
-
-	cfg := wazero.NewModuleConfig().
-		WithStdout(stdout).
-		WithStderr(stderr).
-		WithName(name)
-
-	mod, err := rt.InstantiateWithConfig(ctx, wasmBytes, cfg)
+	stdoutFile, err := os.CreateTemp("", "propeller-plugin-"+name+"-stdout-*")
 	if err != nil {
-		_ = rt.Close(ctx)
+		return nil, fmt.Errorf("create stdout capture for plugin %s: %w", name, err)
+	}
+	stderrFile, err := os.CreateTemp("", "propeller-plugin-"+name+"-stderr-*")
+	if err != nil {
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+
+		return nil, fmt.Errorf("create stderr capture for plugin %s: %w", name, err)
+	}
+
+	wasiCfg := wasmtime.NewWasiConfig()
+	if err := wasiCfg.SetStdoutFile(stdoutFile.Name()); err != nil {
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+		_ = stderrFile.Close()
+		_ = os.Remove(stderrFile.Name())
+
+		return nil, fmt.Errorf("configure stdout for plugin %s: %w", name, err)
+	}
+	if err := wasiCfg.SetStderrFile(stderrFile.Name()); err != nil {
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+		_ = stderrFile.Close()
+		_ = os.Remove(stderrFile.Name())
+
+		return nil, fmt.Errorf("configure stderr for plugin %s: %w", name, err)
+	}
+
+	store := wasmtime.NewStore(engine)
+	store.SetWasi(wasiCfg)
+
+	linker := wasmtime.NewLinker(engine)
+	if err := linker.DefineWasi(); err != nil {
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+		_ = stderrFile.Close()
+		_ = os.Remove(stderrFile.Name())
+
+		return nil, fmt.Errorf("define wasi for plugin %s: %w", name, err)
+	}
+
+	instance, err := linker.Instantiate(store, module)
+	if err != nil {
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+		_ = stderrFile.Close()
+		_ = os.Remove(stderrFile.Name())
 
 		return nil, fmt.Errorf("instantiate plugin %s: %w", name, err)
 	}
 
 	p := &wasmPlugin{
 		name:           name,
-		runtime:        rt,
-		module:         mod,
-		alloc:          mod.ExportedFunction(exportAlloc),
-		free:           mod.ExportedFunction(exportFree),
-		auth:           mod.ExportedFunction(exportAuthorize),
-		enrich:         mod.ExportedFunction(exportEnrich),
-		beforeSelect:   mod.ExportedFunction(exportOnBeforeSelect),
-		beforeDispatch: mod.ExportedFunction(exportOnBeforeDispatch),
-		onStart:        mod.ExportedFunction(exportOnStart),
-		onDone:         mod.ExportedFunction(exportOnComplete),
-		stdout:         stdout,
-		stderr:         stderr,
+		engine:         engine,
+		store:          store,
+		instance:       instance,
+		alloc:          instance.GetFunc(store, exportAlloc),
+		free:           instance.GetFunc(store, exportFree),
+		auth:           instance.GetFunc(store, exportAuthorize),
+		enrich:         instance.GetFunc(store, exportEnrich),
+		beforeSelect:   instance.GetFunc(store, exportOnBeforeSelect),
+		beforeDispatch: instance.GetFunc(store, exportOnBeforeDispatch),
+		onStart:        instance.GetFunc(store, exportOnStart),
+		onDone:         instance.GetFunc(store, exportOnComplete),
+		stdout:         &slogWriter{logger: logger, level: slog.LevelInfo, plugin: name},
+		stderr:         &slogWriter{logger: logger, level: slog.LevelWarn, plugin: name},
+		stdoutFile:     stdoutFile,
+		stderrFile:     stderrFile,
 	}
 
 	if p.alloc == nil || p.free == nil {
-		_ = rt.Close(ctx)
+		_ = stdoutFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+		_ = stderrFile.Close()
+		_ = os.Remove(stderrFile.Name())
 
 		return nil, fmt.Errorf("plugin %s missing required exports: %s, %s", name, exportAlloc, exportFree)
 	}
@@ -152,7 +200,12 @@ func (p *wasmPlugin) Close(ctx context.Context) error {
 	p.stdout.Flush(ctx)
 	p.stderr.Flush(ctx)
 
-	return p.runtime.Close(ctx)
+	_ = p.stdoutFile.Close()
+	_ = p.stderrFile.Close()
+	_ = os.Remove(p.stdoutFile.Name())
+	_ = os.Remove(p.stderrFile.Name())
+
+	return nil
 }
 
 func (p *wasmPlugin) Authorize(ctx context.Context, req AuthorizeRequest) (AuthorizeResponse, error) {
@@ -223,7 +276,7 @@ func (p *wasmPlugin) OnTaskComplete(ctx context.Context, evt TaskEvent) error {
 	return p.invoke(ctx, p.onDone, evt, nil)
 }
 
-func (p *wasmPlugin) invoke(ctx context.Context, fn api.Function, input, output any) error {
+func (p *wasmPlugin) invoke(ctx context.Context, fn *wasmtime.Func, input, output any) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -232,71 +285,118 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn api.Function, input, output 
 		return fmt.Errorf("marshal plugin input: %w", err)
 	}
 
-	inPtr, err := p.writeBuffer(ctx, data)
+	inPtr, err := p.writeBuffer(data)
 	if err != nil {
 		return err
 	}
-	defer p.freeBuffer(ctx, inPtr, uint32(len(data)))
+	defer p.freeBuffer(inPtr, uint32(len(data)))
 
-	callCtx, cancel := context.WithTimeout(ctx, pluginCallTimeout)
-	defer cancel()
+	// Epoch-based context cancellation: when ctx is done, increment the epoch
+	// to interrupt the running wasm. Each plugin owns its engine so this only
+	// affects this plugin's store.
+	p.store.SetEpochDeadline(1)
+	stop := make(chan struct{})
+	goroutineDone := make(chan struct{})
+	go func() {
+		defer close(goroutineDone)
+		select {
+		case <-ctx.Done():
+			p.engine.IncrementEpoch()
+		case <-stop:
+		}
+	}()
 
-	results, err := fn.Call(callCtx, uint64(inPtr), uint64(len(data)))
-	if err != nil {
-		return fmt.Errorf("plugin %s call: %w", p.name, err)
+	result, callErr := fn.Call(p.store, int32(inPtr), int32(len(data)))
+	close(stop)
+	<-goroutineDone
+
+	p.drainOutput()
+
+	if callErr != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
+		return fmt.Errorf("plugin %s call: %w", p.name, callErr)
 	}
 
 	if output == nil {
 		return nil
 	}
 
-	if len(results) != 1 {
-		return fmt.Errorf("plugin %s returned %d values, expected 1", p.name, len(results))
+	if result == nil {
+		return fmt.Errorf("plugin %s returned nil, expected i64", p.name)
 	}
 
-	outPtr, outLen := unpack(results[0])
+	packed := uint64(result.(int64))
+	outPtr, outLen := unpack(packed)
 	if outLen == 0 {
 		return nil
 	}
-	defer p.freeBuffer(ctx, outPtr, outLen)
+	defer p.freeBuffer(outPtr, outLen)
 
-	buf, ok := p.module.Memory().Read(outPtr, outLen)
-	if !ok {
-		return errors.New("plugin memory read failed")
-	}
+	mem := p.instance.GetExport(p.store, "memory").Memory()
+	raw := mem.UnsafeData(p.store)
+	out := make([]byte, outLen)
+	copy(out, raw[outPtr:outPtr+outLen])
+	runtime.KeepAlive(mem)
 
-	if err := json.Unmarshal(buf, output); err != nil {
+	if err := json.Unmarshal(out, output); err != nil {
 		return fmt.Errorf("unmarshal plugin output: %w", err)
 	}
 
 	return nil
 }
 
-func (p *wasmPlugin) writeBuffer(ctx context.Context, data []byte) (uint32, error) {
-	results, err := p.alloc.Call(ctx, uint64(len(data)))
+func (p *wasmPlugin) writeBuffer(data []byte) (uint32, error) {
+	result, err := p.alloc.Call(p.store, int32(len(data)))
 	if err != nil {
 		return 0, fmt.Errorf("plugin alloc: %w", err)
 	}
-	if len(results) != 1 {
-		return 0, errors.New("plugin alloc returned wrong arity")
+	if result == nil {
+		return 0, errors.New("plugin alloc returned nil")
 	}
 
-	ptr := uint32(results[0])
+	ptr := uint32(result.(int32))
 	if ptr == 0 {
 		return 0, errors.New("plugin alloc returned null pointer")
 	}
-	if !p.module.Memory().Write(ptr, data) {
-		return 0, errors.New("plugin memory write failed")
-	}
+
+	mem := p.instance.GetExport(p.store, "memory").Memory()
+	raw := mem.UnsafeData(p.store)
+	copy(raw[ptr:ptr+uint32(len(data))], data)
+	runtime.KeepAlive(mem)
 
 	return ptr, nil
 }
 
-func (p *wasmPlugin) freeBuffer(ctx context.Context, ptr, length uint32) {
+func (p *wasmPlugin) freeBuffer(ptr, length uint32) {
 	if ptr == 0 {
 		return
 	}
-	_, _ = p.free.Call(ctx, uint64(ptr), uint64(length))
+	_, _ = p.free.Call(p.store, int32(ptr), int32(length))
+}
+
+func (p *wasmPlugin) drainOutput() {
+	p.drainFile(p.stdoutFile, &p.stdoutOffset, p.stdout)
+	p.drainFile(p.stderrFile, &p.stderrOffset, p.stderr)
+}
+
+func (p *wasmPlugin) drainFile(f *os.File, offset *int64, w *slogWriter) {
+	if _, err := f.Seek(*offset, io.SeekStart); err != nil {
+		return
+	}
+	buf := make([]byte, 4096)
+	for {
+		n, readErr := f.Read(buf)
+		if n > 0 {
+			_, _ = w.Write(buf[:n])
+			*offset += int64(n)
+		}
+		if readErr != nil {
+			break
+		}
+	}
 }
 
 func unpack(v uint64) (ptr, length uint32) {

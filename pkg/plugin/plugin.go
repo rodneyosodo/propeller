@@ -3,6 +3,8 @@ package plugin
 import (
 	"context"
 	"time"
+
+	"github.com/absmach/propeller/pkg/task"
 )
 
 type Action string
@@ -32,7 +34,7 @@ type TaskInfo struct {
 
 type AuthContext struct {
 	UserID string `json:"user_id,omitempty"`
-	Token  string `json:"token,omitempty"`
+	Token  string `json:"-"`
 	Action Action `json:"action"`
 }
 
@@ -110,4 +112,22 @@ type Plugin interface {
 type Registry interface {
 	List() []Plugin
 	Close(ctx context.Context) error
+}
+
+// NewTaskInfo converts a task.Task to the TaskInfo passed to plugins.
+func NewTaskInfo(t task.Task) TaskInfo {
+	return TaskInfo{
+		ID:        t.ID,
+		Name:      t.Name,
+		Kind:      string(t.Kind),
+		ImageURL:  t.ImageURL,
+		Inputs:    []string(t.Inputs),
+		CLIArgs:   t.CLIArgs,
+		Env:       t.Env,
+		PropletID: t.PropletID,
+		Priority:  t.Priority,
+		Daemon:    t.Daemon,
+		Encrypted: t.Encrypted,
+		CreatedAt: t.CreatedAt,
+	}
 }

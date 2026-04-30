@@ -1837,7 +1837,10 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 
 func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (plugin.PropletSelectResponse, error) {
 	merged := plugin.PropletSelectResponse{Allow: true}
-	req := plugin.PropletSelectRequest{Context: plugin.AuthFromContext(ctx), Task: toPluginTaskInfo(t)}
+	if svc.plugins == nil {
+		return merged, nil
+	}
+	req := plugin.PropletSelectRequest{Context: plugin.AuthFromContext(ctx), Task: plugin.NewTaskInfo(t)}
 
 	for _, p := range svc.plugins.List() {
 		resp, err := p.OnBeforePropletSelect(ctx, req)
@@ -1898,9 +1901,12 @@ func propletMatchesConstraints(p proplet.Proplet, c plugin.PropletSelectResponse
 }
 
 func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p proplet.Proplet) error {
+	if svc.plugins == nil {
+		return nil
+	}
 	req := plugin.DispatchRequest{
 		Context: plugin.AuthFromContext(ctx),
-		Task:    toPluginTaskInfo(*t),
+		Task:    plugin.NewTaskInfo(*t),
 		Proplet: plugin.PropletInfo{
 			ID:               p.ID,
 			Name:             p.Name,
@@ -1937,9 +1943,12 @@ func (svc *service) runOnBeforeDispatch(ctx context.Context, t *task.Task, p pro
 }
 
 func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
+	if svc.plugins == nil {
+		return
+	}
 	detached := context.WithoutCancel(ctx)
 	evt := plugin.TaskEvent{
-		Task:    toPluginTaskInfo(t),
+		Task:    plugin.NewTaskInfo(t),
 		Success: t.State == task.Completed,
 		Error:   t.Error,
 	}
@@ -1950,23 +1959,6 @@ func (svc *service) notifyTaskComplete(ctx context.Context, t task.Task) {
 				svc.logger.WarnContext(detached, "plugin on_task_complete failed", "plugin", p.Name(), "error", err)
 			}
 		})
-	}
-}
-
-func toPluginTaskInfo(t task.Task) plugin.TaskInfo {
-	return plugin.TaskInfo{
-		ID:        t.ID,
-		Name:      t.Name,
-		Kind:      string(t.Kind),
-		ImageURL:  t.ImageURL,
-		Inputs:    []string(t.Inputs),
-		CLIArgs:   t.CLIArgs,
-		Env:       t.Env,
-		PropletID: t.PropletID,
-		Priority:  t.Priority,
-		Daemon:    t.Daemon,
-		Encrypted: t.Encrypted,
-		CreatedAt: t.CreatedAt,
 	}
 }
 

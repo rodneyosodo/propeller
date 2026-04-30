@@ -30,7 +30,7 @@ func Plugin(registry plugin.Registry, logger *slog.Logger, svc manager.Service) 
 }
 
 func (pm *pluginMiddleware) CreateTask(ctx context.Context, t task.Task) (task.Task, error) {
-	info := toTaskInfo(t)
+	info := plugin.NewTaskInfo(t)
 
 	if err := pm.authorize(ctx, plugin.ActionCreate, info); err != nil {
 		return task.Task{}, err
@@ -43,7 +43,7 @@ func (pm *pluginMiddleware) CreateTask(ctx context.Context, t task.Task) (task.T
 }
 
 func (pm *pluginMiddleware) UpdateTask(ctx context.Context, t task.Task) (task.Task, error) {
-	if err := pm.authorize(ctx, plugin.ActionUpdate, toTaskInfo(t)); err != nil {
+	if err := pm.authorize(ctx, plugin.ActionUpdate, plugin.NewTaskInfo(t)); err != nil {
 		return task.Task{}, err
 	}
 
@@ -56,7 +56,7 @@ func (pm *pluginMiddleware) DeleteTask(ctx context.Context, taskID string) error
 		return err
 	}
 
-	if err := pm.authorize(ctx, plugin.ActionDelete, toTaskInfo(t)); err != nil {
+	if err := pm.authorize(ctx, plugin.ActionDelete, plugin.NewTaskInfo(t)); err != nil {
 		return err
 	}
 
@@ -69,7 +69,7 @@ func (pm *pluginMiddleware) StartTask(ctx context.Context, taskID string) error 
 		return err
 	}
 
-	info := toTaskInfo(t)
+	info := plugin.NewTaskInfo(t)
 	if err := pm.authorize(ctx, plugin.ActionStart, info); err != nil {
 		return err
 	}
@@ -89,7 +89,7 @@ func (pm *pluginMiddleware) StopTask(ctx context.Context, taskID string) error {
 		return err
 	}
 
-	if err := pm.authorize(ctx, plugin.ActionStop, toTaskInfo(t)); err != nil {
+	if err := pm.authorize(ctx, plugin.ActionStop, plugin.NewTaskInfo(t)); err != nil {
 		return err
 	}
 
@@ -98,9 +98,12 @@ func (pm *pluginMiddleware) StopTask(ctx context.Context, taskID string) error {
 
 func (pm *pluginMiddleware) CreateWorkflow(ctx context.Context, tasks []task.Task) ([]task.Task, error) {
 	for i := range tasks {
-		if err := pm.authorize(ctx, plugin.ActionCreate, toTaskInfo(tasks[i])); err != nil {
+		info := plugin.NewTaskInfo(tasks[i])
+		if err := pm.authorize(ctx, plugin.ActionCreate, info); err != nil {
 			return nil, err
 		}
+		enriched := pm.enrich(ctx, info)
+		applyEnrichment(&tasks[i], enriched)
 	}
 
 	return pm.Service.CreateWorkflow(ctx, tasks)
@@ -108,9 +111,12 @@ func (pm *pluginMiddleware) CreateWorkflow(ctx context.Context, tasks []task.Tas
 
 func (pm *pluginMiddleware) CreateJob(ctx context.Context, name string, tasks []task.Task, executionMode string) (string, []task.Task, error) {
 	for i := range tasks {
-		if err := pm.authorize(ctx, plugin.ActionCreate, toTaskInfo(tasks[i])); err != nil {
+		info := plugin.NewTaskInfo(tasks[i])
+		if err := pm.authorize(ctx, plugin.ActionCreate, info); err != nil {
 			return "", nil, err
 		}
+		enriched := pm.enrich(ctx, info)
+		applyEnrichment(&tasks[i], enriched)
 	}
 
 	return pm.Service.CreateJob(ctx, name, tasks, executionMode)
@@ -123,7 +129,7 @@ func (pm *pluginMiddleware) StartJob(ctx context.Context, jobID string) error {
 	}
 
 	for i := range tasks {
-		if err := pm.authorize(ctx, plugin.ActionStart, toTaskInfo(tasks[i])); err != nil {
+		if err := pm.authorize(ctx, plugin.ActionStart, plugin.NewTaskInfo(tasks[i])); err != nil {
 			return err
 		}
 	}
@@ -138,7 +144,7 @@ func (pm *pluginMiddleware) StopJob(ctx context.Context, jobID string) error {
 	}
 
 	for i := range tasks {
-		if err := pm.authorize(ctx, plugin.ActionStop, toTaskInfo(tasks[i])); err != nil {
+		if err := pm.authorize(ctx, plugin.ActionStop, plugin.NewTaskInfo(tasks[i])); err != nil {
 			return err
 		}
 	}
@@ -240,23 +246,6 @@ func withAction(auth plugin.AuthContext, action plugin.Action) plugin.AuthContex
 	auth.Action = action
 
 	return auth
-}
-
-func toTaskInfo(t task.Task) plugin.TaskInfo {
-	return plugin.TaskInfo{
-		ID:        t.ID,
-		Name:      t.Name,
-		Kind:      string(t.Kind),
-		ImageURL:  t.ImageURL,
-		Inputs:    []string(t.Inputs),
-		CLIArgs:   t.CLIArgs,
-		Env:       t.Env,
-		PropletID: t.PropletID,
-		Priority:  t.Priority,
-		Daemon:    t.Daemon,
-		Encrypted: t.Encrypted,
-		CreatedAt: t.CreatedAt,
-	}
 }
 
 func applyEnrichment(t *task.Task, e plugin.EnrichResponse) {
