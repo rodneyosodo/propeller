@@ -225,6 +225,9 @@ func (pm *pluginMiddleware) enrich(ctx context.Context, info plugin.TaskInfo) pl
 				merged.Inputs = append(merged.Inputs, v)
 			}
 		}
+		if resp.ImageURL != "" {
+			merged.ImageURL = resp.ImageURL
+		}
 	}
 
 	return merged
@@ -260,5 +263,8 @@ func applyEnrichment(t *task.Task, e plugin.EnrichResponse) {
 	}
 	if len(e.Inputs) > 0 {
 		t.Inputs = task.FlexStrings(e.Inputs)
+	}
+	if e.ImageURL != "" {
+		t.ImageURL = e.ImageURL
 	}
 }

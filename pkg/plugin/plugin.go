@@ -57,6 +57,7 @@ type EnrichResponse struct {
 	Env      map[string]string `json:"env,omitempty"`
 	Priority *int              `json:"priority,omitempty"`
 	Inputs   []string          `json:"inputs,omitempty"`
+	ImageURL string            `json:"image_url,omitempty"`
 }
 
 type TaskEvent struct {

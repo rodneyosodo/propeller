@@ -71,6 +71,8 @@ pub struct EnrichResponse {
     pub priority: Option<i32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub inputs: Vec<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub image_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]

@@ -140,10 +140,11 @@ func TestPluginMiddleware_CreateTask_Enrich(t *testing.T) {
 
 	prio := 99
 	cases := []struct {
-		desc      string
-		enrichRes plugin.EnrichResponse
-		wantEnv   map[string]string
-		wantPrio  int
+		desc         string
+		enrichRes    plugin.EnrichResponse
+		wantEnv      map[string]string
+		wantPrio     int
+		wantImageURL string
 	}{
 		{
 			desc:      "enrich injects env",
@@ -163,6 +164,11 @@ func TestPluginMiddleware_CreateTask_Enrich(t *testing.T) {
 			wantEnv:   nil,
 			wantPrio:  0,
 		},
+		{
+			desc:         "enrich rewrites image URL",
+			enrichRes:    plugin.EnrichResponse{ImageURL: "mirror.corp.com/org/task:latest"},
+			wantImageURL: "mirror.corp.com/org/task:latest",
+		},
 	}
 
 	for _, tc := range cases {
@@ -175,6 +181,9 @@ func TestPluginMiddleware_CreateTask_Enrich(t *testing.T) {
 
 			svc, mw := newPluginMiddleware(t, pl)
 			svc.On("CreateTask", mock.Anything, mock.MatchedBy(func(t task.Task) bool {
+				if tc.wantImageURL != "" {
+					return t.ImageURL == tc.wantImageURL
+				}
 				if tc.wantPrio != 0 {
 					return t.Priority == tc.wantPrio
 				}
