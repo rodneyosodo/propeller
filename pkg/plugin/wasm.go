@@ -63,6 +63,18 @@ func (w *slogWriter) Write(p []byte) (int, error) {
 	return w.writeCtx(context.Background(), p)
 }
 
+func (w *slogWriter) Flush(ctx context.Context) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if len(w.buf) > 0 {
+		line := string(bytes.TrimRight(w.buf, "\r\n"))
+		if line != "" {
+			w.logger.Log(ctx, w.level, line, "plugin", w.plugin)
+		}
+		w.buf = w.buf[:0]
+	}
+}
+
 func (w *slogWriter) writeCtx(ctx context.Context, p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -81,18 +93,6 @@ func (w *slogWriter) writeCtx(ctx context.Context, p []byte) (int, error) {
 	}
 
 	return len(p), nil
-}
-
-func (w *slogWriter) Flush(ctx context.Context) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	if len(w.buf) > 0 {
-		line := string(bytes.TrimRight(w.buf, "\r\n"))
-		if line != "" {
-			w.logger.Log(ctx, w.level, line, "plugin", w.plugin)
-		}
-		w.buf = w.buf[:0]
-	}
 }
 
 func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plugin, error) {
