@@ -60,6 +60,10 @@ type slogWriter struct {
 }
 
 func (w *slogWriter) Write(p []byte) (int, error) {
+	return w.writeCtx(context.Background(), p)
+}
+
+func (w *slogWriter) writeCtx(ctx context.Context, p []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
@@ -72,7 +76,7 @@ func (w *slogWriter) Write(p []byte) (int, error) {
 		line := string(bytes.TrimRight(w.buf[:idx], "\r"))
 		w.buf = w.buf[idx+1:]
 		if line != "" {
-			w.logger.Log(context.Background(), w.level, line, "plugin", w.plugin)
+			w.logger.Log(ctx, w.level, line, "plugin", w.plugin)
 		}
 	}
 
@@ -310,7 +314,7 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn *wasmtime.Func, input, outpu
 	close(stop)
 	<-goroutineDone
 
-	p.drainOutput()
+	p.drainOutput(ctx)
 
 	if callErr != nil {
 		if ctx.Err() != nil {
@@ -328,7 +332,11 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn *wasmtime.Func, input, outpu
 		return fmt.Errorf("plugin %s returned nil, expected i64", p.name)
 	}
 
-	packed := uint64(result.(int64))
+	v, ok := result.(int64)
+	if !ok {
+		return fmt.Errorf("plugin %s returned unexpected result type", p.name)
+	}
+	packed := uint64(v)
 	outPtr, outLen := unpack(packed)
 	if outLen == 0 {
 		return nil
@@ -357,7 +365,11 @@ func (p *wasmPlugin) writeBuffer(data []byte) (uint32, error) {
 		return 0, errors.New("plugin alloc returned nil")
 	}
 
-	ptr := uint32(result.(int32))
+	v, ok := result.(int32)
+	if !ok {
+		return 0, errors.New("plugin alloc returned unexpected result type")
+	}
+	ptr := uint32(v)
 	if ptr == 0 {
 		return 0, errors.New("plugin alloc returned null pointer")
 	}
@@ -377,12 +389,12 @@ func (p *wasmPlugin) freeBuffer(ptr, length uint32) {
 	_, _ = p.free.Call(p.store, int32(ptr), int32(length))
 }
 
-func (p *wasmPlugin) drainOutput() {
-	p.drainFile(p.stdoutFile, &p.stdoutOffset, p.stdout)
-	p.drainFile(p.stderrFile, &p.stderrOffset, p.stderr)
+func (p *wasmPlugin) drainOutput(ctx context.Context) {
+	p.drainFile(ctx, p.stdoutFile, &p.stdoutOffset, p.stdout)
+	p.drainFile(ctx, p.stderrFile, &p.stderrOffset, p.stderr)
 }
 
-func (p *wasmPlugin) drainFile(f *os.File, offset *int64, w *slogWriter) {
+func (p *wasmPlugin) drainFile(ctx context.Context, f *os.File, offset *int64, w *slogWriter) {
 	if _, err := f.Seek(*offset, io.SeekStart); err != nil {
 		return
 	}
@@ -390,7 +402,7 @@ func (p *wasmPlugin) drainFile(f *os.File, offset *int64, w *slogWriter) {
 	for {
 		n, readErr := f.Read(buf)
 		if n > 0 {
-			_, _ = w.Write(buf[:n])
+			_, _ = w.writeCtx(ctx, buf[:n])
 			*offset += int64(n)
 		}
 		if readErr != nil {
