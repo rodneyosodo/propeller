@@ -289,16 +289,15 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn *wasmtime.Func, input, outpu
 		return fmt.Errorf("marshal plugin input: %w", err)
 	}
 
+	// Reset epoch deadline before any wasm call so a prior context cancellation
+	// (which increments the epoch) doesn't cause alloc to trap immediately.
+	p.store.SetEpochDeadline(1)
+
 	inPtr, err := p.writeBuffer(data)
 	if err != nil {
 		return err
 	}
 	defer p.freeBuffer(inPtr, uint32(len(data)))
-
-	// Epoch-based context cancellation: when ctx is done, increment the epoch
-	// to interrupt the running wasm. Each plugin owns its engine so this only
-	// affects this plugin's store.
-	p.store.SetEpochDeadline(1)
 	stop := make(chan struct{})
 	goroutineDone := make(chan struct{})
 	go func() {
