@@ -346,6 +346,11 @@ func (p *wasmPlugin) invoke(ctx context.Context, fn *wasmtime.Func, input, outpu
 
 	mem := p.instance.GetExport(p.store, "memory").Memory()
 	raw := mem.UnsafeData(p.store)
+	if uint64(outPtr)+uint64(outLen) > uint64(len(raw)) {
+		runtime.KeepAlive(mem)
+
+		return fmt.Errorf("plugin %s response pointer out of memory bounds (ptr=%d len=%d memsize=%d)", p.name, outPtr, outLen, len(raw))
+	}
 	out := make([]byte, outLen)
 	copy(out, raw[outPtr:outPtr+outLen])
 	runtime.KeepAlive(mem)
@@ -377,6 +382,11 @@ func (p *wasmPlugin) writeBuffer(data []byte) (uint32, error) {
 
 	mem := p.instance.GetExport(p.store, "memory").Memory()
 	raw := mem.UnsafeData(p.store)
+	if uint64(ptr)+uint64(len(data)) > uint64(len(raw)) {
+		runtime.KeepAlive(mem)
+
+		return 0, fmt.Errorf("plugin alloc returned pointer out of memory bounds (ptr=%d len=%d memsize=%d)", ptr, len(data), len(raw))
+	}
 	copy(raw[ptr:ptr+uint32(len(data))], data)
 	runtime.KeepAlive(mem)
 
