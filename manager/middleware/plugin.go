@@ -261,8 +261,10 @@ func applyEnrichment(t *task.Task, e plugin.EnrichResponse) {
 	if e.Priority != nil {
 		t.Priority = *e.Priority
 	}
-	if len(e.Inputs) > 0 {
-		t.Inputs = task.FlexStrings(e.Inputs)
+	for _, v := range e.Inputs {
+		if !slices.Contains([]string(t.Inputs), v) {
+			t.Inputs = append(t.Inputs, v)
+		}
 	}
 	if e.ImageURL != "" {
 		t.ImageURL = e.ImageURL
