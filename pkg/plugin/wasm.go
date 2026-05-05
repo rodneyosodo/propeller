@@ -124,20 +124,21 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 		return nil, fmt.Errorf("create stderr capture for plugin %s: %w", name, err)
 	}
 
-	wasiCfg := wasmtime.NewWasiConfig()
-	if err := wasiCfg.SetStdoutFile(stdoutFile.Name()); err != nil {
+	cleanup := func() {
 		_ = stdoutFile.Close()
 		_ = os.Remove(stdoutFile.Name())
 		_ = stderrFile.Close()
 		_ = os.Remove(stderrFile.Name())
+	}
+
+	wasiCfg := wasmtime.NewWasiConfig()
+	if err := wasiCfg.SetStdoutFile(stdoutFile.Name()); err != nil {
+		cleanup()
 
 		return nil, fmt.Errorf("configure stdout for plugin %s: %w", name, err)
 	}
 	if err := wasiCfg.SetStderrFile(stderrFile.Name()); err != nil {
-		_ = stdoutFile.Close()
-		_ = os.Remove(stdoutFile.Name())
-		_ = stderrFile.Close()
-		_ = os.Remove(stderrFile.Name())
+		cleanup()
 
 		return nil, fmt.Errorf("configure stderr for plugin %s: %w", name, err)
 	}
@@ -147,20 +148,14 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 
 	linker := wasmtime.NewLinker(engine)
 	if err := linker.DefineWasi(); err != nil {
-		_ = stdoutFile.Close()
-		_ = os.Remove(stdoutFile.Name())
-		_ = stderrFile.Close()
-		_ = os.Remove(stderrFile.Name())
+		cleanup()
 
 		return nil, fmt.Errorf("define wasi for plugin %s: %w", name, err)
 	}
 
 	instance, err := linker.Instantiate(store, module)
 	if err != nil {
-		_ = stdoutFile.Close()
-		_ = os.Remove(stdoutFile.Name())
-		_ = stderrFile.Close()
-		_ = os.Remove(stderrFile.Name())
+		cleanup()
 
 		return nil, fmt.Errorf("instantiate plugin %s: %w", name, err)
 	}
@@ -185,10 +180,7 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 	}
 
 	if p.alloc == nil || p.free == nil {
-		_ = stdoutFile.Close()
-		_ = os.Remove(stdoutFile.Name())
-		_ = stderrFile.Close()
-		_ = os.Remove(stderrFile.Name())
+		cleanup()
 
 		return nil, fmt.Errorf("plugin %s missing required exports: %s, %s", name, exportAlloc, exportFree)
 	}

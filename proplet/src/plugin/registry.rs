@@ -72,40 +72,59 @@ impl PluginRegistry {
 
     /// Returns None if all plugins allow, or the first denial reason.
     pub fn authorize(&self, task: &TaskInfo) -> Result<Option<String>> {
-        for plugin in &self.plugins {
-            match plugin.authorize(task.clone()) {
-                Ok(AuthorizeResponse {
-                    allow: false,
-                    reason,
-                }) => {
-                    return Ok(Some(
-                        reason.unwrap_or_else(|| "denied by plugin".to_string()),
-                    ));
-                }
-                Ok(_) => {}
-                Err(e) => {
-                    warn!("Plugin authorize error (failing closed): {}", e);
-                    return Ok(Some(format!("plugin error: {e}")));
+        let plugins = self.plugins.len();
+        if plugins == 0 {
+            return Ok(None);
+        }
+
+        let task = task.clone();
+        let plugins: Vec<_> = self.plugins.iter().collect();
+        tokio::task::block_in_place(|| {
+            for plugin in plugins {
+                match plugin.authorize(task.clone()) {
+                    Ok(AuthorizeResponse {
+                        allow: false,
+                        reason,
+                    }) => {
+                        return Ok(Some(
+                            reason.unwrap_or_else(|| "denied by plugin".to_string()),
+                        ));
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        warn!("Plugin authorize error (failing closed): {}", e);
+                        return Ok(Some(format!("plugin error: {e}")));
+                    }
                 }
             }
-        }
-        Ok(None)
+            Ok(None)
+        })
     }
 
     /// Merges env additions from all plugins.
     pub fn enrich(&self, task: &TaskInfo) -> Result<Vec<(String, String)>> {
-        let mut env: Vec<(String, String)> = Vec::new();
-        for plugin in &self.plugins {
-            match plugin.enrich(task.clone()) {
-                Ok(EnrichResponse { env: additions }) => env.extend(additions),
-                Err(e) => warn!("Plugin enrich error (skipping): {}", e),
-            }
+        if self.plugins.is_empty() {
+            return Ok(Vec::new());
         }
-        Ok(env)
+
+        let task = task.clone();
+        let plugins: Vec<_> = self.plugins.iter().collect();
+        tokio::task::block_in_place(|| {
+            let mut env: Vec<(String, String)> = Vec::new();
+            for plugin in plugins {
+                match plugin.enrich(task.clone()) {
+                    Ok(EnrichResponse { env: additions }) => env.extend(additions),
+                    Err(e) => warn!("Plugin enrich error (skipping): {}", e),
+                }
+            }
+            Ok(env)
+        })
     }
 
-    /// Notifies all plugins that a task started. Returns the JoinHandle so callers
-    /// can observe panics or await completion during graceful shutdown.
+    /// Notifies all plugins that a task started. The notification runs on a
+    /// blocking thread but the returned JoinHandle is intentionally dropped
+    /// (fire-and-forget); callers who need graceful shutdown should join the
+    /// handle themselves.
     pub fn notify_task_start(registry: Arc<Self>, task: TaskInfo) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
             for plugin in &registry.plugins {
@@ -114,8 +133,10 @@ impl PluginRegistry {
         })
     }
 
-    /// Notifies all plugins that a task completed. Returns the JoinHandle so callers
-    /// can observe panics or await completion during graceful shutdown.
+    /// Notifies all plugins that a task completed. The notification runs on a
+    /// blocking thread but the returned JoinHandle is intentionally dropped
+    /// (fire-and-forget); callers who need graceful shutdown should join the
+    /// handle themselves.
     pub fn notify_task_complete(
         registry: Arc<Self>,
         result: TaskResult,

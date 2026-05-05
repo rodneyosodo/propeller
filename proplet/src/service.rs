@@ -604,16 +604,18 @@ impl PropletService {
             );
         }
         for (k, v) in plugin_env_additions {
-            env.entry(k).or_insert(v);
+            env.insert(k, v);
         }
 
         let daemon = req.daemon;
+        let encrypted = req.encrypted;
+        let req_image_url = req.image_url.clone();
         let cli_args = req.cli_args.clone();
         let inputs = req.inputs.clone();
         let http_client = self.http_client.clone();
 
-        let image_url = if req.encrypted && !req.image_url.is_empty() {
-            Some(req.image_url.clone())
+        let image_url = if encrypted && !req_image_url.is_empty() {
+            Some(req_image_url.clone())
         } else {
             None
         };
@@ -812,13 +814,16 @@ impl PropletService {
                 let plugin_task = PluginTaskInfo {
                     id: task_id.clone(),
                     name: task_name.clone(),
-                    image_url: String::new(),
+                    image_url: req_image_url.clone(),
                     cli_args: config.cli_args.clone(),
                     env: env.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
                     daemon,
-                    encrypted: false,
+                    encrypted,
                 };
-                drop(PluginRegistry::notify_task_start(Arc::clone(registry), plugin_task));
+                drop(PluginRegistry::notify_task_start(
+                    Arc::clone(registry),
+                    plugin_task,
+                ));
             }
 
             let result = runtime.start_app(ctx, config).await;
@@ -855,7 +860,10 @@ impl PropletService {
                     },
                     error: error.clone(),
                 };
-                drop(PluginRegistry::notify_task_complete(Arc::clone(registry), plugin_result));
+                drop(PluginRegistry::notify_task_complete(
+                    Arc::clone(registry),
+                    plugin_result,
+                ));
             }
 
             if let Some(round_id) = env.get("ROUND_ID") {
