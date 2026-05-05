@@ -124,7 +124,7 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 		return nil, fmt.Errorf("create stderr capture for plugin %s: %w", name, err)
 	}
 
-	cleanup := func() {
+	cleanupFiles := func() {
 		_ = stdoutFile.Close()
 		_ = os.Remove(stdoutFile.Name())
 		_ = stderrFile.Close()
@@ -133,12 +133,12 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 
 	wasiCfg := wasmtime.NewWasiConfig()
 	if err := wasiCfg.SetStdoutFile(stdoutFile.Name()); err != nil {
-		cleanup()
+		cleanupFiles()
 
 		return nil, fmt.Errorf("configure stdout for plugin %s: %w", name, err)
 	}
 	if err := wasiCfg.SetStderrFile(stderrFile.Name()); err != nil {
-		cleanup()
+		cleanupFiles()
 
 		return nil, fmt.Errorf("configure stderr for plugin %s: %w", name, err)
 	}
@@ -148,14 +148,14 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 
 	linker := wasmtime.NewLinker(engine)
 	if err := linker.DefineWasi(); err != nil {
-		cleanup()
+		cleanupFiles()
 
 		return nil, fmt.Errorf("define wasi for plugin %s: %w", name, err)
 	}
 
 	instance, err := linker.Instantiate(store, module)
 	if err != nil {
-		cleanup()
+		cleanupFiles()
 
 		return nil, fmt.Errorf("instantiate plugin %s: %w", name, err)
 	}
@@ -180,7 +180,10 @@ func LoadWasm(ctx context.Context, name, path string, logger *slog.Logger) (Plug
 	}
 
 	if p.alloc == nil || p.free == nil {
-		cleanup()
+		_ = p.stdoutFile.Close()
+		_ = p.stderrFile.Close()
+		_ = os.Remove(stdoutFile.Name())
+		_ = os.Remove(stderrFile.Name())
 
 		return nil, fmt.Errorf("plugin %s missing required exports: %s, %s", name, exportAlloc, exportFree)
 	}
@@ -394,7 +397,9 @@ func (p *wasmPlugin) freeBuffer(ptr, length uint32) {
 
 func (p *wasmPlugin) drainOutput(ctx context.Context) {
 	p.drainFile(ctx, p.stdoutFile, &p.stdoutOffset, p.stdout)
+	p.stdout.Flush(ctx)
 	p.drainFile(ctx, p.stderrFile, &p.stderrOffset, p.stderr)
+	p.stderr.Flush(ctx)
 }
 
 func (p *wasmPlugin) drainFile(ctx context.Context, f *os.File, offset *int64, w *slogWriter) {

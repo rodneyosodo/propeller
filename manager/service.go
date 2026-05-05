@@ -1887,9 +1887,13 @@ func (svc *service) selectPropletWithConstraints(ctx context.Context, t task.Tas
 		candidates = append(candidates, p)
 	}
 
-	hasConstraints := len(constraints.RequiredTags) > 0 || constraints.MinMemoryBytes != nil
-	if len(candidates) == 0 && hasConstraints {
-		return proplet.Proplet{}, errors.New("no proplet satisfies plugin-required constraints")
+	if len(candidates) == 0 {
+		hasConstraints := len(constraints.RequiredTags) > 0 || constraints.MinMemoryBytes != nil
+		if hasConstraints {
+			return proplet.Proplet{}, errors.New("no proplet satisfies plugin-required constraints")
+		}
+
+		return proplet.Proplet{}, errors.New("no active proplets available")
 	}
 
 	return svc.scheduler.SelectProplet(t, candidates)
