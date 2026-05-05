@@ -134,10 +134,6 @@ func (pm *pluginMiddleware) StartJob(ctx context.Context, jobID string) error {
 		if err := pm.authorize(ctx, plugin.ActionStart, info); err != nil {
 			return err
 		}
-		// Enrichment is intentionally not re-applied at start time: env vars are
-		// stamped into task state at CreateJob and persisted, so re-enriching here
-		// would have no effect unless tasks were also updated in the store.
-		_ = pm.enrich(ctx, info)
 	}
 
 	return pm.Service.StartJob(ctx, jobID)

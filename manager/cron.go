@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/absmach/propeller/pkg/cron"
+	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/scheduler"
 	"github.com/absmach/propeller/pkg/storage"
 	"github.com/absmach/propeller/pkg/task"
@@ -175,7 +176,8 @@ func (cs *cronScheduler) triggerScheduledTask(ctx context.Context, t task.Task) 
 	svc := cs.service
 	cs.mu.RUnlock()
 
-	if err := svc.StartTask(ctx, t.ID); err != nil {
+	sysCtx := plugin.ContextWithSystem(ctx)
+	if err := svc.StartTask(sysCtx, t.ID); err != nil {
 		return fmt.Errorf("failed to start scheduled task: %w", err)
 	}
 

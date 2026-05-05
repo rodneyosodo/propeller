@@ -379,10 +379,13 @@ func decodeWorkflowReq(_ context.Context, r *http.Request) (any, error) {
 }
 
 // authContextMiddleware populates AuthContext from request headers.
-// Trust model: X-User-Id is accepted as-is from the client and is NOT authenticated.
-// The manager must sit behind a trusted reverse proxy that validates the caller and
-// sets (or strips and re-sets) X-User-Id. Plugin logic that enforces ownership must
-// therefore only be used in deployments with a validating proxy in front.
+//
+// SECURITY: X-User-Id is accepted as-is from the client and is NOT authenticated.
+// The manager MUST sit behind a trusted reverse proxy that validates the caller and
+// sets (or strips and re-sets) X-User-Id. Deploying the manager without such a proxy
+// allows any client to impersonate any user identity, bypassing plugin authorization.
+// Plugin logic that enforces ownership must only be used in deployments with a
+// validating authenticating proxy in front.
 func authContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-Id")

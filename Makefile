@@ -149,10 +149,10 @@ lint:
 	golangci-lint run  --config .golangci.yaml
 	cd proplet && cargo check --release && cargo fmt --all -- --check && cargo clippy -- -D warnings
 
-test: mocks
+test: mocks plugin-auth
 	go test -v ./manager
 
-test-all:
+test-all: plugin-auth
 	go test -v ./...
 	cd proplet && cargo test --release
 

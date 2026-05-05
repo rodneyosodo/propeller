@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/absmach/propeller/pkg/dag"
+	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/storage"
 	"github.com/absmach/propeller/pkg/task"
 )
@@ -127,7 +128,8 @@ func (wc *WorkflowCoordinator) CheckAndStartReadyTasks(ctx context.Context, work
 		wc.mu.RLock()
 		svc := wc.service
 		wc.mu.RUnlock()
-		if err := svc.StartTask(ctx, t.ID); err != nil {
+		sysCtx := plugin.ContextWithSystem(ctx)
+		if err := svc.StartTask(sysCtx, t.ID); err != nil {
 			wc.logger.ErrorContext(ctx, "failed to start ready task", "task_id", t.ID, "error", err)
 
 			continue
