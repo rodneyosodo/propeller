@@ -818,7 +818,7 @@ impl PropletService {
                     daemon,
                     encrypted: false,
                 };
-                let _ = PluginRegistry::notify_task_start(Arc::clone(registry), plugin_task);
+                drop(PluginRegistry::notify_task_start(Arc::clone(registry), plugin_task));
             }
 
             let result = runtime.start_app(ctx, config).await;
@@ -855,7 +855,7 @@ impl PropletService {
                     },
                     error: error.clone(),
                 };
-                let _ = PluginRegistry::notify_task_complete(Arc::clone(registry), plugin_result);
+                drop(PluginRegistry::notify_task_complete(Arc::clone(registry), plugin_result));
             }
 
             if let Some(round_id) = env.get("ROUND_ID") {
