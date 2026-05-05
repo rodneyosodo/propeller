@@ -116,7 +116,10 @@ impl PluginRegistry {
 
     /// Notifies all plugins that a task completed. Returns the JoinHandle so callers
     /// can observe panics or await completion during graceful shutdown.
-    pub fn notify_task_complete(registry: Arc<Self>, result: TaskResult) -> tokio::task::JoinHandle<()> {
+    pub fn notify_task_complete(
+        registry: Arc<Self>,
+        result: TaskResult,
+    ) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
             for plugin in &registry.plugins {
                 plugin.on_task_complete(result.clone());
