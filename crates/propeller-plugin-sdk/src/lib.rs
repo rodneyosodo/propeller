@@ -234,6 +234,9 @@ macro_rules! register_plugin {
         #[no_mangle]
         pub unsafe extern "C" fn plugin_free(ptr: u32, len: u32) {
             if ptr != 0 {
+                // Safety: ptr was returned by alloc_impl(len), which allocates
+                // Vec::with_capacity(len). Reconstruct with the same capacity so
+                // the allocator frees the correct number of bytes.
                 let _ = ::std::vec::Vec::from_raw_parts(ptr as *mut u8, 0, len as usize);
             }
         }

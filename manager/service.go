@@ -1857,7 +1857,11 @@ func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (
 
 			return plugin.PropletSelectResponse{}, errors.New(reason)
 		}
-		merged.RequiredTags = append(merged.RequiredTags, resp.RequiredTags...)
+		for _, tag := range resp.RequiredTags {
+			if !slices.Contains(merged.RequiredTags, tag) {
+				merged.RequiredTags = append(merged.RequiredTags, tag)
+			}
+		}
 		if resp.MinMemoryBytes != nil {
 			if merged.MinMemoryBytes == nil || *resp.MinMemoryBytes > *merged.MinMemoryBytes {
 				merged.MinMemoryBytes = resp.MinMemoryBytes

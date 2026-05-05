@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/0x6flab/namegenerator v1.4.0
 	github.com/absmach/magistrala v0.20.0
+	github.com/bytecodealliance/wasmtime-go/v44 v44.0.0
 	github.com/caarlos0/env/v11 v11.4.0
 	github.com/charmbracelet/huh v1.0.0
 	github.com/dgraph-io/badger/v4 v4.9.1
@@ -23,7 +24,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rubenv/sql-migrate v1.8.1
 	github.com/spf13/cobra v1.10.2
-	github.com/bytecodealliance/wasmtime-go v1.0.0
 	github.com/stretchr/testify v1.11.1
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.68.0
 	go.opentelemetry.io/otel v1.43.0

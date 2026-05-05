@@ -28,6 +28,12 @@ const (
 
 func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) http.Handler {
 	mux := chi.NewRouter()
+	mux.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, maxFileSize)
+			next.ServeHTTP(w, r)
+		})
+	})
 	mux.Use(authContextMiddleware)
 
 	opts := []kithttp.ServerOption{
@@ -275,7 +281,6 @@ func decodeTaskReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
 	var req taskReq
-	r.Body = http.MaxBytesReader(nil, r.Body, maxFileSize)
 	if err := r.ParseMultipartForm(maxFileSize); err != nil {
 		return nil, err
 	}
@@ -373,6 +378,11 @@ func decodeWorkflowReq(_ context.Context, r *http.Request) (any, error) {
 	return req, nil
 }
 
+// authContextMiddleware populates AuthContext from request headers.
+// Trust model: X-User-ID is accepted as-is from the client and is NOT authenticated.
+// The manager must sit behind a trusted reverse proxy that validates the caller and
+// sets (or strips and re-sets) X-User-ID. Plugin logic that enforces ownership must
+// therefore only be used in deployments with a validating proxy in front.
 func authContextMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		userID := r.Header.Get("X-User-Id")

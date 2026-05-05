@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -129,9 +130,14 @@ func (pm *pluginMiddleware) StartJob(ctx context.Context, jobID string) error {
 	}
 
 	for i := range tasks {
-		if err := pm.authorize(ctx, plugin.ActionStart, plugin.NewTaskInfo(tasks[i])); err != nil {
+		info := plugin.NewTaskInfo(tasks[i])
+		if err := pm.authorize(ctx, plugin.ActionStart, info); err != nil {
 			return err
 		}
+		// Enrichment is intentionally not re-applied at start time: env vars are
+		// stamped into task state at CreateJob and persisted, so re-enriching here
+		// would have no effect unless tasks were also updated in the store.
+		_ = pm.enrich(ctx, info)
 	}
 
 	return pm.Service.StartJob(ctx, jobID)
@@ -191,7 +197,7 @@ func (pm *pluginMiddleware) authorize(ctx context.Context, action plugin.Action,
 				reason = "denied by plugin"
 			}
 
-			return fmt.Errorf("%s", reason)
+			return errors.New(reason)
 		}
 	}
 

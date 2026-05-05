@@ -104,21 +104,23 @@ impl PluginRegistry {
         Ok(env)
     }
 
-    /// Fire-and-forget: notifies all plugins that a task started.
-    pub fn notify_task_start(registry: Arc<Self>, task: TaskInfo) {
+    /// Notifies all plugins that a task started. Returns the JoinHandle so callers
+    /// can observe panics or await completion during graceful shutdown.
+    pub fn notify_task_start(registry: Arc<Self>, task: TaskInfo) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
             for plugin in &registry.plugins {
                 plugin.on_task_start(task.clone());
             }
-        });
+        })
     }
 
-    /// Fire-and-forget: notifies all plugins that a task completed.
-    pub fn notify_task_complete(registry: Arc<Self>, result: TaskResult) {
+    /// Notifies all plugins that a task completed. Returns the JoinHandle so callers
+    /// can observe panics or await completion during graceful shutdown.
+    pub fn notify_task_complete(registry: Arc<Self>, result: TaskResult) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn_blocking(move || {
             for plugin in &registry.plugins {
                 plugin.on_task_complete(result.clone());
             }
-        });
+        })
     }
 }

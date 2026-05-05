@@ -14,7 +14,7 @@ import (
 	"runtime"
 	"sync"
 
-	"github.com/bytecodealliance/wasmtime-go"
+	"github.com/bytecodealliance/wasmtime-go/v44"
 )
 
 const (
