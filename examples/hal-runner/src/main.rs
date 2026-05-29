@@ -20,31 +20,31 @@ type StorageMap = Arc<Mutex<HashMap<(u64, String), Vec<u8>>>>;
 struct Cli {
     wasm_file: PathBuf,
     function: String,
+    envs: Vec<(String, String)>,
 }
 
 fn parse_cli() -> Result<Cli> {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: {} <wasm-file> [--function <name>]", args[0]);
+        eprintln!("Usage: {} <wasm-file> [options]", args[0]);
         eprintln!();
         eprintln!("Runs a WASM module compiled with elastic:tee-hal imports using");
         eprintln!("the ELASTIC TEE HAL default providers.");
         eprintln!();
+        eprintln!("Options:");
+        eprintln!("  -f, --function <name>   Entry point function (default: _start)");
+        eprintln!("  -e, --env <KEY=VALUE>   Pass environment variable to WASM (can repeat)");
+        eprintln!();
         eprintln!("Examples:");
-        eprintln!(
-            "  {} examples/hal-test/target/wasm32-wasip1/release/hal-test.wasm",
-            args[0]
-        );
-        eprintln!(
-            "  {} examples/attestation-test/target/wasm32-wasip1/release/attestation-test.wasm",
-            args[0]
-        );
-        eprintln!("  {} my-module.wasm --function run_export", args[0]);
+        eprintln!("  {} path/to/module.wasm", args[0]);
+        eprintln!("  {} path/to/module.wasm -e FOO=bar -e DB_URL=postgres://...", args[0]);
+        eprintln!("  {} path/to/module.wasm --function run_export", args[0]);
         std::process::exit(1);
     }
 
     let wasm_file = PathBuf::from(&args[1]);
     let mut function = "_start".to_string();
+    let mut envs: Vec<(String, String)> = Vec::new();
 
     let mut i = 2;
     while i < args.len() {
@@ -56,6 +56,17 @@ fn parse_cli() -> Result<Cli> {
                     .cloned()
                     .context("--function requires a name argument")?;
             }
+            "--env" | "-e" => {
+                i += 1;
+                let kv = args
+                    .get(i)
+                    .cloned()
+                    .context("--env requires a KEY=VALUE argument")?;
+                let (key, value) = kv
+                    .split_once('=')
+                    .with_context(|| format!("--env '{kv}' is not in KEY=VALUE format"))?;
+                envs.push((key.to_string(), value.to_string()));
+            }
             _ => {
                 return Err(anyhow::anyhow!("Unknown argument: {}", args[i]));
             }
@@ -66,6 +77,7 @@ fn parse_cli() -> Result<Cli> {
     Ok(Cli {
         wasm_file,
         function,
+        envs,
     })
 }
 
@@ -93,6 +105,9 @@ fn main() -> Result<()> {
 
     let mut wasi_builder = wasmtime_wasi::WasiCtxBuilder::new();
     wasi_builder.inherit_stdio();
+    for (key, value) in &cli.envs {
+        wasi_builder.env(key, value);
+    }
     let wasi = wasi_builder.build_p1();
 
     let mut store = Store::new(&engine, wasi);
