@@ -3,8 +3,8 @@ use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::path::PathBuf;
-use wasmtime::component::Linker;
-use wasmtime::component::HasData;
+use std::time::Instant;
+use wasmtime::component::{HasData, Linker};
 
 mod generated {
     wasmtime::component::bindgen!({
@@ -26,7 +26,11 @@ pub struct ElasticHalHost {
     next_socket: u64,
     storage_path: PathBuf,
     containers: HashMap<u64, String>,
+    container_handles: HashMap<String, u64>,
     next_container: u64,
+    objects: HashMap<u64, (u64, String)>,
+    next_object: u64,
+    process_start: Instant,
 }
 
 impl ElasticHalHost {
@@ -36,16 +40,32 @@ impl ElasticHalHost {
             next_socket: 1,
             storage_path: PathBuf::from(storage_path),
             containers: HashMap::new(),
+            container_handles: HashMap::new(),
             next_container: 1,
+            objects: HashMap::new(),
+            next_object: 1,
+            process_start: Instant::now(),
         }
     }
 
     fn container_dir(&self, handle: u64) -> Result<PathBuf, String> {
-        let dir_name = format!("container_{handle}");
-        let dir = self.storage_path.join(&dir_name);
+        let dir = self.storage_path.join(format!("container_{handle}"));
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         Ok(dir)
     }
+}
+
+fn sanitize_key(key: &str) -> Result<&str, String> {
+    if key.is_empty()
+        || key.contains('/')
+        || key.contains('\\')
+        || key.contains('\0')
+        || key == "."
+        || key == ".."
+    {
+        return Err(format!("Invalid object key: {key:?}"));
+    }
+    Ok(key)
 }
 
 struct ProjectToElasticHal;
@@ -72,16 +92,14 @@ impl generated::elastic::sockets::sockets::Host for ElasticHalHost {
         &mut self,
         protocol: generated::elastic::sockets::sockets::Protocol,
     ) -> Result<u64, String> {
-        let id = self.next_socket;
-        match protocol {
-            generated::elastic::sockets::sockets::Protocol::Tcp => {
-                self.sockets.insert(id, SocketEntry::PendingTcp);
-            }
-            generated::elastic::sockets::sockets::Protocol::Udp => {
-                self.sockets.insert(id, SocketEntry::PendingUdp);
-            }
+        use generated::elastic::sockets::sockets::Protocol as P;
+        let entry = match protocol {
+            P::Tcp => SocketEntry::PendingTcp,
+            P::Udp => SocketEntry::PendingUdp,
             _ => return Err(format!("Unsupported protocol: {protocol:?}")),
         };
+        let id = self.next_socket;
+        self.sockets.insert(id, entry);
         self.next_socket += 1;
         Ok(id)
     }
@@ -91,25 +109,20 @@ impl generated::elastic::sockets::sockets::Host for ElasticHalHost {
         socket: u64,
         addr: generated::elastic::sockets::sockets::Address,
     ) -> Result<(), String> {
-        let entry = self
-            .sockets
-            .get_mut(&socket)
-            .ok_or_else(|| format!("Invalid socket handle: {socket}"))?;
         let addr_str = format!("{}:{}", addr.ip, addr.port);
-        match std::mem::replace(entry, SocketEntry::PendingTcp) {
-            SocketEntry::PendingTcp => {
+        let new_entry = match self.sockets.get(&socket) {
+            None => return Err(format!("Invalid socket handle: {socket}")),
+            Some(SocketEntry::PendingTcp) => {
                 let listener = std::net::TcpListener::bind(&addr_str).map_err(|e| e.to_string())?;
-                *entry = SocketEntry::TcpListener(listener);
+                SocketEntry::TcpListener(listener)
             }
-            SocketEntry::PendingUdp => {
+            Some(SocketEntry::PendingUdp) => {
                 let sock = std::net::UdpSocket::bind(&addr_str).map_err(|e| e.to_string())?;
-                *entry = SocketEntry::UdpSocket(sock);
+                SocketEntry::UdpSocket(sock)
             }
-            other => {
-                *entry = other;
-                return Err("Socket already bound".to_string());
-            }
-        }
+            Some(_) => return Err("Socket already bound".to_string()),
+        };
+        self.sockets.insert(socket, new_entry);
         Ok(())
     }
 
@@ -122,39 +135,30 @@ impl generated::elastic::sockets::sockets::Host for ElasticHalHost {
         socket: u64,
         addr: generated::elastic::sockets::sockets::Address,
     ) -> Result<(), String> {
-        let entry = self
-            .sockets
-            .get_mut(&socket)
-            .ok_or_else(|| format!("Invalid socket handle: {socket}"))?;
         let addr_str = format!("{}:{}", addr.ip, addr.port);
-        match std::mem::replace(entry, SocketEntry::PendingTcp) {
-            SocketEntry::PendingTcp => {
-                let stream = std::net::TcpStream::connect(&addr_str).map_err(|e| e.to_string())?;
-                *entry = SocketEntry::TcpStream(stream);
-            }
-            other => {
-                *entry = other;
-                return Err("Socket not in pending state".to_string());
-            }
+        match self.sockets.get(&socket) {
+            None => return Err(format!("Invalid socket handle: {socket}")),
+            Some(SocketEntry::PendingTcp) => {}
+            Some(_) => return Err("Socket not in pending state".to_string()),
         }
+        let stream = std::net::TcpStream::connect(&addr_str).map_err(|e| e.to_string())?;
+        self.sockets.insert(socket, SocketEntry::TcpStream(stream));
         Ok(())
     }
 
     fn accept(&mut self, socket: u64) -> Result<u64, String> {
-        let entry = self
-            .sockets
-            .get_mut(&socket)
-            .ok_or_else(|| format!("Invalid socket handle: {socket}"))?;
-        match entry {
-            SocketEntry::TcpListener(listener) => {
+        let stream = match self.sockets.get(&socket) {
+            None => return Err(format!("Invalid socket handle: {socket}")),
+            Some(SocketEntry::TcpListener(listener)) => {
                 let (stream, _) = listener.accept().map_err(|e| e.to_string())?;
-                let id = self.next_socket;
-                self.sockets.insert(id, SocketEntry::TcpStream(stream));
-                self.next_socket += 1;
-                Ok(id)
+                stream
             }
-            _ => Err("Socket is not a TCP listener".to_string()),
-        }
+            Some(_) => return Err("Socket is not a TCP listener".to_string()),
+        };
+        let id = self.next_socket;
+        self.sockets.insert(id, SocketEntry::TcpStream(stream));
+        self.next_socket += 1;
+        Ok(id)
     }
 
     fn send(&mut self, socket: u64, data: Vec<u8>) -> Result<u32, String> {
@@ -204,83 +208,82 @@ impl generated::elastic::sockets::sockets::Host for ElasticHalHost {
 
 impl generated::elastic::storage::storage::Host for ElasticHalHost {
     fn create_container(&mut self, name: String) -> Result<u64, String> {
+        if let Some(&existing) = self.container_handles.get(&name) {
+            return Ok(existing);
+        }
         let handle = self.next_container;
-        let dir = self.container_dir(handle)?;
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        self.containers.insert(handle, name);
+        self.container_dir(handle)?;
+        self.containers.insert(handle, name.clone());
+        self.container_handles.insert(name, handle);
         self.next_container += 1;
         Ok(handle)
     }
 
     fn open_container(&mut self, name: String) -> Result<u64, String> {
-        let handle = self.next_container;
-        let dir = self.container_dir(handle)?;
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        self.containers.insert(handle, name);
-        self.next_container += 1;
-        Ok(handle)
+        if let Some(&existing) = self.container_handles.get(&name) {
+            return Ok(existing);
+        }
+        Err(format!("Container not found: {name}"))
     }
 
     fn delete_container(&mut self, handle: u64) -> Result<(), String> {
-        self.containers.remove(&handle);
-        let dir = self.container_dir(handle)?;
+        if let Some(name) = self.containers.remove(&handle) {
+            self.container_handles.remove(&name);
+        }
+        self.objects.retain(|_, (c, _)| *c != handle);
+        let dir = self.storage_path.join(format!("container_{handle}"));
         let _ = std::fs::remove_dir_all(&dir);
         Ok(())
     }
 
-    fn store_object(
-        &mut self,
-        container: u64,
-        key: String,
-        data: Vec<u8>,
-    ) -> Result<u64, String> {
-        let _name = self
-            .containers
-            .get(&container)
-            .ok_or_else(|| format!("Invalid container handle: {container}"))?;
+    fn store_object(&mut self, container: u64, key: String, data: Vec<u8>) -> Result<u64, String> {
+        if !self.containers.contains_key(&container) {
+            return Err(format!("Invalid container handle: {container}"));
+        }
+        let safe_key = sanitize_key(&key)?.to_string();
         let dir = self.container_dir(container)?;
-        std::fs::write(dir.join(format!("{key}.obj")), &data)
-            .map_err(|e| e.to_string())?;
-        Ok(0)
+        std::fs::write(dir.join(format!("{safe_key}.obj")), &data).map_err(|e| e.to_string())?;
+        let handle = self.next_object;
+        self.objects.insert(handle, (container, safe_key));
+        self.next_object += 1;
+        Ok(handle)
     }
 
     fn retrieve_object(&mut self, container: u64, key: String) -> Result<Vec<u8>, String> {
-        let _name = self
-            .containers
-            .get(&container)
-            .ok_or_else(|| format!("Invalid container handle: {container}"))?;
+        if !self.containers.contains_key(&container) {
+            return Err(format!("Invalid container handle: {container}"));
+        }
+        let safe_key = sanitize_key(&key)?;
         let dir = self.container_dir(container)?;
-        std::fs::read(dir.join(format!("{key}.obj")))
-            .map_err(|e| e.to_string())
+        std::fs::read(dir.join(format!("{safe_key}.obj"))).map_err(|e| e.to_string())
     }
 
     fn delete_object(&mut self, container: u64, key: String) -> Result<(), String> {
-        let _name = self
-            .containers
-            .get(&container)
-            .ok_or_else(|| format!("Invalid container handle: {container}"))?;
+        if !self.containers.contains_key(&container) {
+            return Err(format!("Invalid container handle: {container}"));
+        }
+        let safe_key = sanitize_key(&key)?.to_string();
         let dir = self.container_dir(container)?;
-        std::fs::remove_file(dir.join(format!("{key}.obj")))
-            .map_err(|e| e.to_string())
+        std::fs::remove_file(dir.join(format!("{safe_key}.obj"))).map_err(|e| e.to_string())?;
+        self.objects
+            .retain(|_, (c, k)| !(*c == container && k == &safe_key));
+        Ok(())
     }
 
     fn list_objects(&mut self, container: u64) -> Result<Vec<String>, String> {
-        let _name = self
-            .containers
-            .get(&container)
-            .ok_or_else(|| format!("Invalid container handle: {container}"))?;
+        if !self.containers.contains_key(&container) {
+            return Err(format!("Invalid container handle: {container}"));
+        }
         let dir = self.container_dir(container)?;
         if !dir.exists() {
             return Ok(vec![]);
         }
         let mut result = Vec::new();
-        let entries = std::fs::read_dir(&dir).map_err(|e| e.to_string())?;
-        for entry in entries {
+        for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
             let file_name = entry.file_name();
             let name = file_name.to_string_lossy();
-            if name.ends_with(".obj") {
-                let key = name.strip_suffix(".obj").unwrap();
+            if let Some(key) = name.strip_suffix(".obj") {
                 result.push(key.to_string());
             }
         }
@@ -292,12 +295,12 @@ impl generated::elastic::storage::storage::Host for ElasticHalHost {
         container: u64,
         key: String,
     ) -> Result<generated::elastic::storage::storage::ObjectMetadata, String> {
-        let _name = self
-            .containers
-            .get(&container)
-            .ok_or_else(|| format!("Invalid container handle: {container}"))?;
+        if !self.containers.contains_key(&container) {
+            return Err(format!("Invalid container handle: {container}"));
+        }
+        let safe_key = sanitize_key(&key)?;
         let dir = self.container_dir(container)?;
-        let meta_path = dir.join(format!("{key}.meta"));
+        let meta_path = dir.join(format!("{safe_key}.meta"));
 
         if meta_path.exists() {
             let meta_data = std::fs::read_to_string(&meta_path).map_err(|e| e.to_string())?;
@@ -305,12 +308,15 @@ impl generated::elastic::storage::storage::Host for ElasticHalHost {
                 return Ok(generated::elastic::storage::storage::ObjectMetadata {
                     size: meta["size"].as_u64().unwrap_or(0),
                     created_at: meta["created_at"].as_u64().unwrap_or(0),
-                    content_type: meta["content_type"].as_str().unwrap_or("application/octet-stream").to_string(),
+                    content_type: meta["content_type"]
+                        .as_str()
+                        .unwrap_or("application/octet-stream")
+                        .to_string(),
                 });
             }
         }
 
-        let obj_path = dir.join(format!("{key}.obj"));
+        let obj_path = dir.join(format!("{safe_key}.obj"));
         let metadata = std::fs::metadata(&obj_path).map_err(|e| e.to_string())?;
         Ok(generated::elastic::storage::storage::ObjectMetadata {
             size: metadata.len(),
@@ -365,9 +371,7 @@ impl generated::elastic::crypto::crypto::Host for ElasticHalHost {
         Err("decrypt not yet implemented".to_string())
     }
 
-    fn generate_keypair(
-        &mut self,
-    ) -> Result<generated::elastic::crypto::crypto::KeyPair, String> {
+    fn generate_keypair(&mut self) -> Result<generated::elastic::crypto::crypto::KeyPair, String> {
         Err("generate_keypair not yet implemented".to_string())
     }
 
@@ -394,9 +398,7 @@ impl generated::elastic::crypto::crypto::Host for ElasticHalHost {
 }
 
 impl generated::elastic::clock::clock::Host for ElasticHalHost {
-    fn get_system_time(
-        &mut self,
-    ) -> Result<generated::elastic::clock::clock::SystemTime, String> {
+    fn get_system_time(&mut self) -> Result<generated::elastic::clock::clock::SystemTime, String> {
         use std::time::{SystemTime, UNIX_EPOCH};
         let dur = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -410,7 +412,7 @@ impl generated::elastic::clock::clock::Host for ElasticHalHost {
     fn get_monotonic_time(
         &mut self,
     ) -> Result<generated::elastic::clock::clock::MonotonicTime, String> {
-        let dur = std::time::Instant::now().elapsed();
+        let dur = self.process_start.elapsed();
         Ok(generated::elastic::clock::clock::MonotonicTime {
             elapsed_seconds: dur.as_secs(),
             elapsed_nanoseconds: dur.subsec_nanos(),
