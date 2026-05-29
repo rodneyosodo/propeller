@@ -133,8 +133,8 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) docker_proplet_wasinn push_proplet_wasinn mocks start-magistrala stop-magistrala start-propeller stop-propeller start-all stop-all
-all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat http-client http-server filesystem
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner docker_proplet_wasinn push_proplet_wasinn mocks start-magistrala stop-magistrala start-propeller stop-propeller start-all stop-all
+all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat http-client http-server filesystem hal-test attestation-test hal-runner
 
 clean:
 	rm -rf build
@@ -198,13 +198,20 @@ filesystem:
 	cd examples/filesystem && cargo build --release
 	cp examples/filesystem/target/wasm32-wasip2/release/filesystem.wasm $(BUILD_DIR)/filesystem.wasm
 
-hal-test:
-	cd examples/hal-test && cargo build --release
-	cp examples/hal-test/target/wasm32-wasip1/release/hal-test.wasm build/hal-test.wasm
-
 attestation-test:
+	mkdir -p $(BUILD_DIR)
 	cd examples/attestation-test && cargo build --target wasm32-wasip2 --release
-	cp examples/attestation-test/target/wasm32-wasip2/release/attestation_test.wasm build/attestation-test.wasm
+	cp examples/attestation-test/target/wasm32-wasip2/release/attestation_test.wasm $(BUILD_DIR)/attestation-test.wasm
+
+hal-test:
+	mkdir -p $(BUILD_DIR)
+	cd examples/hal-test && cargo build --target wasm32-wasip2 --release
+	cp examples/hal-test/target/wasm32-wasip2/release/hal_test.wasm $(BUILD_DIR)/hal-test.wasm
+
+hal-runner:
+	mkdir -p $(BUILD_DIR)
+	cd examples/hal-runner && cargo build --release
+	cp examples/hal-runner/target/release/hal-runner $(BUILD_DIR)/hal-runner
 
 plugin-auth:
 	mkdir -p $(BUILD_DIR)/plugins

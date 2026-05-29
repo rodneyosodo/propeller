@@ -1,8 +1,8 @@
 use super::{Runtime, RuntimeContext, StartConfig};
-use crate::hal_linker;
+use crate::hal::PropletHal;
+use crate::hal_component;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use elastic_tee_hal::interfaces::HalProvider;
 use hyper::server::conn::http1;
 use socket2::{Domain, Protocol, Socket, Type};
 use std::collections::HashMap;
@@ -40,6 +40,9 @@ pub struct StoreData {
     wasi: WasiCtx,
     http: WasiHttpCtx,
     table: ResourceTable,
+    /// `Some` on paths that registered HAL bindings on the linker; `None` on
+    /// the async proxy path, which does not expose HAL in v1.
+    pub(crate) hal: Option<Arc<PropletHal>>,
 }
 
 impl WasiView for StoreData {
@@ -68,6 +71,8 @@ pub struct WasmtimeRuntime {
     proxy_ports: Arc<Mutex<HashMap<u16, String>>>,
     proxy_cancellers: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     hal_enabled: bool,
+    /// Shared HAL provider instance, cloned (Arc) into each component store.
+    hal: Arc<PropletHal>,
     http_enabled: bool,
     preopened_dirs: Vec<String>,
     proxy_port: u16,
@@ -99,6 +104,7 @@ impl WasmtimeRuntime {
             proxy_ports: Arc::new(Mutex::new(HashMap::new())),
             proxy_cancellers: Arc::new(Mutex::new(HashMap::new())),
             hal_enabled,
+            hal: PropletHal::new(),
             http_enabled,
             preopened_dirs,
             proxy_port,
@@ -206,11 +212,8 @@ impl WasmtimeRuntime {
         let _ = wasmtime_wasi::p1::add_to_linker_sync(&mut linker, |ctx| ctx)
             .map_err(|e| format!("Failed to add WASI to linker: {e}"));
 
-        if self.hal_enabled {
-            let provider = Arc::new(HalProvider::with_defaults());
-            hal_linker::add_to_linker(&mut linker, provider)
-                .context("Failed to add ELASTIC TEE HAL interfaces to linker")?;
-        }
+        // HAL is exposed to P2 components only (see hal_component); P1 core
+        // modules get WASI but no HAL.
 
         let instance = match linker.instantiate(&mut store, &module) {
             Ok(instance) => instance,
@@ -260,6 +263,7 @@ impl WasmtimeRuntime {
             wasi,
             http: WasiHttpCtx::new(),
             table: ResourceTable::new(),
+            hal: self.hal_enabled.then(|| self.hal.clone()),
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -269,6 +273,10 @@ impl WasmtimeRuntime {
             .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
         let _ = wasmtime_wasi_http::p2::add_only_http_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add wasi:http to component linker: {e}"));
+        if self.hal_enabled {
+            hal_component::add_to_linker(&mut linker)
+                .context("Failed to add ELASTIC TEE HAL to component linker")?;
+        }
 
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
@@ -357,6 +365,7 @@ impl WasmtimeRuntime {
             wasi,
             http: WasiHttpCtx::new(),
             table: ResourceTable::new(),
+            hal: self.hal_enabled.then(|| self.hal.clone()),
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -364,6 +373,10 @@ impl WasmtimeRuntime {
         let mut linker: component::Linker<StoreData> = component::Linker::new(&self.engine);
         let _ = wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
+        if self.hal_enabled {
+            hal_component::add_to_linker(&mut linker)
+                .context("Failed to add ELASTIC TEE HAL to component linker")?;
+        }
 
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
@@ -861,6 +874,9 @@ async fn handle_proxy_request(
         wasi: wasi_builder.build(),
         http: WasiHttpCtx::new(),
         table: ResourceTable::new(),
+        // HAL is not registered on the async proxy linker in v1 (bindgen is
+        // sync); leave the field empty so we don't carry an unused provider.
+        hal: None,
     };
 
     let mut store = Store::new(pre.engine(), store_data);
@@ -911,6 +927,65 @@ mod tests {
     fn test_wasmtime_runtime_new() {
         let runtime = WasmtimeRuntime::new_with_options(false, false, Vec::new(), 8222);
         assert!(runtime.is_ok());
+    }
+
+    // End-to-end: load the P2 component guest from examples/hal-test, run it
+    // through the component-export path with HAL enabled, and assert it got
+    // real values back from the host HAL bindings. Skips locally if the guest
+    // has not been built; when PROPLET_E2E=1 (set in CI after the guest is
+    // built), a missing wasm panics instead so the silent-skip can't mask a
+    // broken CI step.
+    #[tokio::test]
+    async fn test_hal_component_e2e() {
+        let wasm_path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../examples/hal-test/target/wasm32-wasip2/release/hal_test.wasm"
+        );
+        let wasm_binary = match std::fs::read(wasm_path) {
+            Ok(b) => b,
+            Err(e) => {
+                if std::env::var_os("PROPLET_E2E").is_some() {
+                    panic!("PROPLET_E2E=1 but hal-test guest missing at {wasm_path}: {e}");
+                }
+                eprintln!("skipping test_hal_component_e2e: guest not built at {wasm_path}");
+                return;
+            }
+        };
+
+        let runtime = WasmtimeRuntime::new_with_options(true, false, Vec::new(), 8222).unwrap();
+        let ctx = RuntimeContext {
+            proplet_id: "test-proplet".to_string(),
+        };
+        let config = StartConfig {
+            id: "hal-e2e".to_string(),
+            function_name: "run-hal-test".to_string(),
+            daemon: false,
+            wasm_binary,
+            cli_args: Vec::new(),
+            env: HashMap::new(),
+            args: Vec::new(),
+            mode: None,
+        };
+
+        let out = runtime
+            .start_app(ctx, config)
+            .await
+            .expect("start_app failed");
+        let result = String::from_utf8_lossy(&out);
+
+        // sha256("hello") — proves crypto host binding ran end-to-end.
+        assert!(
+            result.contains("2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"),
+            "unexpected HAL output: {result}"
+        );
+        assert!(
+            result.contains("random(32):"),
+            "missing random output: {result}"
+        );
+        assert!(
+            result.contains("system-time:"),
+            "missing clock output: {result}"
+        );
     }
 
     #[test]

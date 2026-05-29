@@ -32,6 +32,7 @@ cargo build --release
 | `PROPLET_CLIENT_ID`             | MQTT client ID                                            |                        |
 | `PROPLET_CLIENT_KEY`            | MQTT client key                                           |                        |
 | `PROPLET_EXTERNAL_WASM_RUNTIME` | Path to external Wasm runtime; uses Wasmtime if unset     | `""` (empty)           |
+| `PROPLET_HAL_ENABLED`           | Expose the ELASTIC TEE HAL to workloads (see HAL section) | `true`                 |
 | `PROPLET_KBS_URI`               | Key Broker Service URL (required for encrypted workloads) |                        |
 | `PROPLET_AA_CONFIG_PATH`        | Path to the Attestation Agent config file                 |                        |
 | `PROPLET_LAYER_STORE_PATH`      | OCI layer cache path                                      | `/tmp/proplet/layers`  |
@@ -68,6 +69,28 @@ CLI arguments and inputs are passed through the task definition:
   "inputs": [10, 20]
 }
 ```
+
+## Hardware Abstraction Layer (HAL)
+
+The embedded Wasmtime runtime exposes the [ELASTIC TEE HAL](https://github.com/elasticproject-eu/wasmhal)
+(platform, attestation, crypto, clock, random) to workloads. Enabled by
+default; disable with `PROPLET_HAL_ENABLED=false`.
+
+**HAL is available to P2 components only** (`wasm32-wasip2`, component model).
+Typed WIT bindings are generated from `wit/hal/hal.wit`
+(package `elastic:hal@0.1.0`) and wired in `src/hal_component.rs`: guests
+`import` the HAL interfaces and the host provides them on the component linker.
+See the `hal-test` and `attestation-test` examples (and the standalone
+`hal-runner` for running HAL components outside proplet).
+
+P1 core modules (`wasm32-wasip1`) still execute, but receive WASI only — no
+HAL.
+
+The HAL bridges to the `elastic_tee_hal` providers, returning real values on
+TEE hardware (AMD SEV / Intel TDX) and safe defaults elsewhere. v1 covers the
+provider-backed interfaces (`platform`, `attestation`, `crypto`, `clock`,
+`random`); the stub-only interfaces (`sockets`, `gpu`, `resources`, `events`,
+`communication`, `storage`) and the async HTTP-proxy path are not yet wired.
 
 ## Run inside a TEE
 
