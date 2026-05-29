@@ -13,9 +13,12 @@ cargo build --release
 
 # Specify a custom entry point
 ./target/release/hal-runner path/to/module.wasm --function run_export
+
+# Pass environment variables (repeatable)
+./target/release/hal-runner path/to/module.wasm -e FOO=bar -e DB_URL=postgres://localhost
 ```
 
-## Build & run a test module
+For example:
 
 ```bash
 # Build a WASM test
@@ -24,12 +27,20 @@ cd ../hal-runner
 ./target/release/hal-runner ../hal-test/target/wasm32-wasip1/release/hal-test.wasm
 ```
 
+## CLI options
+
+| Flag                    | Description                                   |
+| ----------------------- | --------------------------------------------- |
+| `-f`, `--function`      | Entry point function name (default: `_start`) |
+| `-e`, `--env KEY=VALUE` | Pass an environment variable (can repeat)     |
+
 ## How it works
 
 - Loads `wasm32-wasip1` core modules via [wasmtime](https://github.com/bytecodealliance/wasmtime)
 - Adds WASI (`wasmtime_wasi::p1`) and all 11 `elastic:tee-hal/*` import modules to the linker
 - Uses `HalProvider::with_defaults()` — works on any Linux host, returns stubs for TEE-only features (attestation, platform-info) when no TEE is present
 - Entry-point fallback: `_start` → `main` → `run` → `run_export`
+- Environment variables passed via `-e` are set through `WasiCtxBuilder::env()`
 
 ## Provided HAL interfaces
 
