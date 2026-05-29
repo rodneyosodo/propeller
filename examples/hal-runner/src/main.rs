@@ -37,7 +37,10 @@ fn parse_cli() -> Result<Cli> {
         eprintln!();
         eprintln!("Examples:");
         eprintln!("  {} path/to/module.wasm", args[0]);
-        eprintln!("  {} path/to/module.wasm -e FOO=bar -e DB_URL=postgres://...", args[0]);
+        eprintln!(
+            "  {} path/to/module.wasm -e FOO=bar -e DB_URL=postgres://...",
+            args[0]
+        );
         eprintln!("  {} path/to/module.wasm --function run_export", args[0]);
         std::process::exit(1);
     }
