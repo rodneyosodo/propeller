@@ -1,0 +1,9 @@
+package elastic:hal@0.1.0;
+
+world elastic-hal {
+  import elastic:sockets/sockets@0.1.0;
+  import elastic:storage/storage@0.1.0;
+  import elastic:crypto/crypto@0.1.0;
+  import elastic:clock/clock@0.1.0;
+  import elastic:random/random@0.1.0;
+}

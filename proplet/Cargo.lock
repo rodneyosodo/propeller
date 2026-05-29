@@ -523,6 +523,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.8.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0aa83c34e62843d924f905e0f5c866eb1dd6545fc4d719e803d9ba6030371fce"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.3.0",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4136,10 +4150,12 @@ dependencies = [
  "async-trait",
  "attestation-agent",
  "base64 0.22.1",
+ "blake3",
  "chrono",
  "config",
  "elastic-tee-hal",
  "futures-util",
+ "getrandom 0.2.17",
  "hex",
  "hyper",
  "hyper-util",
@@ -4153,6 +4169,7 @@ dependencies = [
  "rumqttc",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "socket2",
  "sysinfo",
  "thiserror 2.0.18",

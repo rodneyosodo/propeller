@@ -56,12 +56,15 @@ oci-spec = { version = "0.9.0" }
 resource_uri = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads" }
 hex = { version = "0.4" }
 futures-util = { version = "0.3" }
+sha2 = "0.10"
+getrandom = "0.2"
 
 # ELASTIC TEE HAL — hardware abstraction layer for TEE workloads
 elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", default-features = false, features = [
     "amd-sev",
 ] }
 wasm-wave = "0.246.2"
+blake3 = { version = "1.8.5", default-features = false, features = ["pure"] }
 
 [dev-dependencies]
 wiremock = "0.6"

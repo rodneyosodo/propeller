@@ -36,10 +36,94 @@ fn is_proxy_component(bytes: &[u8]) -> bool {
         .any(|w| w == b"wasi:http/incoming-handler")
 }
 
+fn is_wasi_command_component(bytes: &[u8]) -> bool {
+    bytes
+        .windows(b"wasi:cli/run@0.2.3".len())
+        .any(|w| w == b"wasi:cli/run@0.2.3")
+        || bytes
+            .windows(b"wasi:cli/run@0.2.6".len())
+            .any(|w| w == b"wasi:cli/run@0.2.6")
+}
+
+fn is_elastic_hal_component(bytes: &[u8]) -> bool {
+    bytes
+        .windows(b"elastic:sockets/sockets@0.1.0".len())
+        .any(|w| w == b"elastic:sockets/sockets@0.1.0")
+}
+
+fn find_start_func(
+    instance: &component::Instance,
+    store: &mut Store<StoreData>,
+    wasm_binary: &[u8],
+) -> Result<(String, String, component::Func)> {
+    let start_candidates = ["start-server", "start", "run"];
+    let mut export_names = Vec::new();
+
+    for name in extract_export_names(wasm_binary) {
+        if let Some(export_idx) = instance.get_export_index(&mut *store, None, &name) {
+            for candidate in &start_candidates {
+                if let Some(func_idx) =
+                    instance.get_export_index(&mut *store, Some(&export_idx), candidate)
+                {
+                    if let Some(func) = instance.get_func(&mut *store, func_idx) {
+                        return Ok((name, candidate.to_string(), func));
+                    }
+                }
+            }
+            export_names.push(name);
+        }
+    }
+
+    if export_names.is_empty() {
+        Err(anyhow::anyhow!(
+            "No exported instances found in elastic HAL component"
+        ))
+    } else {
+        Err(anyhow::anyhow!(
+            "No start function (start-server/start/run) found in exported instances: {:?}",
+            export_names
+        ))
+    }
+}
+
+fn extract_export_names(bytes: &[u8]) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let pattern = b"elastic:";
+    let mut i = 0;
+    while i < bytes.len() {
+        if let Some(pos) = bytes[i..].windows(pattern.len()).position(|w| w == pattern) {
+            let start = i + pos;
+            let mut end = start;
+            while end < bytes.len() && end - start < 128 {
+                let b = bytes[end];
+                if b.is_ascii_alphanumeric() || b == b':' || b == b'/' || b == b'-' || b == b'@' || b == b'.' || b == b'_' {
+                    end += 1;
+                } else {
+                    break;
+                }
+            }
+            if end > start {
+                if let Ok(s) = std::str::from_utf8(&bytes[start..end]) {
+                    if s.contains('/') && !seen.contains(s) {
+                        seen.insert(s.to_string());
+                        names.push(s.to_string());
+                    }
+                }
+            }
+            i = end;
+        } else {
+            break;
+        }
+    }
+    names
+}
+
 pub struct StoreData {
     wasi: WasiCtx,
     http: WasiHttpCtx,
     table: ResourceTable,
+    pub elastic_hal: Option<crate::elastic_component_linker::ElasticHalHost>,
 }
 
 impl WasiView for StoreData {
@@ -125,10 +209,14 @@ impl Runtime for WasmtimeRuntime {
             && config.function_name != "_start"
             && !config.function_name.starts_with("fl-round-");
 
+        let is_elastic = is_elastic_hal_component(&config.wasm_binary);
+
         if is_proxy {
             self.start_app_proxy(config).await
         } else if is_component && has_custom_export {
             self.start_app_component_export(config).await
+        } else if is_component && is_elastic && !is_wasi_command_component(&config.wasm_binary) {
+            self.start_app_elastic_service(config).await
         } else if is_component {
             self.start_app_component(config).await
         } else {
@@ -256,10 +344,20 @@ impl WasmtimeRuntime {
 
         let wasi = wasi_builder.build();
 
+        let storage_path = if self.hal_enabled {
+            config.env.get("HAL_STORAGE_PATH").cloned()
+        } else {
+            None
+        };
+        let elastic_host = storage_path.as_ref().map(|sp| {
+            crate::elastic_component_linker::ElasticHalHost::new(sp.clone())
+        });
+
         let store_data = StoreData {
             wasi,
             http: WasiHttpCtx::new(),
             table: ResourceTable::new(),
+            elastic_hal: elastic_host,
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -269,6 +367,10 @@ impl WasmtimeRuntime {
             .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
         let _ = wasmtime_wasi_http::p2::add_only_http_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add wasi:http to component linker: {e}"));
+
+        if self.hal_enabled {
+            crate::elastic_component_linker::add_elastic_to_linker(&mut linker)?;
+        }
 
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
@@ -353,10 +455,20 @@ impl WasmtimeRuntime {
         }
         let wasi = wasi_builder.build();
 
+        let storage_path = if self.hal_enabled {
+            config.env.get("HAL_STORAGE_PATH").cloned()
+        } else {
+            None
+        };
+        let elastic_host = storage_path.as_ref().map(|sp| {
+            crate::elastic_component_linker::ElasticHalHost::new(sp.clone())
+        });
+
         let store_data = StoreData {
             wasi,
             http: WasiHttpCtx::new(),
             table: ResourceTable::new(),
+            elastic_hal: elastic_host,
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -364,6 +476,10 @@ impl WasmtimeRuntime {
         let mut linker: component::Linker<StoreData> = component::Linker::new(&self.engine);
         let _ = wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
             .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
+
+        if self.hal_enabled {
+            crate::elastic_component_linker::add_elastic_to_linker(&mut linker)?;
+        }
 
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
@@ -439,6 +555,133 @@ impl WasmtimeRuntime {
                 );
 
                 Ok(result_string.into_bytes())
+            })
+            .await;
+
+            tasks.lock().await.remove(&task_id_for_cleanup);
+
+            let final_result = match result {
+                Ok(Ok(data)) => Ok(data),
+                Ok(Err(e)) => Err(e),
+                Err(e) => Err(anyhow::anyhow!("Task join error: {e}")),
+            };
+
+            let _ = result_tx.send(final_result);
+        });
+
+        {
+            let mut tasks_map = self.tasks.lock().await;
+            tasks_map.insert(config.id.clone(), handle);
+        }
+
+        match result_rx.await {
+            Ok(result) => result,
+            Err(_) => Err(anyhow::anyhow!("Task was cancelled or panicked")),
+        }
+    }
+
+    async fn start_app_elastic_service(&self, config: StartConfig) -> Result<Vec<u8>> {
+        info!(
+            "Starting elastic HAL service component for task: {}",
+            config.id
+        );
+
+        let component = match component::Component::from_binary(&self.engine, &config.wasm_binary) {
+            Ok(c) => c,
+            Err(e) => {
+                return Err(anyhow::anyhow!(
+                    "Failed to compile WASM component from binary: {e}"
+                ))
+            }
+        };
+
+        let mut wasi_builder = WasiCtxBuilder::new();
+        wasi_builder.inherit_stdio();
+        for (key, value) in &config.env {
+            wasi_builder.env(key, value);
+        }
+        for dir in &self.preopened_dirs {
+            let _ = wasi_builder
+                .preopened_dir(dir, dir, DirPerms::all(), FilePerms::all())
+                .map_err(|e| format!("Failed to preopen directory '{dir}': {e}"));
+        }
+        let wasi = wasi_builder.build();
+
+        let storage_path = if self.hal_enabled {
+            config.env.get("HAL_STORAGE_PATH").cloned()
+        } else {
+            None
+        };
+        let elastic_host = storage_path.as_ref().map(|sp| {
+            crate::elastic_component_linker::ElasticHalHost::new(sp.clone())
+        });
+
+        let store_data = StoreData {
+            wasi,
+            http: WasiHttpCtx::new(),
+            table: ResourceTable::new(),
+            elastic_hal: elastic_host,
+        };
+
+        let mut store = Store::new(&self.engine, store_data);
+
+        let mut linker: component::Linker<StoreData> = component::Linker::new(&self.engine);
+        let _ = wasmtime_wasi::p2::add_to_linker_sync(&mut linker)
+            .map_err(|e| format!("Failed to add WASI P2 to component linker: {e}"));
+
+        if self.hal_enabled {
+            crate::elastic_component_linker::add_elastic_to_linker(&mut linker)?;
+        }
+
+        let task_id = config.id.clone();
+        let task_id_for_cleanup = task_id.clone();
+        let tasks = self.tasks.clone();
+        let wasm_binary = config.wasm_binary.clone();
+
+        let hal_host = config.env.get("HAL_HOST").cloned().unwrap_or_else(|| "0.0.0.0".to_string());
+        let hal_port: u16 = config
+            .env.get("HAL_PORT")
+            .and_then(|p| p.parse().ok())
+            .unwrap_or(8765);
+
+        let (result_tx, result_rx) = oneshot::channel();
+
+        let handle = tokio::task::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let instance = match linker.instantiate(&mut store, &component) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        return Err(anyhow::anyhow!(
+                            "Failed to instantiate WASM component: {e}"
+                        ))
+                    }
+                };
+
+                let (export_name, func_name, func) =
+                    find_start_func(&instance, &mut store, &wasm_binary)?;
+
+                info!(
+                    "Calling {export_name}#{func_name}(host={hal_host}, port={hal_port}) for task {task_id}",
+                );
+
+                let host_val = component::Val::String(hal_host);
+                let port_val = component::Val::U16(hal_port);
+                let wasm_args = &[host_val, port_val];
+                let mut results = vec![component::Val::Bool(false)];
+
+                func.call(&mut store, wasm_args, &mut results)
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            "{func_name} call failed for task {task_id}: {e}"
+                        )
+                    })?;
+
+                info!(
+                    "{func_name} completed for task {task_id}, result: {:?}",
+                    results.first()
+                );
+
+                Ok(vec![])
             })
             .await;
 
@@ -861,6 +1104,7 @@ async fn handle_proxy_request(
         wasi: wasi_builder.build(),
         http: WasiHttpCtx::new(),
         table: ResourceTable::new(),
+        elastic_hal: None,
     };
 
     let mut store = Store::new(pre.engine(), store_data);

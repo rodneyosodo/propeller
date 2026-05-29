@@ -1,4 +1,5 @@
 mod config;
+mod elastic_component_linker;
 mod hal;
 mod hal_linker;
 mod metrics;
