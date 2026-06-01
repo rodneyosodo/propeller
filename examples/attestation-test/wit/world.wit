@@ -9,9 +9,9 @@
 package propeller:attestation-test;
 
 world attestation-test {
-  import elastic:platform/platform@0.1.0;
-  import elastic:attestation/attestation@0.1.0;
-  import elastic:random/random@0.1.0;
+  import elastic:hal/platform@0.1.0;
+  import elastic:hal/attestation@0.1.0;
+  import elastic:hal/random@0.1.0;
 
   export run-attestation: func() -> string;
 }

@@ -7,15 +7,15 @@
 package elastic:hal-modular@0.1.0;
 
 world elastic-modular-imports {
-  import elastic:platform/platform@0.1.0;
-  import elastic:attestation/attestation@0.1.0;
-  import elastic:crypto/crypto@0.1.0;
-  import elastic:clock/clock@0.1.0;
-  import elastic:random/random@0.1.0;
-  import elastic:sockets/sockets@0.1.0;
-  import elastic:gpu/gpu@0.1.0;
-  import elastic:resources/resources@0.1.0;
-  import elastic:events/events@0.1.0;
-  import elastic:communication/communication@0.1.0;
-  import elastic:storage/storage@0.1.0;
+  import elastic:hal/platform@0.1.0;
+  import elastic:hal/attestation@0.1.0;
+  import elastic:hal/crypto@0.1.0;
+  import elastic:hal/clock@0.1.0;
+  import elastic:hal/random@0.1.0;
+  import elastic:hal/sockets@0.1.0;
+  import elastic:hal/gpu@0.1.0;
+  import elastic:hal/resources@0.1.0;
+  import elastic:hal/events@0.1.0;
+  import elastic:hal/communication@0.1.0;
+  import elastic:hal/storage@0.1.0;
 }
