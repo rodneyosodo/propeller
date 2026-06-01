@@ -1,6 +1,5 @@
 //! WASI P2 (component-model) HAL bindings.
 //!
-<<<<<<< HEAD
 //! Single `wasmtime::component::bindgen!` over the modular world
 //! `elastic:hal-modular/elastic-modular-imports@0.1.0` in `wit/hal/hal.wit`,
 //! covering every interface as its own package: `elastic:platform`,
@@ -17,24 +16,6 @@
 //! `tokio::task::spawn_blocking`, where a Tokio handle is available. Where the
 //! WIT signature has no upstream analog (e.g. crypto `create-context`,
 //! fine-grained `get-metadata`) we return a clear `Err(String)`.
-=======
-//! Generates typed host bindings from `wit/hal/hal.wit` (world `hal-imports`)
-//! with `wasmtime::component::bindgen!` against wasmtime 44 and bridges the
-//! generated `Host` traits to providers held on `StoreData.hal`. Wired into the
-//! component runtime paths in `runtime::wasmtime_runtime` when `hal_enabled` is
-//! set. P1 core modules receive WASI but no HAL.
-//!
-//! Coverage: all 11 elastic interfaces from upstream wit-modular — platform,
-//! attestation, crypto, clock, random, sockets, gpu, resources, events,
-//! communication, storage. Async-only upstream APIs (sockets/gpu/resources/
-//! events/communication/storage) are driven from the sync host bindings via
-//! `tokio::runtime::Handle::block_on`; this is safe because the component
-//! runtime invokes guest code from inside `tokio::task::spawn_blocking`, where
-//! a Tokio handle is available. Where the WIT signature has no upstream analog
-//! (e.g. crypto `create-context`, fine-grained get-metadata) we return a
-//! `Err(String)` so a relying guest sees a clear failure rather than a stub
-//! success.
->>>>>>> fd9bec1 (feat(hal): add upstream HAL interfaces and async bridges)
 
 use anyhow::Result;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -49,7 +30,6 @@ wasmtime::component::bindgen!({
     path: "wit/hal",
 });
 
-<<<<<<< HEAD
 use elastic::attestation::attestation;
 use elastic::clock::clock;
 use elastic::communication::communication;
@@ -65,15 +45,6 @@ use elastic::storage::storage;
 // ============================================================================
 // Crypto context handles — no upstream analog at this rev. Tracked here so
 // `create-context` / `destroy-context` round-trip cleanly.
-=======
-use elastic::hal::{
-    attestation, clock, communication, crypto, events, gpu, platform, random, resources, sockets,
-    storage,
-};
-
-// ============================================================================
-// Internal stub state for WIT methods with no direct upstream backing.
->>>>>>> fd9bec1 (feat(hal): add upstream HAL interfaces and async bridges)
 // ============================================================================
 static CRYPTO_CONTEXT_COUNTER: AtomicU64 = AtomicU64::new(1);
 static CRYPTO_CONTEXTS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
@@ -252,18 +223,6 @@ impl crypto::Host for StoreData {
     ) -> Result<bool, String> {
         crypto_provider(self)?.verify(&data, &signature, &public_key)
     }
-<<<<<<< HEAD
-=======
-
-    fn create_context(&mut self) -> Result<u64, String> {
-        Ok(alloc_crypto_context())
-    }
-
-    fn destroy_context(&mut self, handle: u64) -> Result<(), String> {
-        free_crypto_context(handle)
-    }
-}
->>>>>>> fd9bec1 (feat(hal): add upstream HAL interfaces and async bridges)
 
     fn create_context(&mut self) -> Result<u64, String> {
         Ok(alloc_crypto_context())
@@ -296,14 +255,12 @@ impl clock::Host for StoreData {
     }
 
     fn get_monotonic_time(&mut self) -> Result<clock::MonotonicTime, String> {
-        clock_provider(self)?
-            .monotonic_time()
-            .map(
-                |(elapsed_seconds, elapsed_nanoseconds)| clock::MonotonicTime {
-                    elapsed_seconds,
-                    elapsed_nanoseconds,
-                },
-            )
+        clock_provider(self)?.monotonic_time().map(
+            |(elapsed_seconds, elapsed_nanoseconds)| clock::MonotonicTime {
+                elapsed_seconds,
+                elapsed_nanoseconds,
+            },
+        )
     }
 
     fn resolution(&mut self) -> Result<u64, String> {
@@ -867,8 +824,9 @@ impl sockets::Host for StoreData {
     }
 
     fn bind(&mut self, socket: u64, addr: sockets::Address) -> Result<(), String> {
-        let s = format!("{}:{}", addr.ip, addr.port);
-        hal(self).socket_bridge().set_bind_addr(socket, s)
+        hal(self)
+            .socket_bridge()
+            .set_bind_addr(socket, format!("{}:{}", addr.ip, addr.port))
     }
 
     fn listen(&mut self, socket: u64, _backlog: u32) -> Result<(), String> {
@@ -1031,10 +989,8 @@ impl gpu::Host for StoreData {
         _y: u32,
         _z: u32,
     ) -> Result<(), String> {
-        Err(
-            "dispatch requires a compute-pass handle in upstream; not modelled by WIT v0.1"
-                .to_string(),
-        )
+        Err("dispatch requires a compute-pass handle in upstream; not modelled by WIT v0.1"
+            .to_string())
     }
 }
 
@@ -1108,9 +1064,7 @@ impl resources::Host for StoreData {
 
 // ============================================================================
 // Events — bridges WIT (subscribe/unsubscribe/poll) to upstream's
-// handler-and-subscription model. Each WIT subscription handle becomes an
-// upstream handler that this proplet polls non-blockingly via
-// `try_request_event_from_handler`.
+// handler-and-subscription model.
 // ============================================================================
 fn event_type_to_str(et: events::EventType) -> &'static str {
     match et {
@@ -1123,9 +1077,6 @@ fn event_type_to_str(et: events::EventType) -> &'static str {
 }
 
 fn upstream_event_to_wit(ev: elastic_tee_hal::events::Event) -> events::EventData {
-    // Upstream `EventData` is a typed enum; we serialise it for the guest to
-    // decode. Coarse category mapping picks the closest WIT bucket from the
-    // upstream `event_type` string.
     let payload = serde_json::to_vec(&ev.data).unwrap_or_default();
     let event_type = match ev.event_type.as_str() {
         "crypto" => events::EventType::Crypto,
@@ -1176,12 +1127,10 @@ impl events::Host for StoreData {
 }
 
 // ============================================================================
-// Communication — upstream is buffer-centric (per-pair buffers) and lacks a
-// global per-workload mailbox. We expose a minimal shim: each `send-message`
-// call sets up a buffer named after the (sender,recipient) pair and pushes
-// the data; `receive-message` polls any buffer addressed to a fixed
-// "wasm-guest" id; `list-workloads` returns the buffer names so guests can
-// discover peers. This is a faithful surface of what upstream models today.
+// Communication — upstream is buffer-centric (per-pair buffers). We expose a
+// minimal shim where each `send-message` sets up a buffer keyed by sender>>
+// recipient, `receive-message` polls any buffer addressed to "wasm-guest", and
+// `list-workloads` enumerates buffer peers.
 // ============================================================================
 fn buffer_name(recipient: &str) -> String {
     format!("wasm-guest>>{recipient}")
@@ -1197,22 +1146,17 @@ impl communication::Host for StoreData {
         let comm = hal(self).communication();
         let name = buffer_name(&recipient);
         let cfg = elastic_tee_hal::communication::BufferConfig {
-            name: name.clone(),
+            name,
             capacity: data.len().max(4096),
             is_encrypted: encrypt,
             read_permissions: vec![recipient.clone()],
             write_permissions: vec!["wasm-guest".to_string()],
             admin_permissions: vec!["wasm-guest".to_string()],
         };
-        // Idempotent setup: existing buffers are reused by upstream.
         let comm_for_setup = comm.clone();
-        let cfg_for_setup = cfg.clone();
-        let handle = block_on(async move {
-            comm_for_setup
-                .setup_communication_buffer(cfg_for_setup)
-                .await
-        })?
-        .map_err(|e| e.to_string())?;
+        let handle =
+            block_on(async move { comm_for_setup.setup_communication_buffer(cfg).await })?
+                .map_err(|e| e.to_string())?;
         block_on(async move {
             comm.push_data_to_buffer(
                 handle,
@@ -1233,7 +1177,6 @@ impl communication::Host for StoreData {
         let buffers = block_on(async move { comm_for_list.list_communication_buffers().await })?
             .map_err(|e| e.to_string())?;
         for buf in buffers {
-            // Buffer naming convention from send_message: "sender>>recipient".
             let Some((sender, _)) = buf.name.split_once(">>") else {
                 continue;
             };
@@ -1285,6 +1228,9 @@ impl communication::Host for StoreData {
 fn storage_iface(
     state: &StoreData,
 ) -> Result<std::sync::Arc<elastic_tee_hal::StorageInterface>, String> {
+    if let Some(ref s) = state.storage {
+        return Ok(s.clone());
+    }
     hal(state)
         .storage()
         .ok_or_else(|| "no storage provider available".to_string())
