@@ -138,6 +138,7 @@ pub struct PropletHal {
 impl PropletHal {
     pub fn new() -> Arc<Self> {
         Arc::new(Self::default())
+<<<<<<< HEAD
     }
 
     /// Construct with an explicit storage base path. Callers (e.g.
@@ -156,6 +157,8 @@ impl PropletHal {
             storage_base,
             socket_bridge: SocketBridge::new(),
         })
+=======
+>>>>>>> fd9bec1 (feat(hal): add upstream HAL interfaces and async bridges)
     }
 
     pub fn has_tee(&self) -> bool {
@@ -288,10 +291,15 @@ impl PropletHal {
 
 impl Default for PropletHal {
     fn default() -> Self {
+<<<<<<< HEAD
         // Use a stable, non-temp default so storage data survives between
         // runs without relying on the process env. Callers that need a
         // different path should use `with_storage_path` (the configured
         // entry-point used by `WasmtimeRuntime`).
+=======
+        // Defaults that don't require I/O or async happen here; storage is
+        // deferred to first call site.
+>>>>>>> fd9bec1 (feat(hal): add upstream HAL interfaces and async bridges)
         Self {
             provider: HalProvider::with_defaults(),
             sockets: Arc::new(SocketInterface::new()),
@@ -300,7 +308,11 @@ impl Default for PropletHal {
             events: Arc::new(EventInterface::new()),
             communication: Arc::new(CommunicationInterface::new()),
             storage: OnceLock::new(),
+<<<<<<< HEAD
             storage_base: PathBuf::from("/tmp/proplet/hal-storage"),
+=======
+            storage_base: std::env::temp_dir().join("proplet-hal-storage"),
+>>>>>>> fd9bec1 (feat(hal): add upstream HAL interfaces and async bridges)
             socket_bridge: SocketBridge::new(),
         }
     }
