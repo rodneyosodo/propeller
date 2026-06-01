@@ -30,17 +30,17 @@ wasmtime::component::bindgen!({
     path: "wit/hal",
 });
 
-use elastic::attestation::attestation;
-use elastic::clock::clock;
-use elastic::communication::communication;
-use elastic::crypto::crypto;
-use elastic::events::events;
-use elastic::gpu::gpu;
-use elastic::platform::platform;
-use elastic::random::random;
-use elastic::resources::resources;
-use elastic::sockets::sockets;
-use elastic::storage::storage;
+use elastic::hal::attestation;
+use elastic::hal::clock;
+use elastic::hal::communication;
+use elastic::hal::crypto;
+use elastic::hal::events;
+use elastic::hal::gpu;
+use elastic::hal::platform;
+use elastic::hal::random;
+use elastic::hal::resources;
+use elastic::hal::sockets;
+use elastic::hal::storage;
 
 // ============================================================================
 // Crypto context handles — no upstream analog at this rev. Tracked here so
