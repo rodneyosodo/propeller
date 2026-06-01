@@ -255,12 +255,14 @@ impl clock::Host for StoreData {
     }
 
     fn get_monotonic_time(&mut self) -> Result<clock::MonotonicTime, String> {
-        clock_provider(self)?.monotonic_time().map(
-            |(elapsed_seconds, elapsed_nanoseconds)| clock::MonotonicTime {
-                elapsed_seconds,
-                elapsed_nanoseconds,
-            },
-        )
+        clock_provider(self)?
+            .monotonic_time()
+            .map(
+                |(elapsed_seconds, elapsed_nanoseconds)| clock::MonotonicTime {
+                    elapsed_seconds,
+                    elapsed_nanoseconds,
+                },
+            )
     }
 
     fn resolution(&mut self) -> Result<u64, String> {
@@ -1154,9 +1156,8 @@ impl communication::Host for StoreData {
             admin_permissions: vec!["wasm-guest".to_string()],
         };
         let comm_for_setup = comm.clone();
-        let handle =
-            block_on(async move { comm_for_setup.setup_communication_buffer(cfg).await })?
-                .map_err(|e| e.to_string())?;
+        let handle = block_on(async move { comm_for_setup.setup_communication_buffer(cfg).await })?
+            .map_err(|e| e.to_string())?;
         block_on(async move {
             comm.push_data_to_buffer(
                 handle,
