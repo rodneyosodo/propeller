@@ -2,14 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 CRT_LOCATION = certs
-O = Magistrala
-OU_CA = magistrala_ca
-OU_CRT = magistrala_crt
-EA = info@magistrala.com
-CN_CA = Magistrala_Self_Signed_CA
+O ?= Propeller
+OU_CA ?= propeller_ca
+OU_CRT ?= propeller_crt
+EA ?= propeller@absmach.eu
+CN_CA ?= Propeller_Self_Signed_CA
 CN_SRV ?= localhost
 CLIENT_SECRET ?= "" # e.g. 8f65ed04-0770-4ce4-a291-6d1bf2000f4d
-CRT_FILE_NAME = client
+CRT_FILE_NAME ?= proplet
 AUTH_GRPC_SERVER_CONF_FILE_NAME=auth-grpc-server.conf
 AUTH_GRPC_CLIENT_CONF_FILE_NAME=auth-grpc-client.conf
 AUTH_GRPC_SERVER_CN=auth
@@ -85,11 +85,15 @@ server_cert:
 	openssl req -new -sha256 -newkey rsa:4096 -nodes -keyout $(CRT_LOCATION)/magistrala-server.key \
 				-out $(CRT_LOCATION)/magistrala-server.csr -subj "/CN=$(CN_SRV)/O=$(O)/OU=$(OU_CRT)/emailAddress=$(EA)"
 
-	# Sign server CSR.
-	openssl x509 -req -days 1000 -in $(CRT_LOCATION)/magistrala-server.csr -CA $(CRT_LOCATION)/ca.crt -CAkey $(CRT_LOCATION)/ca.key -CAcreateserial -out $(CRT_LOCATION)/magistrala-server.crt
+	# Sign server CSR with SANs for container hostnames.
+	printf '[v3_req]\nsubjectAltName=DNS:localhost,DNS:nginx,DNS:%s' "$(CN_SRV)" > $(CRT_LOCATION)/magistrala-server.san
+	openssl x509 -req -days 1000 -in $(CRT_LOCATION)/magistrala-server.csr \
+		-CA $(CRT_LOCATION)/ca.crt -CAkey $(CRT_LOCATION)/ca.key -CAcreateserial \
+		-out $(CRT_LOCATION)/magistrala-server.crt \
+		-extfile $(CRT_LOCATION)/magistrala-server.san -extensions v3_req
 
-	# Remove CSR.
-	rm $(CRT_LOCATION)/magistrala-server.csr
+	# Remove CSR and SAN config.
+	rm $(CRT_LOCATION)/magistrala-server.csr $(CRT_LOCATION)/magistrala-server.san
 
 client_cert:
 	# Create magistrala server key and CSR.
