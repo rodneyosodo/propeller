@@ -57,6 +57,8 @@ pub struct PropletConfig {
     pub location: Option<String>,
     pub collect_system_info: bool,
     pub plugin_dir: Option<String>,
+    pub metrics_port: u16,
+    pub metrics_enabled: bool,
 }
 
 impl Default for PropletConfig {
@@ -98,6 +100,8 @@ impl Default for PropletConfig {
             location: None,
             collect_system_info: true,
             plugin_dir: None,
+            metrics_port: 9092,
+            metrics_enabled: true,
         }
     }
 }
@@ -392,6 +396,20 @@ impl PropletConfig {
             if !val.is_empty() {
                 config.plugin_dir = Some(val);
             }
+        }
+
+        if let Ok(val) = env::var("PROPLET_METRICS_PORT") {
+            match val.parse::<u16>() {
+                Ok(0) | Err(_) => eprintln!(
+                    "warn: invalid PROPLET_METRICS_PORT '{}', using default {}",
+                    val, config.metrics_port
+                ),
+                Ok(port) => config.metrics_port = port,
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_METRICS_ENABLED") {
+            config.metrics_enabled = val.to_lowercase() == "true" || val == "1";
         }
 
         config

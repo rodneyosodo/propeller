@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/absmach/propeller"
@@ -34,6 +37,7 @@ type config struct {
 	ChannelID       string        `env:"PROXY_CHANNEL_ID"`
 	ClientID        string        `env:"PROXY_CLIENT_ID"`
 	ClientKey       string        `env:"PROXY_CLIENT_KEY"`
+	HTTPPort        int           `env:"PROXY_HTTP_PORT"              envDefault:"9191"`
 	// HTTP Registry configuration
 	ChunkSize    int    `env:"PROXY_CHUNK_SIZE"            envDefault:"512000"`
 	Authenticate bool   `env:"PROXY_AUTHENTICATE"          envDefault:"false"`
@@ -44,7 +48,9 @@ type config struct {
 }
 
 func main() {
-	g, ctx := errgroup.WithContext(context.Background())
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	g, ctx := errgroup.WithContext(sigCtx)
 
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
@@ -131,6 +137,34 @@ func main() {
 	}
 
 	slog.Info("successfully subscribed to topic")
+
+	g.Go(func() error {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"status":"ok","service":"proxy"}`)
+		})
+		srv := &http.Server{
+			Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
+			Handler:      mux,
+			ReadTimeout:  5 * time.Second,
+			WriteTimeout: 5 * time.Second,
+			IdleTimeout:  30 * time.Second,
+		}
+		go func() {
+			<-ctx.Done()
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if err := srv.Shutdown(shutCtx); err != nil {
+				logger.Error("health server shutdown error", slog.Any("error", err))
+			}
+		}()
+		logger.Info("health server listening", slog.String("addr", fmt.Sprintf(":%d", cfg.HTTPPort)))
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
 
 	g.Go(func() error {
 		return service.StreamHTTP(ctx)
