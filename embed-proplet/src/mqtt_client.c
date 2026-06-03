@@ -1,5 +1,6 @@
 #include "mqtt_client.h"
 #include "cJSON.h"
+#include "credentials.h"
 #include "net/mqtt.h"
 #include "task_monitor.h"
 #include "wasm_handler.h"
@@ -28,6 +29,10 @@
 #ifdef CONFIG_NET_HOSTNAME
 #include <zephyr/net/hostname.h>
 #endif
+#ifdef CONFIG_MQTT_LIB_TLS
+#include <zephyr/net/tls_credentials.h>
+#include <zephyr/net/socket_tls.h>
+#endif
 
 LOG_MODULE_REGISTER(mqtt_client);
 
@@ -39,8 +44,15 @@ LOG_MODULE_REGISTER(mqtt_client);
 #define PAYLOAD_BUFFER_SIZE 1024
 #endif
 
-#define MQTT_BROKER_HOSTNAME "10.42.0.1"
-#define MQTT_BROKER_PORT 1883
+/* Default CA certificate for TLS (PEM format).
+ * Set this via Kconfig or provide a custom certificate at compile time.
+ */
+#if defined(CONFIG_MQTT_LIB_TLS) && !defined(CONFIG_MQTT_TLS_CA_CERT)
+#define CONFIG_MQTT_TLS_CA_CERT ""
+#endif
+
+/* TLS session ticket tag for credential storage */
+#define TLS_CREDENTIAL_TAG 1
 
 #define REGISTRY_ACK_TOPIC_TEMPLATE "m/%s/c/%s/control/manager/registry"
 #define ALIVE_TOPIC_TEMPLATE "m/%s/c/%s/control/proplet/alive"
@@ -314,10 +326,36 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
     return -EINVAL;
   }
 
-  broker->sin_family = AF_INET;
-  broker->sin_port = htons(MQTT_BROKER_PORT);
+  /* Use configured broker host/port or defaults */
+  const char *broker_host = MQTT_BROKER_HOSTNAME;
+  uint16_t broker_port = MQTT_BROKER_PORT;
 
-  ret = net_addr_pton(AF_INET, MQTT_BROKER_HOSTNAME, &broker->sin_addr);
+  bool use_tls = false;
+#if defined(CONFIG_MQTT_LIB_TLS)
+  use_tls = IS_ENABLED(CONFIG_MQTT_LIB_TLS);
+  if (use_tls) {
+    broker_port = MQTT_BROKER_PORT_TLS;
+  }
+#endif
+
+  /* Allow credentials to override broker settings */
+  const struct proplet_credentials *creds = credentials_get();
+  if (creds != NULL) {
+    if (strlen(creds->mqtt_broker_host) > 0) {
+      broker_host = creds->mqtt_broker_host;
+    }
+    if (creds->mqtt_broker_port > 0) {
+      broker_port = creds->mqtt_broker_port;
+    }
+    if (creds->mqtt_tls_enabled) {
+      use_tls = true;
+    }
+  }
+
+  broker->sin_family = AF_INET;
+  broker->sin_port = htons(broker_port);
+
+  ret = net_addr_pton(AF_INET, broker_host, &broker->sin_addr);
   if (ret != 0) {
     LOG_ERR("Failed to resolve broker address, ret=%d", ret);
     return ret;
@@ -375,6 +413,93 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   client_ctx.rx_buf_size = RX_BUFFER_SIZE;
   client_ctx.tx_buf = tx_buffer;
   client_ctx.tx_buf_size = TX_BUFFER_SIZE;
+
+#if defined(CONFIG_MQTT_LIB_TLS)
+  if (use_tls) {
+    LOG_INF("Configuring MQTT over TLS to %s:%d", broker_host, broker_port);
+
+    /* Register CA certificate if provided */
+    if (strlen(CONFIG_MQTT_TLS_CA_CERT) > 0) {
+      ret = tls_credential_add(TLS_CREDENTIAL_TAG,
+                               TLS_CREDENTIAL_CA_CERTIFICATE,
+                               CONFIG_MQTT_TLS_CA_CERT,
+                               strlen(CONFIG_MQTT_TLS_CA_CERT));
+      if (ret < 0) {
+        LOG_ERR("Failed to register CA certificate [%d]", ret);
+      }
+    }
+
+    /* Register client certificate and key for mTLS if provided */
+    if (creds != NULL && strlen(creds->tls_client_cert) > 0) {
+      ret = tls_credential_add(TLS_CREDENTIAL_TAG + 1,
+                               TLS_CREDENTIAL_SERVER_CERT,
+                               creds->tls_client_cert,
+                               strlen(creds->tls_client_cert));
+      if (ret < 0) {
+        LOG_ERR("Failed to register client certificate [%d]", ret);
+      } else {
+        LOG_INF("Client certificate registered for mTLS");
+      }
+    }
+
+    if (creds != NULL && strlen(creds->tls_client_key) > 0) {
+      ret = tls_credential_add(TLS_CREDENTIAL_TAG + 2,
+                               TLS_CREDENTIAL_PRIVATE_KEY,
+                               creds->tls_client_key,
+                               strlen(creds->tls_client_key));
+      if (ret < 0) {
+        LOG_ERR("Failed to register client private key [%d]", ret);
+      } else {
+        LOG_INF("Client private key registered for mTLS");
+      }
+    }
+
+    /* Create TLS socket for the MQTT client */
+    int tls_sock = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TLS_1_2);
+    if (tls_sock < 0) {
+      LOG_ERR("Failed to create TLS socket [%d]", errno);
+      return -errno;
+    }
+
+    /* Set TLS security tag list — include client cert/key tags for mTLS */
+    sec_tag_t sec_tag_opt[] = {
+      TLS_CREDENTIAL_TAG,
+      TLS_CREDENTIAL_TAG + 1,
+      TLS_CREDENTIAL_TAG + 2,
+    };
+    ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_SEC_TAG_LIST,
+                           sec_tag_opt, sizeof(sec_tag_opt));
+    if (ret < 0) {
+      LOG_ERR("Failed to set TLS security tag list [%d]", errno);
+      zsock_close(tls_sock);
+      return -errno;
+    }
+
+    /* Set TLS hostname for SNI and certificate verification */
+    ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_HOSTNAME,
+                           broker_host, strlen(broker_host));
+    if (ret < 0) {
+      LOG_ERR("Failed to set TLS hostname [%d]", errno);
+      zsock_close(tls_sock);
+      return -errno;
+    }
+
+    /* Connect the TLS socket to the broker */
+    ret = zsock_connect(tls_sock, (struct sockaddr *)&broker_addr,
+                        sizeof(broker_addr));
+    if (ret < 0) {
+      LOG_ERR("Failed to connect TLS socket [%d]", errno);
+      zsock_close(tls_sock);
+      return -errno;
+    }
+
+    /* Assign TLS socket to MQTT client context */
+    client_ctx.transport.type = MQTT_TRANSPORT_SECURE;
+    client_ctx.transport.tls.sock = tls_sock;
+
+    LOG_INF("TLS socket created and connected");
+  }
+#endif /* CONFIG_MQTT_LIB_TLS */
 
   while (!mqtt_connected) {
     LOG_INF("Attempting to connect to the MQTT broker...");

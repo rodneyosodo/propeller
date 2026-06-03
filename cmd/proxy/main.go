@@ -22,14 +22,18 @@ const (
 )
 
 type config struct {
-	LogLevel    string        `env:"PROXY_LOG_LEVEL"    envDefault:"info"`
-	MQTTAddress string        `env:"PROXY_MQTT_ADDRESS" envDefault:"tcp://localhost:1883"`
-	MQTTTimeout time.Duration `env:"PROXY_MQTT_TIMEOUT" envDefault:"30s"`
-	MQTTQoS     byte          `env:"PROXY_MQTT_QOS"     envDefault:"2"`
-	DomainID    string        `env:"PROXY_DOMAIN_ID"`
-	ChannelID   string        `env:"PROXY_CHANNEL_ID"`
-	ClientID    string        `env:"PROXY_CLIENT_ID"`
-	ClientKey   string        `env:"PROXY_CLIENT_KEY"`
+	LogLevel        string        `env:"PROXY_LOG_LEVEL"               envDefault:"info"`
+	MQTTAddress     string        `env:"PROXY_MQTT_ADDRESS"            envDefault:"tcp://localhost:1883"`
+	MQTTTimeout     time.Duration `env:"PROXY_MQTT_TIMEOUT"            envDefault:"30s"`
+	MQTTQoS         byte          `env:"PROXY_MQTT_QOS"                envDefault:"2"`
+	MQTTTLSCAPath   string        `env:"PROXY_MQTT_TLS_CA_CERT"`
+	MQTTTLSCertPath string        `env:"PROXY_MQTT_TLS_CLIENT_CERT"`
+	MQTTTLSKeyPath  string        `env:"PROXY_MQTT_TLS_CLIENT_KEY"`
+	MQTTTLSInsecure bool          `env:"PROXY_MQTT_TLS_INSECURE_SKIP_VERIFY"`
+	DomainID        string        `env:"PROXY_DOMAIN_ID"`
+	ChannelID       string        `env:"PROXY_CHANNEL_ID"`
+	ClientID        string        `env:"PROXY_CLIENT_ID"`
+	ClientKey       string        `env:"PROXY_CLIENT_KEY"`
 	// HTTP Registry configuration
 	ChunkSize    int    `env:"PROXY_CHUNK_SIZE"            envDefault:"512000"`
 	Authenticate bool   `env:"PROXY_AUTHENTICATE"          envDefault:"false"`
@@ -78,7 +82,17 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
+	var mqttTLS *mqtt.TLSConfig
+	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
+		mqttTLS = &mqtt.TLSConfig{
+			CAPath:             cfg.MQTTTLSCAPath,
+			CertPath:           cfg.MQTTTLSCertPath,
+			KeyPath:            cfg.MQTTTLSKeyPath,
+			InsecureSkipVerify: cfg.MQTTTLSInsecure,
+		}
+	}
+
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
 	if err != nil {
 		logger.Error("failed to initialize mqtt client", slog.Any("error", err))
 

@@ -19,6 +19,10 @@ pub struct MqttConfig {
     pub request_channel_capacity: usize,
     pub username: String,
     pub password: String,
+    pub tls_ca_cert: Option<String>,
+    pub tls_client_cert: Option<String>,
+    pub tls_client_key: Option<String>,
+    pub tls_insecure_skip_verify: bool,
 }
 
 #[derive(Clone)]
@@ -39,7 +43,28 @@ impl PubSub {
         mqtt_options.set_clean_session(false);
 
         if use_tls {
-            let transport = rumqttc::Transport::tls_with_default_config();
+            let transport = if let Some(ca_pem) = &config.tls_ca_cert {
+                let ca = std::fs::read(ca_pem)
+                    .with_context(|| format!("Failed to read CA certificate: {ca_pem}"))?;
+
+                let client_auth = match (&config.tls_client_cert, &config.tls_client_key) {
+                    (Some(cert_path), Some(key_path)) => {
+                        let cert = std::fs::read(cert_path)
+                            .with_context(|| format!("Failed to read client cert: {cert_path}"))?;
+                        let key = std::fs::read(key_path)
+                            .with_context(|| format!("Failed to read client key: {key_path}"))?;
+                        Some((cert, key))
+                    }
+                    _ => None,
+                };
+
+                rumqttc::Transport::tls(ca, client_auth, None)
+            } else {
+                if config.tls_insecure_skip_verify {
+                    warn!("TLS certificate verification is DISABLED (insecure mode)");
+                }
+                rumqttc::Transport::tls_with_default_config()
+            };
             mqtt_options.set_transport(transport);
         }
 
@@ -552,6 +577,10 @@ mod tests {
             max_packet_size: 1024,
             inflight: 10,
             request_channel_capacity: 128,
+            tls_ca_cert: None,
+            tls_client_cert: None,
+            tls_client_key: None,
+            tls_insecure_skip_verify: false,
         };
 
         assert_eq!(config.address, "tcp://localhost:1883");
@@ -559,5 +588,38 @@ mod tests {
         assert_eq!(config.timeout, Duration::from_secs(30));
         assert_eq!(config.username, "user");
         assert_eq!(config.password, "pass");
+        assert!(config.tls_ca_cert.is_none());
+        assert!(!config.tls_insecure_skip_verify);
+    }
+
+    #[test]
+    fn test_mqtt_config_tls_configuration() {
+        let config = MqttConfig {
+            address: "mqtts://broker:8883".to_string(),
+            client_id: "tls-client".to_string(),
+            timeout: Duration::from_secs(30),
+            qos: QoS::AtLeastOnce,
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            keep_alive: Duration::from_secs(30),
+            max_packet_size: 1024,
+            inflight: 10,
+            request_channel_capacity: 128,
+            tls_ca_cert: Some("/etc/ssl/certs/ca.pem".to_string()),
+            tls_client_cert: Some("/etc/ssl/certs/client.pem".to_string()),
+            tls_client_key: Some("/etc/ssl/certs/client-key.pem".to_string()),
+            tls_insecure_skip_verify: false,
+        };
+
+        assert_eq!(config.tls_ca_cert, Some("/etc/ssl/certs/ca.pem".to_string()));
+        assert_eq!(
+            config.tls_client_cert,
+            Some("/etc/ssl/certs/client.pem".to_string())
+        );
+        assert_eq!(
+            config.tls_client_key,
+            Some("/etc/ssl/certs/client-key.pem".to_string())
+        );
+        assert!(!config.tls_insecure_skip_verify);
     }
 }

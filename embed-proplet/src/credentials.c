@@ -1,5 +1,6 @@
 #include "credentials.h"
 
+#include <stdlib.h>
 #include <string.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
@@ -15,31 +16,66 @@ static int creds_set_cb(const char *key, size_t len, settings_read_cb read_cb,
 		return -EINVAL;
 	}
 
-	char *dst = NULL;
-
 	if (strcmp(key, "wifi_ssid") == 0) {
-		dst = g_creds->wifi_ssid;
+		size_t max = CRED_MAX_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->wifi_ssid, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->wifi_ssid[rc] = '\0';
 	} else if (strcmp(key, "wifi_psk") == 0) {
-		dst = g_creds->wifi_psk;
+		size_t max = CRED_MAX_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->wifi_psk, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->wifi_psk[rc] = '\0';
 	} else if (strcmp(key, "proplet_id") == 0) {
-		dst = g_creds->proplet_id;
+		size_t max = CRED_MAX_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->proplet_id, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->proplet_id[rc] = '\0';
 	} else if (strcmp(key, "client_key") == 0) {
-		dst = g_creds->client_key;
+		size_t max = CRED_MAX_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->client_key, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->client_key[rc] = '\0';
 	} else if (strcmp(key, "domain_id") == 0) {
-		dst = g_creds->domain_id;
+		size_t max = CRED_MAX_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->domain_id, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->domain_id[rc] = '\0';
 	} else if (strcmp(key, "channel_id") == 0) {
-		dst = g_creds->channel_id;
+		size_t max = CRED_MAX_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->channel_id, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->channel_id[rc] = '\0';
+	} else if (strcmp(key, "mqtt_broker_host") == 0) {
+		size_t max = CRED_HOST_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->mqtt_broker_host, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->mqtt_broker_host[rc] = '\0';
+	} else if (strcmp(key, "mqtt_broker_port") == 0) {
+		char buf[8];
+		ssize_t rc = read_cb(cb_arg, buf, MIN(len, sizeof(buf) - 1));
+		if (rc < 0) return (int)rc;
+		buf[rc] = '\0';
+		g_creds->mqtt_broker_port = (uint16_t)strtoul(buf, NULL, 10);
+	} else if (strcmp(key, "mqtt_tls_enabled") == 0) {
+		char buf[2];
+		ssize_t rc = read_cb(cb_arg, buf, MIN(len, sizeof(buf) - 1));
+		if (rc < 0) return (int)rc;
+		buf[rc] = '\0';
+		g_creds->mqtt_tls_enabled = (buf[0] == '1' || buf[0] == 't' || buf[0] == 'T');
+	} else if (strcmp(key, "tls_client_cert") == 0) {
+		size_t max = CRED_CERT_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->tls_client_cert, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->tls_client_cert[rc] = '\0';
+	} else if (strcmp(key, "tls_client_key") == 0) {
+		size_t max = CRED_CERT_LEN - 1;
+		ssize_t rc = read_cb(cb_arg, g_creds->tls_client_key, MIN(len, max));
+		if (rc < 0) return (int)rc;
+		g_creds->tls_client_key[rc] = '\0';
 	} else {
 		return -ENOENT;
 	}
-
-	size_t max = CRED_MAX_LEN - 1;
-	ssize_t rc = read_cb(cb_arg, dst, MIN(len, max));
-
-	if (rc < 0) {
-		return (int)rc;
-	}
-	dst[rc] = '\0';
 
 	return 0;
 }

@@ -64,6 +64,10 @@ async fn main() -> Result<()> {
         request_channel_capacity: config.mqtt_request_channel_capacity,
         username: config.client_id.clone(),
         password: config.client_key.clone(),
+        tls_ca_cert: config.mqtt_tls_ca_cert.clone(),
+        tls_client_cert: config.mqtt_tls_client_cert.clone(),
+        tls_client_key: config.mqtt_tls_client_key.clone(),
+        tls_insecure_skip_verify: config.mqtt_tls_insecure_skip_verify,
     };
 
     let (pubsub, eventloop) = PubSub::new(mqtt_config).await?;
