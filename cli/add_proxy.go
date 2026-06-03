@@ -31,12 +31,12 @@ Example:
 		}
 
 		var (
-			username   string
-			password   string
-			token      smqSDK.Token
-			proxyName  string
-			proxyID    string
-			proxyKey   string
+			username  string
+			password  string
+			token     smqSDK.Token
+			proxyName string
+			proxyID   string
+			proxyKey  string
 		)
 
 		form := huh.NewForm(
@@ -150,6 +150,6 @@ channel_id = "%s"
 			return
 		}
 
-		logSuccessCmd(*cmd, fmt.Sprintf("Added proxy client to %s", fileName))
+		logSuccessCmd(*cmd, "Added proxy client to "+fileName)
 	},
 }

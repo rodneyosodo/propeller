@@ -174,6 +174,43 @@ func (ps *pubsub) Disconnect(ctx context.Context) error {
 	}
 }
 
+func tlsConfigFrom(cfg *TLSConfig) (*tls.Config, error) {
+	if cfg == nil {
+		return nil, nil //nolint:nilnil
+	}
+
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
+
+	if cfg.CAPath != "" {
+		caCert, err := os.ReadFile(cfg.CAPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate '%s': %w", cfg.CAPath, err)
+		}
+
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate from '%s'", cfg.CAPath)
+		}
+
+		tlsCfg.RootCAs = caPool
+	}
+
+	if cfg.CertPath != "" && cfg.KeyPath != "" {
+		clientCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+
+		tlsCfg.Certificates = []tls.Certificate{clientCert}
+	} else if cfg.CertPath != "" || cfg.KeyPath != "" {
+		return nil, errors.New("both CertPath and KeyPath must be provided for mutual TLS")
+	}
+
+	return tlsCfg, nil
+}
+
 func newClient(address, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions().
 		AddBroker(address).
@@ -185,36 +222,12 @@ func newClient(address, id, username, password, domainID, channelID string, time
 		SetConnectTimeout(connTimeout * time.Second).
 		SetMaxReconnectInterval(reconnTimeout * time.Minute)
 
-	if tlsCfg != nil {
-		tlsConfig := &tls.Config{
-			InsecureSkipVerify: tlsCfg.InsecureSkipVerify,
-		}
+	tlsConfig, err := tlsConfigFrom(tlsCfg)
+	if err != nil {
+		return nil, err
+	}
 
-		if tlsCfg.CAPath != "" {
-			caCert, err := os.ReadFile(tlsCfg.CAPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read CA certificate '%s': %w", tlsCfg.CAPath, err)
-			}
-
-			caPool := x509.NewCertPool()
-			if !caPool.AppendCertsFromPEM(caCert) {
-				return nil, fmt.Errorf("failed to parse CA certificate from '%s'", tlsCfg.CAPath)
-			}
-
-			tlsConfig.RootCAs = caPool
-		}
-
-		if tlsCfg.CertPath != "" && tlsCfg.KeyPath != "" {
-			clientCert, err := tls.LoadX509KeyPair(tlsCfg.CertPath, tlsCfg.KeyPath)
-			if err != nil {
-				return nil, fmt.Errorf("failed to load client certificate: %w", err)
-			}
-
-			tlsConfig.Certificates = []tls.Certificate{clientCert}
-		} else if tlsCfg.CertPath != "" || tlsCfg.KeyPath != "" {
-			return nil, errors.New("both CertPath and KeyPath must be provided for mutual TLS")
-		}
-
+	if tlsConfig != nil {
 		opts.SetTLSConfig(tlsConfig)
 
 		if logger != nil {

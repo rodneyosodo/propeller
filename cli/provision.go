@@ -51,7 +51,7 @@ var provisionCmd = &cobra.Command{
 			numProplets        int
 			propletClients     []smqSDK.Client
 			proxyClient        smqSDK.Client
-			proxyClientName   string
+			proxyClientName    string
 			managerChannelName string
 			managerChannel     smqSDK.Channel
 		)
