@@ -23,7 +23,7 @@ use crate::service::PropletService;
 use anyhow::Result;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn, Level};
+use tracing::{info, warn, Level};
 
 #[tokio::main]
 async fn main() -> Result<()> {
