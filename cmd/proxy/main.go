@@ -48,10 +48,6 @@ type config struct {
 }
 
 func main() {
-	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	g, ctx := errgroup.WithContext(sigCtx)
-
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to load configuration : %s", err.Error())
@@ -87,6 +83,10 @@ func main() {
 	})
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	g, ctx := errgroup.WithContext(sigCtx)
 
 	var mqttTLS *mqtt.TLSConfig
 	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
@@ -153,6 +153,7 @@ func main() {
 		}
 		go func() {
 			<-ctx.Done()
+			//nolint:contextcheck
 			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
 			if err := srv.Shutdown(shutCtx); err != nil {
@@ -163,6 +164,7 @@ func main() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			return err
 		}
+
 		return nil
 	})
 

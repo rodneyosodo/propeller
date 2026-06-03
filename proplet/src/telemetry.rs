@@ -43,8 +43,10 @@ impl PropletMetrics {
         ))?;
         registry.register(Box::new(tasks_failed.clone()))?;
 
-        let tasks_running =
-            IntGauge::with_opts(Opts::new("proplet_tasks_running", "Tasks currently executing"))?;
+        let tasks_running = IntGauge::with_opts(Opts::new(
+            "proplet_tasks_running",
+            "Tasks currently executing",
+        ))?;
         registry.register(Box::new(tasks_running.clone()))?;
 
         let mqtt_reconnects = IntCounter::with_opts(Opts::new(
@@ -59,8 +61,10 @@ impl PropletMetrics {
         ))?;
         registry.register(Box::new(wasm_fetch_bytes.clone()))?;
 
-        let cpu_usage =
-            Gauge::with_opts(Opts::new("proplet_cpu_usage_ratio", "CPU usage ratio (0.0–1.0)"))?;
+        let cpu_usage = Gauge::with_opts(Opts::new(
+            "proplet_cpu_usage_ratio",
+            "CPU usage ratio (0.0–1.0)",
+        ))?;
         registry.register(Box::new(cpu_usage.clone()))?;
 
         let memory_rss_bytes = Gauge::with_opts(Opts::new(
