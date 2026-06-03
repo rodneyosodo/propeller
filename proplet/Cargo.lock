@@ -4153,6 +4153,7 @@ dependencies = [
  "reqwest 0.13.2",
  "resource_uri",
  "rumqttc",
+ "rustls",
  "serde",
  "serde_json",
  "socket2",

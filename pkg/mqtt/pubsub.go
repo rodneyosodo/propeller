@@ -2,14 +2,24 @@ package mqtt
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
+
+type TLSConfig struct {
+	CAPath             string
+	CertPath           string
+	KeyPath            string
+	InsecureSkipVerify bool
+}
 
 type lwtMessage struct {
 	Status    string `json:"status"`
@@ -51,12 +61,12 @@ type PubSub interface {
 	Disconnect(ctx context.Context) error
 }
 
-func NewPubSub(url string, qos byte, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger) (PubSub, error) {
+func NewPubSub(url string, qos byte, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (PubSub, error) {
 	if id == "" {
 		return nil, errEmptyID
 	}
 
-	client, err := newClient(url, id, username, password, domainID, channelID, timeout, logger)
+	client, err := newClient(url, id, username, password, domainID, channelID, timeout, logger, tlsCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -164,7 +174,44 @@ func (ps *pubsub) Disconnect(ctx context.Context) error {
 	}
 }
 
-func newClient(address, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger) (mqtt.Client, error) {
+func tlsConfigFrom(cfg *TLSConfig) (*tls.Config, error) {
+	if cfg == nil {
+		return nil, nil //nolint:nilnil
+	}
+
+	tlsCfg := &tls.Config{
+		InsecureSkipVerify: cfg.InsecureSkipVerify,
+	}
+
+	if cfg.CAPath != "" {
+		caCert, err := os.ReadFile(cfg.CAPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read CA certificate '%s': %w", cfg.CAPath, err)
+		}
+
+		caPool := x509.NewCertPool()
+		if !caPool.AppendCertsFromPEM(caCert) {
+			return nil, fmt.Errorf("failed to parse CA certificate from '%s'", cfg.CAPath)
+		}
+
+		tlsCfg.RootCAs = caPool
+	}
+
+	if cfg.CertPath != "" && cfg.KeyPath != "" {
+		clientCert, err := tls.LoadX509KeyPair(cfg.CertPath, cfg.KeyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load client certificate: %w", err)
+		}
+
+		tlsCfg.Certificates = []tls.Certificate{clientCert}
+	} else if cfg.CertPath != "" || cfg.KeyPath != "" {
+		return nil, errors.New("both CertPath and KeyPath must be provided for mutual TLS")
+	}
+
+	return tlsCfg, nil
+}
+
+func newClient(address, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions().
 		AddBroker(address).
 		SetClientID(id).
@@ -174,6 +221,23 @@ func newClient(address, id, username, password, domainID, channelID string, time
 		SetAutoReconnect(true).
 		SetConnectTimeout(connTimeout * time.Second).
 		SetMaxReconnectInterval(reconnTimeout * time.Minute)
+
+	tlsConfig, err := tlsConfigFrom(tlsCfg)
+	if err != nil {
+		return nil, err
+	}
+
+	if tlsConfig != nil {
+		opts.SetTLSConfig(tlsConfig)
+
+		if logger != nil {
+			logger.Info("TLS configured for MQTT connection",
+				slog.Bool("insecure_skip_verify", tlsCfg.InsecureSkipVerify),
+				slog.Bool("custom_ca", tlsCfg.CAPath != ""),
+				slog.Bool("client_cert", tlsCfg.CertPath != ""),
+			)
+		}
+	}
 
 	if channelID != "" {
 		topic := fmt.Sprintf(aliveTopicTemplate, domainID, channelID)

@@ -33,6 +33,11 @@ static const struct proplet_credentials defaults = {
 	.client_key  = "<YOUR_CLIENT_KEY>",
 	.domain_id   = "<YOUR_DOMAIN_ID>",
 	.channel_id  = "<YOUR_CHANNEL_ID>",
+	.mqtt_broker_host = "10.42.0.1",
+	.mqtt_broker_port = 1883,
+	.mqtt_tls_enabled = false,
+	.tls_client_cert = "",
+	.tls_client_key = "",
 };
 
 int main(void)

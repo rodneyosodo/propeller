@@ -39,19 +39,23 @@ const (
 )
 
 type config struct {
-	LogLevel       string        `env:"MANAGER_LOG_LEVEL"           envDefault:"info"`
-	MQTTAddress    string        `env:"MANAGER_MQTT_ADDRESS"        envDefault:"tcp://localhost:1883"`
-	MQTTQoS        uint8         `env:"MANAGER_MQTT_QOS"            envDefault:"2"`
-	MQTTTimeout    time.Duration `env:"MANAGER_MQTT_TIMEOUT"        envDefault:"30s"`
-	DomainID       string        `env:"MANAGER_DOMAIN_ID"`
-	ChannelID      string        `env:"MANAGER_CHANNEL_ID"`
-	ClientID       string        `env:"MANAGER_CLIENT_ID"`
-	ClientKey      string        `env:"MANAGER_CLIENT_KEY"`
-	CoordinatorURL string        `env:"MANAGER_COORDINATOR_URL"`
-	Server         server.Config
-	OTELURL        url.URL `env:"MANAGER_OTEL_URL"`
-	TraceRatio     float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
-	PluginDir      string  `env:"MANAGER_PLUGIN_DIR"`
+	LogLevel        string        `env:"MANAGER_LOG_LEVEL"              envDefault:"info"`
+	MQTTAddress     string        `env:"MANAGER_MQTT_ADDRESS"           envDefault:"tcp://localhost:1883"`
+	MQTTQoS         uint8         `env:"MANAGER_MQTT_QOS"               envDefault:"2"`
+	MQTTTimeout     time.Duration `env:"MANAGER_MQTT_TIMEOUT"           envDefault:"30s"`
+	MQTTTLSCAPath   string        `env:"MANAGER_MQTT_TLS_CA_CERT"`
+	MQTTTLSCertPath string        `env:"MANAGER_MQTT_TLS_CLIENT_CERT"`
+	MQTTTLSKeyPath  string        `env:"MANAGER_MQTT_TLS_CLIENT_KEY"`
+	MQTTTLSInsecure bool          `env:"MANAGER_MQTT_TLS_INSECURE_SKIP_VERIFY"`
+	DomainID        string        `env:"MANAGER_DOMAIN_ID"`
+	ChannelID       string        `env:"MANAGER_CHANNEL_ID"`
+	ClientID        string        `env:"MANAGER_CLIENT_ID"`
+	ClientKey       string        `env:"MANAGER_CLIENT_KEY"`
+	CoordinatorURL  string        `env:"MANAGER_COORDINATOR_URL"`
+	Server          server.Config
+	OTELURL         url.URL `env:"MANAGER_OTEL_URL"`
+	TraceRatio      float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
+	PluginDir       string  `env:"MANAGER_PLUGIN_DIR"`
 }
 
 func main() {
@@ -115,7 +119,17 @@ func main() {
 	}
 	tracer := tp.Tracer(svcName)
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger)
+	var mqttTLS *mqtt.TLSConfig
+	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
+		mqttTLS = &mqtt.TLSConfig{
+			CAPath:             cfg.MQTTTLSCAPath,
+			CertPath:           cfg.MQTTTLSCertPath,
+			KeyPath:            cfg.MQTTTLSKeyPath,
+			InsecureSkipVerify: cfg.MQTTTLSInsecure,
+		}
+	}
+
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
 	if err != nil {
 		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
 		exitCode = 1

@@ -19,7 +19,7 @@ RUN apt-get update \
     && make $SVC GOARCH=${GOARCH} ${_goarm:+GOARM=${_goarm}} \
     && mv build/$SVC /exe
 
-FROM gcr.io/distroless/cc-debian12
+FROM gcr.io/distroless/static-debian12
 LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
 LABEL org.opencontainers.image.licenses=Apache-2.0
 

@@ -50,6 +50,8 @@ var provisionCmd = &cobra.Command{
 			numPropletsStr     string
 			numProplets        int
 			propletClients     []smqSDK.Client
+			proxyClient        smqSDK.Client
+			proxyClientName    string
 			managerChannelName string
 			managerChannel     smqSDK.Channel
 		)
@@ -176,6 +178,26 @@ var provisionCmd = &cobra.Command{
 					}),
 			), huh.NewGroup(
 				huh.NewInput().
+					Title("Enter your proxy client name(leave empty to auto generate)").
+					Value(&proxyClientName).
+					Validate(func(str string) error {
+						if str == "" {
+							proxyClientName = namegen.Generate()
+						}
+						proxyClient = smqSDK.Client{
+							Name:   proxyClientName,
+							Tags:   []string{"proxy", "propeller"},
+							Status: "enabled",
+						}
+						proxyClient, err = smqsdk.CreateClient(cmd.Context(), proxyClient, domain.ID, token.AccessToken)
+						if err != nil {
+							return errors.Wrap(errFailedClientCreation, err)
+						}
+
+						return nil
+					}),
+			), huh.NewGroup(
+				huh.NewInput().
 					Title("Enter your manager channel name(leave empty to auto generate)").
 					Value(&managerChannelName).
 					Validate(func(str string) error {
@@ -191,7 +213,7 @@ var provisionCmd = &cobra.Command{
 							return errors.Wrap(errFailedChannelCreation, err)
 						}
 
-						clientIDs := []string{managerClient.ID}
+						clientIDs := []string{managerClient.ID, proxyClient.ID}
 						for _, propletClient := range propletClients {
 							clientIDs = append(clientIDs, propletClient.ID)
 						}
@@ -256,20 +278,18 @@ channel_id = "%s"
 			configContent.WriteString(propletConfig)
 		}
 
-		if len(propletClients) > 0 {
-			proxyConfig := fmt.Sprintf(`
+		proxyConfig := fmt.Sprintf(`
 [proxy]
 domain_id = "%s"
 client_id = "%s"
 client_key = "%s"
 channel_id = "%s"`,
-				domain.ID,
-				propletClients[0].ID,
-				propletClients[0].Credentials.Secret,
-				managerChannel.ID,
-			)
-			configContent.WriteString(proxyConfig)
-		}
+			domain.ID,
+			proxyClient.ID,
+			proxyClient.Credentials.Secret,
+			managerChannel.ID,
+		)
+		configContent.WriteString(proxyConfig)
 
 		if err := os.WriteFile(fileName, []byte(configContent.String()), filePermission); err != nil {
 			logErrorCmd(*cmd, errors.New(fmt.Sprintf("failed to create %s file", fileName)))
@@ -291,6 +311,7 @@ func NewProvisionCmd() *cobra.Command {
 	)
 
 	provisionCmd.AddCommand(addPropletsCmd)
+	provisionCmd.AddCommand(addProxyCmd)
 
 	return provisionCmd
 }

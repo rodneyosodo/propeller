@@ -50,8 +50,27 @@ services:
       MANAGER_POSTGRES_PASS: ${MANAGER_POSTGRES_PASS:-propeller}
       MANAGER_POSTGRES_DB: ${MANAGER_POSTGRES_DB:-propeller}
       MANAGER_POSTGRES_SSLMODE: ${MANAGER_POSTGRES_SSLMODE:-disable}
+      # MQTT over TLS / mTLS — uncomment to enable.
+      # Then also mount cert files (see volumes section below).
+      # MANAGER_MQTT_TLS_CA_CERT: ${MANAGER_MQTT_TLS_CA_CERT}
+      # MANAGER_MQTT_TLS_CLIENT_CERT: ${MANAGER_MQTT_TLS_CLIENT_CERT}
+      # MANAGER_MQTT_TLS_CLIENT_KEY: ${MANAGER_MQTT_TLS_CLIENT_KEY}
+      # MANAGER_MQTT_TLS_INSECURE_SKIP_VERIFY: ${MANAGER_MQTT_TLS_INSECURE_SKIP_VERIFY}
     volumes:
       - ./config.toml:/config.toml
+      # MQTT TLS certs (uncomment and change source paths when using ssl://):
+      # - type: bind
+      #   source: ./ssl/certs/ca.crt
+      #   target: /etc/propeller/tls/ca.crt
+      #   read_only: true
+      # - type: bind
+      #   source: ./ssl/certs/manager.crt
+      #   target: /etc/propeller/tls/client.crt
+      #   read_only: true
+      # - type: bind
+      #   source: ./ssl/certs/manager.key
+      #   target: /etc/propeller/tls/client.key
+      #   read_only: true
     networks:
       - magistrala-base-net
 
@@ -98,8 +117,28 @@ services:
       MANAGER_COORDINATOR_URL: ${MANAGER_COORDINATOR_URL:-http://coordinator-http:8080}
       MODEL_REGISTRY_URL: ${MODEL_REGISTRY_URL:-http://model-registry:8081}
       DATA_STORE_URL: ${DATA_STORE_URL:-http://local-data-store:8083}
+      # MQTT over TLS / mTLS configuration — uncomment to enable.
+      # Certificate/key paths refer to files inside the container.
+      # See the volumes section below for bind mounts.
+      # PROPLET_MQTT_TLS_CA_CERT: ${PROPLET_MQTT_TLS_CA_CERT}
+      # PROPLET_MQTT_TLS_CLIENT_CERT: ${PROPLET_MQTT_TLS_CLIENT_CERT}
+      # PROPLET_MQTT_TLS_CLIENT_KEY: ${PROPLET_MQTT_TLS_CLIENT_KEY}
+      # PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY: ${PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY}
     volumes:
       - ./config.toml:/home/proplet/config.toml
+      # MQTT TLS certs (uncomment and change source paths when using ssl://):
+      # - type: bind
+      #   source: ./ssl/certs/ca.crt
+      #   target: /etc/propeller/tls/ca.crt
+      #   read_only: true
+      # - type: bind
+      #   source: ./ssl/certs/proplet.crt
+      #   target: /etc/propeller/tls/client.crt
+      #   read_only: true
+      # - type: bind
+      #   source: ./ssl/certs/proplet.key
+      #   target: /etc/propeller/tls/client.key
+      #   read_only: true
       # To run wasi-nn examples, uncomment the fixture volume and create the directory with model files.
       # See examples/wasi-nn/README.md for setup instructions.
       # - ../fixture:/home/proplet/fixture
@@ -128,7 +167,26 @@ services:
       PROXY_REGISTRY_USERNAME: ${PROXY_REGISTRY_USERNAME}
       PROXY_REGISTRY_PASSWORD: ${PROXY_REGISTRY_PASSWORD}
       PROXY_REGISTRY_URL: ${PROXY_REGISTRY_URL}
+      # MQTT over TLS / mTLS — uncomment to enable.
+      # Then also mount cert files (see volumes section below).
+      # PROXY_MQTT_TLS_CA_CERT: ${PROXY_MQTT_TLS_CA_CERT}
+      # PROXY_MQTT_TLS_CLIENT_CERT: ${PROXY_MQTT_TLS_CLIENT_CERT}
+      # PROXY_MQTT_TLS_CLIENT_KEY: ${PROXY_MQTT_TLS_CLIENT_KEY}
+      # PROXY_MQTT_TLS_INSECURE_SKIP_VERIFY: ${PROXY_MQTT_TLS_INSECURE_SKIP_VERIFY}
     volumes:
       - ./config.toml:/config.toml
+      # MQTT TLS certs (uncomment and change source paths when using ssl://):
+      # - type: bind
+      #   source: ./ssl/certs/ca.crt
+      #   target: /etc/propeller/tls/ca.crt
+      #   read_only: true
+      # - type: bind
+      #   source: ./ssl/certs/proxy.crt
+      #   target: /etc/propeller/tls/client.crt
+      #   read_only: true
+      # - type: bind
+      #   source: ./ssl/certs/proxy.key
+      #   target: /etc/propeller/tls/client.key
+      #   read_only: true
     networks:
       - magistrala-base-net

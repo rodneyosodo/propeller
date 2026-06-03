@@ -87,8 +87,6 @@ endef
 
 .DEFAULT_GOAL := all
 
-manager: CGO_ENABLED := 1
-
 $(SERVICES):
 	$(call compile_service,$(@))
 

@@ -8,6 +8,11 @@
 
 #define PAYLOAD_BUFFER_SIZE 1024
 
+/* Default MQTT broker settings */
+#define MQTT_BROKER_HOSTNAME "10.42.0.1"
+#define MQTT_BROKER_PORT 1883
+#define MQTT_BROKER_PORT_TLS 8883
+
 #define MAX_ID_LEN 64
 #define MAX_NAME_LEN 64
 #define MAX_STATE_LEN 16
