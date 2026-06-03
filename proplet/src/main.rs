@@ -28,7 +28,8 @@ use tracing_subscriber::FmtSubscriber;
 #[tokio::main]
 async fn main() -> Result<()> {
     let _ = rustls::crypto::ring::default_provider().install_default();
-    let config = PropletConfig::load().map_err(|e| anyhow::anyhow!("Failed to load configuration: {e}"))?;
+    let config =
+        PropletConfig::load().map_err(|e| anyhow::anyhow!("Failed to load configuration: {e}"))?;
 
     let log_level = match config.log_level.to_lowercase().as_str() {
         "trace" => Level::TRACE,

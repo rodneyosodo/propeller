@@ -611,7 +611,10 @@ mod tests {
             tls_insecure_skip_verify: false,
         };
 
-        assert_eq!(config.tls_ca_cert, Some("/etc/ssl/certs/ca.pem".to_string()));
+        assert_eq!(
+            config.tls_ca_cert,
+            Some("/etc/ssl/certs/ca.pem".to_string())
+        );
         assert_eq!(
             config.tls_client_cert,
             Some("/etc/ssl/certs/client.pem".to_string())
