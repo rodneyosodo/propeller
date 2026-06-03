@@ -153,9 +153,9 @@ func main() {
 		}
 		go func() {
 			<-ctx.Done()
-			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second) //nolint:contextcheck
+			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if err := srv.Shutdown(shutCtx); err != nil {
+			if err := srv.Shutdown(shutCtx); err != nil { //nolint:contextcheck
 				logger.Error("health server shutdown error", slog.Any("error", err))
 			}
 		}()
