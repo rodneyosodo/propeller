@@ -1,11 +1,11 @@
 use crate::config::PropletConfig;
 use crate::metrics::MetricsCollector;
 use crate::monitoring::{system::SystemMonitor, ProcessMonitor};
-use crate::telemetry::PropletMetrics;
 use crate::mqtt::{build_topic, MqttMessage, PubSub};
 use crate::plugin::registry::PluginRegistry;
 use crate::plugin::{TaskInfo as PluginTaskInfo, TaskResult as PluginTaskResult};
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
+use crate::telemetry::PropletMetrics;
 use crate::types::*;
 use anyhow::{Context, Result};
 use reqwest::Client as HttpClient;
@@ -447,7 +447,11 @@ impl PropletService {
 
     async fn handle_start_command(&self, msg: MqttMessage) -> Result<()> {
         let req: StartRequest = msg.decode().map_err(|e| {
-            error!("Failed to decode start request ({} bytes): {}", msg.payload.len(), e);
+            error!(
+                "Failed to decode start request ({} bytes): {}",
+                msg.payload.len(),
+                e
+            );
             e
         })?;
         req.validate()?;
@@ -567,7 +571,10 @@ impl PropletService {
             } else {
                 info!("Requesting binary from registry: {}", req.image_url);
                 if let Err(e) = self.request_binary_from_registry(&req.image_url).await {
-                    error!("Failed to request binary from registry for task {}: {}", req.id, e);
+                    error!(
+                        "Failed to request binary from registry for task {}: {}",
+                        req.id, e
+                    );
                     self.running_tasks.lock().await.remove(&req.id);
                     self.metrics.tasks_failed.inc();
                     self.metrics.tasks_running.dec();
