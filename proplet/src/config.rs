@@ -59,6 +59,8 @@ pub struct PropletConfig {
     pub plugin_dir: Option<String>,
     pub metrics_port: u16,
     pub metrics_enabled: bool,
+    pub otel_url: Option<String>,
+    pub trace_ratio: f64,
 }
 
 impl Default for PropletConfig {
@@ -102,6 +104,8 @@ impl Default for PropletConfig {
             plugin_dir: None,
             metrics_port: 9092,
             metrics_enabled: true,
+            otel_url: None,
+            trace_ratio: 0.0,
         }
     }
 }
@@ -410,6 +414,18 @@ impl PropletConfig {
 
         if let Ok(val) = env::var("PROPLET_METRICS_ENABLED") {
             config.metrics_enabled = val.to_lowercase() == "true" || val == "1";
+        }
+
+        if let Ok(val) = env::var("PROPLET_OTEL_URL") {
+            if !val.is_empty() {
+                config.otel_url = Some(val);
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_TRACE_RATIO") {
+            if let Ok(ratio) = val.parse::<f64>() {
+                config.trace_ratio = ratio;
+            }
         }
 
         config

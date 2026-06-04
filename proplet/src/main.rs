@@ -21,9 +21,33 @@ use crate::runtime::wasmtime_runtime::WasmtimeRuntime;
 use crate::runtime::Runtime;
 use crate::service::PropletService;
 use anyhow::Result;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::Resource;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tracing::{info, warn, Level};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+
+fn init_tracer(
+    endpoint: &str,
+    ratio: f64,
+) -> Result<opentelemetry_sdk::trace::SdkTracerProvider> {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_endpoint(endpoint)
+        .build()?;
+
+    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
+        .with_batch_exporter(exporter)
+        .with_sampler(opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(ratio))
+        .with_resource(Resource::new(vec![KeyValue::new("service.name", "proplet")]))
+        .build();
+
+    Ok(provider)
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,16 +64,29 @@ async fn main() -> Result<()> {
         _ => Level::INFO,
     };
 
-    let subscriber = tracing_subscriber::fmt()
+    let fmt_layer = tracing_subscriber::fmt::layer()
         .json()
-        .with_max_level(log_level)
         .with_target(false)
         .with_thread_ids(false)
         .with_file(false)
-        .with_line_number(false)
-        .finish();
+        .with_line_number(false);
 
-    tracing::subscriber::set_global_default(subscriber)?;
+    let otel_layer = if let Some(url) = &config.otel_url {
+        let provider = init_tracer(url, config.trace_ratio)
+            .map_err(|e| anyhow::anyhow!("Failed to initialize OTLP tracer: {e}"))?;
+        let tracer = provider.tracer("proplet");
+        opentelemetry::global::set_tracer_provider(provider);
+        Some(tracing_opentelemetry::layer().with_tracer(tracer))
+    } else {
+        None
+    };
+
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::from(log_level))
+        .with(fmt_layer)
+        .with(otel_layer)
+        .try_init()
+        .map_err(|e| anyhow::anyhow!("Failed to set tracing subscriber: {e}"))?;
 
     info!("Starting Proplet (Rust) - Client ID: {}", config.client_id);
 
@@ -177,6 +214,8 @@ async fn main() -> Result<()> {
         _ = shutdown_handle => {
         }
     }
+
+    opentelemetry::global::shutdown_tracer_provider();
 
     Ok(())
 }

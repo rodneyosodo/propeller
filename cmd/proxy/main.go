@@ -7,15 +7,20 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/absmach/magistrala/pkg/jaeger"
 	"github.com/absmach/propeller"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -38,6 +43,8 @@ type config struct {
 	ClientID        string        `env:"PROXY_CLIENT_ID"`
 	ClientKey       string        `env:"PROXY_CLIENT_KEY"`
 	HTTPPort        int           `env:"PROXY_HTTP_PORT"              envDefault:"9191"`
+	OTELURL         url.URL       `env:"PROXY_OTEL_URL"`
+	TraceRatio      float64       `env:"PROXY_TRACE_RATIO"            envDefault:"0"`
 	// HTTP Registry configuration
 	ChunkSize    int    `env:"PROXY_CHUNK_SIZE"            envDefault:"512000"`
 	Authenticate bool   `env:"PROXY_AUTHENTICATE"          envDefault:"false"`
@@ -87,6 +94,26 @@ func main() {
 	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	g, ctx := errgroup.WithContext(sigCtx)
+
+	var tp trace.TracerProvider
+	switch cfg.OTELURL {
+	case url.URL{}:
+		tp = noop.NewTracerProvider()
+	default:
+		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		if err != nil {
+			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+
+			return
+		}
+		defer func() {
+			if err := sdktp.Shutdown(ctx); err != nil {
+				logger.Error("error shutting down tracer provider", slog.Any("error", err))
+			}
+		}()
+		tp = sdktp
+	}
+	_ = tp.Tracer(svcName)
 
 	var mqttTLS *mqtt.TLSConfig
 	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
@@ -140,10 +167,10 @@ func main() {
 
 	g.Go(func() error {
 		mux := http.NewServeMux()
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		mux.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `{"status":"ok","service":"proxy"}`)
-		})
+		}), "health"))
 		srv := &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
 			Handler:      mux,
