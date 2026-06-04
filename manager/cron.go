@@ -163,16 +163,27 @@ func (cs *cronScheduler) processScheduledTasks(ctx context.Context) error {
 			continue
 		}
 
+		// Re-fetch the latest task from DB to avoid overwriting concurrent modifications
+		fresh, err := cs.tasksDB.Get(ctx, t.ID)
+		if err != nil {
+			cs.logger.Error("failed to re-fetch task for schedule update",
+				slog.String("task_id", t.ID),
+				slog.String("error", err.Error()))
+
+			continue
+		}
+
 		if t.IsRecurring {
-			if err := cs.updateNextRun(ctx, t); err != nil {
+			if err := cs.updateNextRun(ctx, fresh); err != nil {
 				cs.logger.Error("failed to update next run",
 					slog.String("task_id", t.ID),
 					slog.String("error", err.Error()))
 			}
 		} else {
-			t.Schedule = ""
-			t.NextRun = time.Time{}
-			if err := cs.tasksDB.Update(ctx, t); err != nil {
+			fresh.Schedule = ""
+			fresh.NextRun = time.Time{}
+			fresh.UpdatedAt = time.Now()
+			if err := cs.tasksDB.Update(ctx, fresh); err != nil {
 				cs.logger.Error("failed to clear schedule for one-time task",
 					slog.String("task_id", t.ID),
 					slog.String("error", err.Error()))

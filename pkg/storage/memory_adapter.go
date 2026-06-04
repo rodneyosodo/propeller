@@ -276,6 +276,13 @@ func (r *memoryPropletRepo) Get(ctx context.Context, id string) (proplet.Proplet
 		return proplet.Proplet{}, pkgerrors.ErrInvalidData
 	}
 
+	// Defensive copy of AliveHistory to avoid data race with concurrent appends
+	if len(p.AliveHistory) > 0 {
+		history := make([]time.Time, len(p.AliveHistory))
+		copy(history, p.AliveHistory)
+		p.AliveHistory = history
+	}
+
 	return p, nil
 }
 
@@ -312,8 +319,16 @@ func (r *memoryPropletRepo) ListByAlive(ctx context.Context, offset, limit uint6
 		if !ok {
 			continue
 		}
-		isAlive := len(p.AliveHistory) > 0 && !p.AliveHistory[len(p.AliveHistory)-1].Before(since)
+
+		// Defensive copy of AliveHistory to avoid data race with concurrent appends
+		history := p.AliveHistory
+		if len(history) > 0 {
+			history = make([]time.Time, len(history))
+			copy(history, p.AliveHistory)
+		}
+		isAlive := len(history) > 0 && !history[len(history)-1].Before(since)
 		if isAlive == alive {
+			p.AliveHistory = history
 			filtered = append(filtered, p)
 		}
 	}
