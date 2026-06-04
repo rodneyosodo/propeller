@@ -407,11 +407,8 @@ impl PropletService {
         // Handle reconnection - re-subscribe to topics
         if msg.is_reconnect {
             info!("Reconnection detected, re-subscribing to topics");
-            if let Err(e) = self.subscribe_topics().await {
-                error!("Failed to re-subscribe after reconnection: {}", e);
-            } else {
-                info!("Successfully re-subscribed to topics after reconnection");
-            }
+            self.subscribe_topics().await?;
+            info!("Successfully re-subscribed to topics after reconnection");
             return Ok(());
         }
 

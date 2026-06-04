@@ -302,7 +302,9 @@ func (svc *service) CreateWorkflow(ctx context.Context, tasks []task.Task) ([]ta
 		if err != nil {
 			for j := range createdTasks {
 				created := &createdTasks[j]
-				_ = svc.taskRepo.Delete(ctx, created.ID)
+				if err := svc.taskRepo.Delete(ctx, created.ID); err != nil {
+					svc.logger.ErrorContext(ctx, "failed to rollback task creation", "task_id", created.ID, "error", err)
+				}
 			}
 
 			return nil, fmt.Errorf("failed to create task %s: %w", t.ID, err)
@@ -364,10 +366,14 @@ func (svc *service) CreateJob(ctx context.Context, name string, tasks []task.Tas
 		if err != nil {
 			for j := range createdTasks {
 				created := createdTasks[j]
-				_ = svc.taskRepo.Delete(ctx, created.ID)
+				if err := svc.taskRepo.Delete(ctx, created.ID); err != nil {
+					svc.logger.ErrorContext(ctx, "failed to rollback task creation", "task_id", created.ID, "error", err)
+				}
 			}
 			if svc.jobRepo != nil {
-				_ = svc.jobRepo.Delete(ctx, jobID)
+				if err := svc.jobRepo.Delete(ctx, jobID); err != nil {
+					svc.logger.ErrorContext(ctx, "failed to rollback job creation", "job_id", jobID, "error", err)
+				}
 			}
 
 			return "", nil, fmt.Errorf("failed to create task %s: %w", t.ID, err)
@@ -736,15 +742,29 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 
 	if err := svc.publishStart(ctx, t, p.ID); err != nil {
 		_ = svc.taskPropletRepo.Delete(ctx, taskID)
+		t.State = task.Failed
+		t.Error = fmt.Sprintf("failed to publish start message: %v", err)
+		t.UpdatedAt = time.Now()
+		_ = svc.taskRepo.Update(ctx, t)
 
 		return err
 	}
 
 	if err := svc.bumpPropletTaskCount(ctx, p, +1); err != nil {
+		t.State = task.Failed
+		t.Error = fmt.Sprintf("failed to bump proplet task count: %v", err)
+		t.UpdatedAt = time.Now()
+		_ = svc.taskRepo.Update(ctx, t)
+
 		return err
 	}
 
 	if err := svc.markTaskRunning(ctx, &t); err != nil {
+		t.State = task.Failed
+		t.Error = fmt.Sprintf("failed to mark task running: %v", err)
+		t.UpdatedAt = time.Now()
+		_ = svc.taskRepo.Update(ctx, t)
+
 		return err
 	}
 
