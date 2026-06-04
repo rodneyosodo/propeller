@@ -1135,7 +1135,11 @@ mod tests {
         };
 
         let result = runtime.start_app(ctx, config).await;
-        assert!(result.is_ok(), "Custom export with wasi:http should succeed: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Custom export with wasi:http should succeed: {:?}",
+            result.err()
+        );
         let output = result.unwrap();
         assert!(!output.is_empty());
     }
