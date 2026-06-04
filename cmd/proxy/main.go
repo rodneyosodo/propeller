@@ -19,7 +19,6 @@ import (
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
 )
@@ -95,25 +94,11 @@ func main() {
 	defer stop()
 	g, ctx := errgroup.WithContext(sigCtx)
 
-	var tp trace.TracerProvider
-	switch cfg.OTELURL {
-	case url.URL{}:
-		tp = noop.NewTracerProvider()
-	default:
-		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
-		if err != nil {
-			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
-
-			return
-		}
-		defer func() {
-			if err := sdktp.Shutdown(ctx); err != nil {
-				logger.Error("error shutting down tracer provider", slog.Any("error", err))
-			}
-		}()
-		tp = sdktp
+	shutdown, err := initTracerProvider(ctx, cfg, logger)
+	if err != nil {
+		return
 	}
-	otel.SetTracerProvider(tp)
+	defer shutdown()
 
 	var mqttTLS *mqtt.TLSConfig
 	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
@@ -165,34 +150,7 @@ func main() {
 
 	slog.Info("successfully subscribed to topic")
 
-	g.Go(func() error {
-		mux := http.NewServeMux()
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprintf(w, `{"status":"ok","service":"proxy"}`)
-		})
-		srv := &http.Server{
-			Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
-			Handler:      mux,
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 5 * time.Second,
-			IdleTimeout:  30 * time.Second,
-		}
-		go func() {
-			<-ctx.Done()
-			shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			if err := srv.Shutdown(shutCtx); err != nil { //nolint:contextcheck
-				logger.Error("health server shutdown error", slog.Any("error", err))
-			}
-		}()
-		logger.Info("health server listening", slog.String("addr", fmt.Sprintf(":%d", cfg.HTTPPort)))
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-
-		return nil
-	})
+	g.Go(func() error { return serveHealth(ctx, cfg, logger) })
 
 	g.Go(func() error {
 		return service.StreamHTTP(ctx)
@@ -205,6 +163,58 @@ func main() {
 	if err := g.Wait(); err != nil {
 		logger.Error(fmt.Sprintf("%s service exited with error: %s", svcName, err))
 	}
+}
+
+func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (func(), error) {
+	switch cfg.OTELURL {
+	case url.URL{}:
+		otel.SetTracerProvider(noop.NewTracerProvider())
+
+		return func() {}, nil
+	default:
+		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		if err != nil {
+			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+
+			return nil, err
+		}
+		otel.SetTracerProvider(sdktp)
+
+		return func() {
+			if err := sdktp.Shutdown(ctx); err != nil {
+				logger.Error("error shutting down tracer provider", slog.Any("error", err))
+			}
+		}, nil
+	}
+}
+
+func serveHealth(ctx context.Context, cfg config, logger *slog.Logger) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","service":"proxy"}`)
+	})
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		IdleTimeout:  30 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := srv.Shutdown(shutCtx); err != nil { //nolint:contextcheck
+			logger.Error("health server shutdown error", slog.Any("error", err))
+		}
+	}()
+	logger.Info("health server listening", slog.String("addr", fmt.Sprintf(":%d", cfg.HTTPPort)))
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+
+	return nil
 }
 
 func handle(logger *slog.Logger, containerChan chan<- string) func(topic string, msg map[string]any) error {
