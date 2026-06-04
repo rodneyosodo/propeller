@@ -19,6 +19,7 @@ import (
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
@@ -113,7 +114,7 @@ func main() {
 		}()
 		tp = sdktp
 	}
-	_ = tp.Tracer(svcName)
+	otel.SetTracerProvider(tp)
 
 	var mqttTLS *mqtt.TLSConfig
 	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
