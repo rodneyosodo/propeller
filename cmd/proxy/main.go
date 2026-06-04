@@ -18,7 +18,6 @@ import (
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
@@ -168,10 +167,10 @@ func main() {
 
 	g.Go(func() error {
 		mux := http.NewServeMux()
-		mux.Handle("/health", otelhttp.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprintf(w, `{"status":"ok","service":"proxy"}`)
-		}), "health"))
+		})
 		srv := &http.Server{
 			Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
 			Handler:      mux,
