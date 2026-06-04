@@ -751,6 +751,7 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 	}
 
 	if err := svc.bumpPropletTaskCount(ctx, p, +1); err != nil {
+		_ = svc.taskPropletRepo.Delete(ctx, taskID)
 		t.State = task.Failed
 		t.Error = fmt.Sprintf("failed to bump proplet task count: %v", err)
 		t.UpdatedAt = time.Now()
@@ -760,6 +761,7 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 	}
 
 	if err := svc.markTaskRunning(ctx, &t); err != nil {
+		_ = svc.taskPropletRepo.Delete(ctx, taskID)
 		t.State = task.Failed
 		t.Error = fmt.Sprintf("failed to mark task running: %v", err)
 		t.UpdatedAt = time.Now()
