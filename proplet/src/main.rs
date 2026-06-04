@@ -31,10 +31,7 @@ use tracing::{info, warn, Level};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 
-fn init_tracer(
-    endpoint: &str,
-    ratio: f64,
-) -> Result<opentelemetry_sdk::trace::TracerProvider> {
+fn init_tracer(endpoint: &str, ratio: f64) -> Result<opentelemetry_sdk::trace::TracerProvider> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_endpoint(endpoint)
@@ -43,7 +40,10 @@ fn init_tracer(
     let provider = opentelemetry_sdk::trace::TracerProvider::builder()
         .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
         .with_sampler(opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(ratio))
-        .with_resource(Resource::new(vec![KeyValue::new("service.name", "proplet")]))
+        .with_resource(Resource::new(vec![KeyValue::new(
+            "service.name",
+            "proplet",
+        )]))
         .build();
 
     Ok(provider)
