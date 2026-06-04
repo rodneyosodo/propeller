@@ -34,14 +34,14 @@ use tracing_subscriber::util::SubscriberInitExt;
 fn init_tracer(
     endpoint: &str,
     ratio: f64,
-) -> Result<opentelemetry_sdk::trace::SdkTracerProvider> {
+) -> Result<opentelemetry_sdk::trace::TracerProvider> {
     let exporter = opentelemetry_otlp::SpanExporter::builder()
         .with_http()
         .with_endpoint(endpoint)
         .build()?;
 
-    let provider = opentelemetry_sdk::trace::SdkTracerProvider::builder()
-        .with_batch_exporter(exporter)
+    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
+        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
         .with_sampler(opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(ratio))
         .with_resource(Resource::new(vec![KeyValue::new("service.name", "proplet")]))
         .build();
