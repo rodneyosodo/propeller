@@ -55,13 +55,20 @@ impl PubSub {
                             .with_context(|| format!("Failed to read client key: {key_path}"))?;
                         Some((cert, key))
                     }
+                    (Some(_), None) | (None, Some(_)) => {
+                        warn!("mTLS requires both PROPLET_MQTT_TLS_CLIENT_CERT and PROPLET_MQTT_TLS_CLIENT_KEY — client auth disabled");
+                        None
+                    }
                     _ => None,
                 };
 
                 rumqttc::Transport::tls(ca, client_auth, None)
             } else {
+                if config.tls_client_cert.is_some() || config.tls_client_key.is_some() {
+                    warn!("PROPLET_MQTT_TLS_CLIENT_CERT/KEY are set but ignored — mTLS requires PROPLET_MQTT_TLS_CA_CERT");
+                }
                 if config.tls_insecure_skip_verify {
-                    warn!("TLS certificate verification is DISABLED (insecure mode)");
+                    warn!("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY is set but has no effect without PROPLET_MQTT_TLS_CA_CERT — system root CAs are still used for verification");
                 }
                 rumqttc::Transport::tls_with_default_config()
             };

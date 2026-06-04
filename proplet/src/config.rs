@@ -424,7 +424,7 @@ impl PropletConfig {
 
         if let Ok(val) = env::var("PROPLET_TRACE_RATIO") {
             if let Ok(ratio) = val.parse::<f64>() {
-                config.trace_ratio = ratio;
+                config.trace_ratio = ratio.clamp(0.0, 1.0);
             }
         }
 

@@ -9,6 +9,7 @@ use prometheus::{Encoder, Gauge, IntCounter, IntGauge, Opts, Registry, TextEncod
 use std::sync::Arc;
 use tokio::net::TcpListener;
 
+#[allow(clippy::new_without_default)]
 pub struct PropletMetrics {
     registry: Registry,
     pub tasks_started: IntCounter,
