@@ -169,6 +169,7 @@ func (cs *cronScheduler) processScheduledTasks(ctx context.Context) error {
 			cs.logger.Error("failed to re-fetch task for schedule update",
 				slog.String("task_id", t.ID),
 				slog.String("error", err.Error()))
+
 			continue
 		}
 
