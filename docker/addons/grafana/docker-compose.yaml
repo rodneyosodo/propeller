@@ -1,0 +1,63 @@
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+
+# Optional Prometheus + Grafana stack for Propeller metrics and traces.
+# Depends on the main stack (magistrala-base-net must already exist).
+# Run from the project root:
+#   docker compose -f docker/compose.yaml \
+#                  -f docker/compose.propeller.yaml \
+#                  -f docker/addons/grafana/docker-compose.yaml up
+
+networks:
+  magistrala-base-net:
+    name: magistrala-base-net
+    external: true
+
+volumes:
+  propeller-prometheus-volume:
+  propeller-grafana-volume:
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: propeller-prometheus
+    restart: on-failure
+    ports:
+      - ${MG_PROMETHEUS_PORT}:${MG_PROMETHEUS_PORT}
+    networks:
+      - magistrala-base-net
+    volumes:
+      - type: bind
+        source: ./prometheus/prometheus.yaml
+        target: /etc/prometheus/prometheus.yml
+      - propeller-prometheus-volume:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.listen-address=0.0.0.0:${MG_PROMETHEUS_PORT}"
+
+  grafana:
+    image: grafana/grafana:10.2.3
+    container_name: propeller-grafana
+    depends_on:
+      - prometheus
+    restart: on-failure
+    ports:
+      - ${MG_GRAFANA_PORT}:${MG_GRAFANA_PORT}
+    environment:
+      - GF_SECURITY_ADMIN_USER=${MG_GRAFANA_ADMIN_USER}
+      - GF_SECURITY_ADMIN_PASSWORD=${MG_GRAFANA_ADMIN_PASSWORD}
+      - GF_SERVER_HTTP_PORT=${MG_GRAFANA_PORT}
+    networks:
+      - magistrala-base-net
+    volumes:
+      - propeller-grafana-volume:/var/lib/grafana
+      - type: bind
+        source: ./grafana/datasource.yaml
+        target: /etc/grafana/provisioning/datasources/datasource.yaml
+      - type: bind
+        source: ./grafana/dashboard.yaml
+        target: /etc/grafana/provisioning/dashboards/dashboard.yaml
+      - type: bind
+        source: ./grafana/dashboards
+        target: /var/lib/grafana/dashboards
