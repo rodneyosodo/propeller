@@ -113,8 +113,10 @@ pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>) {
                         .keep_alive(true)
                         .timer(TokioTimer::new())
                         .serve_connection(io, svc);
-                    if let Err(e) = tokio::time::timeout(Duration::from_secs(120), conn).await {
-                        tracing::warn!("Telemetry connection timed out: {e}");
+                    match tokio::time::timeout(Duration::from_secs(120), conn).await {
+                        Ok(Err(e)) => tracing::warn!("Telemetry connection error: {e}"),
+                        Err(_elapsed) => tracing::debug!("Telemetry connection idle timeout"),
+                        Ok(Ok(())) => {}
                     }
                 });
             }
