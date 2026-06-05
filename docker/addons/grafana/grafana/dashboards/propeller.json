@@ -22,10 +22,12 @@
       "icon": "external link",
       "tags": [],
       "targetBlank": true,
-      "title": "Jaeger Traces",
-      "tooltip": "Open Jaeger UI",
-      "type": "link",
-      "url": "http://localhost:16686"
+      "title": "Explore Traces",
+      "tooltip": "Open Jaeger traces in Grafana Explore",
+      "type": "dashboards",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": true
     }
   ],
   "liveNow": false,

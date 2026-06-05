@@ -7,6 +7,7 @@ use hyper::{Request, Response};
 use hyper_util::rt::{TokioIo, TokioTimer};
 use prometheus::{Encoder, Gauge, IntCounter, IntGauge, Opts, Registry, TextEncoder};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 
 #[allow(clippy::new_without_default)]
@@ -108,13 +109,12 @@ pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>) {
                         let metrics = metrics.clone();
                         async move { handle(req, metrics).await }
                     });
-                    if let Err(e) = http1::Builder::new()
+                    let conn = http1::Builder::new()
                         .keep_alive(true)
                         .timer(TokioTimer::new())
-                        .serve_connection(io, svc)
-                        .await
-                    {
-                        tracing::warn!("Telemetry connection error: {e}");
+                        .serve_connection(io, svc);
+                    if let Err(e) = tokio::time::timeout(Duration::from_secs(120), conn).await {
+                        tracing::warn!("Telemetry connection timed out: {e}");
                     }
                 });
             }
