@@ -144,6 +144,8 @@ impl MqttMessage {
 pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<MqttMessage>) {
     info!("Starting MQTT event loop");
 
+    let mut backoff_secs: u64 = 1;
+
     loop {
         match eventloop.poll().await {
             Ok(Event::Incoming(Packet::Publish(publish))) => {
@@ -158,6 +160,7 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
                 }
             }
             Ok(Event::Incoming(Packet::ConnAck(connack))) => {
+                backoff_secs = 1;
                 debug!("Received MQTT packet: ConnAck({:?})", connack);
                 // If session_present is false, subscriptions are lost and need to be re-established
                 if !connack.session_present {
@@ -177,8 +180,12 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
             }
             Ok(Event::Outgoing(_)) => {}
             Err(e) => {
-                warn!("MQTT connection error: {}", e);
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                warn!(
+                    "MQTT connection error, retrying in {}s: {}",
+                    backoff_secs, e
+                );
+                tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+                backoff_secs = (backoff_secs * 2).min(60);
             }
         }
     }

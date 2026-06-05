@@ -426,6 +426,7 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
                                strlen(CONFIG_MQTT_TLS_CA_CERT));
       if (ret < 0) {
         LOG_ERR("Failed to register CA certificate [%d]", ret);
+        return ret;
       }
     }
 
