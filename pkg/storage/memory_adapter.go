@@ -321,11 +321,9 @@ func (r *memoryPropletRepo) ListByAlive(ctx context.Context, offset, limit uint6
 		}
 
 		// Defensive copy of AliveHistory to avoid data race with concurrent appends
-		history := p.AliveHistory
-		if len(history) > 0 {
-			history = make([]time.Time, len(history))
-			copy(history, p.AliveHistory)
-		}
+		snapshot := p.AliveHistory
+		history := make([]time.Time, len(snapshot))
+		copy(history, snapshot)
 		isAlive := len(history) > 0 && !history[len(history)-1].Before(since)
 		if isAlive == alive {
 			p.AliveHistory = history

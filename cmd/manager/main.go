@@ -111,7 +111,9 @@ func main() {
 			return
 		}
 		defer func() {
-			if err := sdktp.Shutdown(ctx); err != nil {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+			defer cancel()
+			if err := sdktp.Shutdown(shutdownCtx); err != nil {
 				logger.Error("error shutting down tracer provider", slog.Any("error", err))
 			}
 		}()

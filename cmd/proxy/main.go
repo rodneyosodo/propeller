@@ -98,7 +98,11 @@ func main() {
 	if err != nil {
 		return
 	}
-	defer shutdown()
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		shutdown(shutdownCtx)
+	}()
 
 	var mqttTLS *mqtt.TLSConfig
 	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
@@ -165,12 +169,12 @@ func main() {
 	}
 }
 
-func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (func(), error) {
+func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (func(context.Context), error) {
 	switch cfg.OTELURL {
 	case url.URL{}:
 		otel.SetTracerProvider(noop.NewTracerProvider())
 
-		return func() {}, nil
+		return func(context.Context) {}, nil
 	default:
 		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
 		if err != nil {
@@ -180,7 +184,7 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (f
 		}
 		otel.SetTracerProvider(sdktp)
 
-		return func() {
+		return func(ctx context.Context) {
 			if err := sdktp.Shutdown(ctx); err != nil {
 				logger.Error("error shutting down tracer provider", slog.Any("error", err))
 			}
