@@ -109,7 +109,7 @@ pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>) {
                         async move { handle(req, metrics).await }
                     });
                     if let Err(e) = http1::Builder::new()
-                        .keep_alive(false)
+                        .keep_alive(true)
                         .timer(TokioTimer::new())
                         .serve_connection(io, svc)
                         .await
