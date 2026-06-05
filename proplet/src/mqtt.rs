@@ -160,7 +160,6 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
                 }
             }
             Ok(Event::Incoming(Packet::ConnAck(connack))) => {
-                backoff_secs = 1;
                 debug!("Received MQTT packet: ConnAck({:?})", connack);
                 // If session_present is false, subscriptions are lost and need to be re-established
                 if !connack.session_present {
@@ -172,8 +171,11 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
                     };
                     if let Err(e) = tx.send(reconnect_msg).await {
                         error!("Failed to send reconnect notification: {}", e);
+                        // Do not reset backoff — re-subscription failed, keep pressure off broker
+                        continue;
                     }
                 }
+                backoff_secs = 1;
             }
             Ok(Event::Incoming(packet)) => {
                 debug!("Received MQTT packet: {:?}", packet);

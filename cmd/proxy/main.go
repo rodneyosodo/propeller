@@ -121,7 +121,9 @@ func main() {
 		return
 	}
 	defer func() {
-		if err := mqttPubSub.Disconnect(ctx); err != nil {
+		disconnectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := mqttPubSub.Disconnect(disconnectCtx); err != nil {
 			slog.Error("failed to disconnect MQTT client", "error", err)
 		}
 	}()
