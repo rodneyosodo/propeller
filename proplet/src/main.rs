@@ -26,7 +26,7 @@ use opentelemetry::KeyValue;
 use opentelemetry_otlp::WithExportConfig;
 use opentelemetry_sdk::Resource;
 use std::sync::Arc;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{info, warn, Level};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -153,13 +153,17 @@ async fn main() -> Result<()> {
             .map_err(|e| anyhow::anyhow!("Failed to initialize metrics: {e}"))?,
     );
 
-    if config.metrics_enabled {
+    let telemetry_shutdown = if config.metrics_enabled {
         let metrics_clone = proplet_metrics.clone();
         let metrics_port = config.metrics_port;
+        let (tx, rx) = oneshot::channel::<()>();
         tokio::spawn(async move {
-            telemetry::serve_telemetry(metrics_port, metrics_clone).await;
+            telemetry::serve_telemetry(metrics_port, metrics_clone, rx).await;
         });
-    }
+        Some(tx)
+    } else {
+        None
+    };
 
     let service = if config.tee_enabled {
         match TeeWasmRuntime::new(&config).await {
@@ -213,6 +217,10 @@ async fn main() -> Result<()> {
         }
         _ = shutdown_handle => {
         }
+    }
+
+    if let Some(tx) = telemetry_shutdown {
+        let _ = tx.send(());
     }
 
     opentelemetry::global::shutdown_tracer_provider();

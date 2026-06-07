@@ -9,6 +9,7 @@ use prometheus::{Encoder, Gauge, IntCounter, IntGauge, Opts, Registry, TextEncod
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::oneshot;
 
 #[allow(clippy::new_without_default)]
 pub struct PropletMetrics {
@@ -89,7 +90,7 @@ impl PropletMetrics {
     }
 }
 
-pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>) {
+pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>, mut shutdown: oneshot::Receiver<()>) {
     let listener = match TcpListener::bind(format!("0.0.0.0:{port}")).await {
         Ok(l) => l,
         Err(e) => {
@@ -100,27 +101,35 @@ pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>) {
     tracing::info!("Telemetry server listening on 0.0.0.0:{port}");
 
     loop {
-        match listener.accept().await {
-            Ok((stream, _)) => {
-                let metrics = metrics.clone();
-                tokio::spawn(async move {
-                    let io = TokioIo::new(stream);
-                    let svc = service_fn(move |req: Request<Incoming>| {
-                        let metrics = metrics.clone();
-                        async move { handle(req, metrics).await }
-                    });
-                    let conn = http1::Builder::new()
-                        .keep_alive(true)
-                        .timer(TokioTimer::new())
-                        .serve_connection(io, svc);
-                    match tokio::time::timeout(Duration::from_secs(120), conn).await {
-                        Ok(Err(e)) => tracing::warn!("Telemetry connection error: {e}"),
-                        Err(_elapsed) => tracing::debug!("Telemetry connection idle timeout"),
-                        Ok(Ok(())) => {}
-                    }
-                });
+        tokio::select! {
+            _ = &mut shutdown => {
+                tracing::info!("Telemetry server shutting down");
+                return;
             }
-            Err(e) => tracing::warn!("Telemetry accept error: {e}"),
+            accept = listener.accept() => {
+                match accept {
+                    Ok((stream, _)) => {
+                        let metrics = metrics.clone();
+                        tokio::spawn(async move {
+                            let io = TokioIo::new(stream);
+                            let svc = service_fn(move |req: Request<Incoming>| {
+                                let metrics = metrics.clone();
+                                async move { handle(req, metrics).await }
+                            });
+                            let conn = http1::Builder::new()
+                                .keep_alive(true)
+                                .timer(TokioTimer::new())
+                                .serve_connection(io, svc);
+                            match tokio::time::timeout(Duration::from_secs(120), conn).await {
+                                Ok(Err(e)) => tracing::warn!("Telemetry connection error: {e}"),
+                                Err(_elapsed) => tracing::debug!("Telemetry connection idle timeout"),
+                                Ok(Ok(())) => {}
+                            }
+                        });
+                    }
+                    Err(e) => tracing::warn!("Telemetry accept error: {e}"),
+                }
+            }
         }
     }
 }
@@ -157,5 +166,49 @@ async fn handle(
             .status(404)
             .body(Full::new(Bytes::from("not found")))
             .unwrap()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_metrics_new_all_zero() {
+        let m = PropletMetrics::new().unwrap();
+        assert_eq!(m.tasks_started.get(), 0);
+        assert_eq!(m.tasks_completed.get(), 0);
+        assert_eq!(m.tasks_failed.get(), 0);
+        assert_eq!(m.tasks_running.get(), 0);
+        assert_eq!(m.mqtt_reconnects.get(), 0);
+        assert_eq!(m.wasm_fetch_bytes.get(), 0);
+    }
+
+    #[test]
+    fn test_metrics_counters_increment() {
+        let m = PropletMetrics::new().unwrap();
+        m.tasks_started.inc();
+        m.tasks_failed.inc();
+        m.tasks_running.inc();
+        assert_eq!(m.tasks_started.get(), 1);
+        assert_eq!(m.tasks_failed.get(), 1);
+        assert_eq!(m.tasks_running.get(), 1);
+        m.tasks_running.dec();
+        assert_eq!(m.tasks_running.get(), 0);
+    }
+
+    #[test]
+    fn test_metrics_registry_gathers_all_metrics() {
+        let m = PropletMetrics::new().unwrap();
+        m.tasks_started.inc();
+        m.tasks_completed.inc();
+        let gathered = m.registry.gather();
+        let names: Vec<&str> = gathered.iter().map(|mf| mf.get_name()).collect();
+        assert!(names.contains(&"proplet_tasks_started_total"));
+        assert!(names.contains(&"proplet_tasks_completed_total"));
+        assert!(names.contains(&"proplet_tasks_running"));
+        assert!(names.contains(&"proplet_mqtt_reconnects_total"));
+        assert!(names.contains(&"proplet_cpu_usage_ratio"));
+        assert!(names.contains(&"proplet_memory_rss_bytes"));
     }
 }
