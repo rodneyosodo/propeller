@@ -161,6 +161,7 @@ func main() {
 		if err := serveHealth(ctx, cfg, logger); err != nil {
 			logger.Error("health server exited", slog.Any("error", err))
 		}
+
 		return nil
 	})
 
