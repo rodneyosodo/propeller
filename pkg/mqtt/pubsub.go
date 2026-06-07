@@ -231,6 +231,11 @@ func newClient(address, id, username, password, domainID, channelID string, time
 		opts.SetTLSConfig(tlsConfig)
 
 		if logger != nil {
+			if tlsCfg.InsecureSkipVerify {
+				logger.Warn("TLS certificate verification disabled — do not use in production",
+					slog.Bool("insecure_skip_verify", true),
+				)
+			}
 			logger.Info("TLS configured for MQTT connection",
 				slog.Bool("insecure_skip_verify", tlsCfg.InsecureSkipVerify),
 				slog.Bool("custom_ca", tlsCfg.CAPath != ""),
