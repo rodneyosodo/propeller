@@ -90,7 +90,11 @@ impl PropletMetrics {
     }
 }
 
-pub async fn serve_telemetry(port: u16, metrics: Arc<PropletMetrics>, mut shutdown: oneshot::Receiver<()>) {
+pub async fn serve_telemetry(
+    port: u16,
+    metrics: Arc<PropletMetrics>,
+    mut shutdown: oneshot::Receiver<()>,
+) {
     let listener = match TcpListener::bind(format!("0.0.0.0:{port}")).await {
         Ok(l) => l,
         Err(e) => {
