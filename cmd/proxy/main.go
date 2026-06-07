@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	svcName    = "proxy"
-	configPath = "config.toml"
+	svcName         = "proxy"
+	configPath      = "config.toml"
+	shutdownTimeout = 5 * time.Second
 )
 
 type config struct {
@@ -99,7 +100,7 @@ func main() {
 		return
 	}
 	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		shutdown(shutdownCtx)
 	}()
@@ -121,7 +122,7 @@ func main() {
 		return
 	}
 	defer func() {
-		disconnectCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		disconnectCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := mqttPubSub.Disconnect(disconnectCtx); err != nil {
 			slog.Error("failed to disconnect MQTT client", "error", err)
@@ -156,7 +157,12 @@ func main() {
 
 	slog.Info("successfully subscribed to topic")
 
-	g.Go(func() error { return serveHealth(ctx, cfg, logger) })
+	g.Go(func() error {
+		if err := serveHealth(ctx, cfg, logger); err != nil {
+			logger.Error("health server exited", slog.Any("error", err))
+		}
+		return nil
+	})
 
 	g.Go(func() error {
 		return service.StreamHTTP(ctx)
@@ -209,7 +215,7 @@ func serveHealth(ctx context.Context, cfg config, logger *slog.Logger) error {
 	}
 	go func() {
 		<-ctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		shutCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 		defer cancel()
 		if err := srv.Shutdown(shutCtx); err != nil { //nolint:contextcheck
 			logger.Error("health server shutdown error", slog.Any("error", err))
