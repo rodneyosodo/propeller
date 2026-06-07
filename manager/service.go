@@ -752,6 +752,9 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 
 	if err := svc.bumpPropletTaskCount(ctx, p, +1); err != nil {
 		_ = svc.taskPropletRepo.Delete(ctx, taskID)
+		if stopErr := svc.publishStop(ctx, t, p.ID); stopErr != nil {
+			svc.logger.ErrorContext(ctx, "failed to send stop after bump failure", "task_id", taskID, "error", stopErr)
+		}
 		t.State = task.Failed
 		t.Error = fmt.Sprintf("failed to bump proplet task count: %v", err)
 		t.UpdatedAt = time.Now()
@@ -762,6 +765,10 @@ func (svc *service) StartTask(ctx context.Context, taskID string) error {
 
 	if err := svc.markTaskRunning(ctx, &t); err != nil {
 		_ = svc.taskPropletRepo.Delete(ctx, taskID)
+		_ = svc.bumpPropletTaskCount(ctx, p, -1)
+		if stopErr := svc.publishStop(ctx, t, p.ID); stopErr != nil {
+			svc.logger.ErrorContext(ctx, "failed to send stop after markRunning failure", "task_id", taskID, "error", stopErr)
+		}
 		t.State = task.Failed
 		t.Error = fmt.Sprintf("failed to mark task running: %v", err)
 		t.UpdatedAt = time.Now()
@@ -1884,6 +1891,17 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 	topic := svc.baseTopic + "/control/manager/start"
 
 	return svc.pubsub.Publish(ctx, topic, payload)
+}
+
+func (svc *service) publishStop(ctx context.Context, t task.Task, propletID string) error {
+	stopPayload := map[string]any{
+		"id":         t.ID,
+		"broadcast":  t.Broadcast,
+		"proplet_id": propletID,
+	}
+	topic := svc.baseTopic + "/control/manager/stop"
+
+	return svc.pubsub.Publish(ctx, topic, stopPayload)
 }
 
 func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (plugin.PropletSelectResponse, error) {
