@@ -7,7 +7,7 @@ datasources:
   - name: Prometheus
     type: prometheus
     uid: propeller-prometheus
-    url: http://propeller-prometheus:${MG_PROMETHEUS_PORT}
+    url: http://propeller-prometheus:9090
     isDefault: true
     access: proxy
     editable: true
