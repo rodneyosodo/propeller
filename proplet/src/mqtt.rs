@@ -62,13 +62,19 @@ impl PubSub {
                     _ => None,
                 };
 
+                // Note: PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY is not supported by the
+                // rumqttc::Transport::tls() API and has no effect when a CA cert is provided.
+                // Use the Go manager/proxy if insecure TLS is required.
+                if config.tls_insecure_skip_verify {
+                    warn!("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY has no effect when PROPLET_MQTT_TLS_CA_CERT is set — certificate verification is always enforced");
+                }
                 rumqttc::Transport::tls(ca, client_auth, None)
             } else {
                 if config.tls_client_cert.is_some() || config.tls_client_key.is_some() {
                     warn!("PROPLET_MQTT_TLS_CLIENT_CERT/KEY are set but ignored — mTLS requires PROPLET_MQTT_TLS_CA_CERT");
                 }
                 if config.tls_insecure_skip_verify {
-                    warn!("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY is set but has no effect without PROPLET_MQTT_TLS_CA_CERT — system root CAs are still used for verification");
+                    warn!("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY is not supported by the Rust proplet — certificate verification uses system root CAs");
                 }
                 rumqttc::Transport::tls_with_default_config()
             };
