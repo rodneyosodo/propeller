@@ -208,7 +208,6 @@ async fn main() -> Result<()> {
         }
 
         info!("Graceful shutdown complete");
-        std::process::exit(0);
     });
 
     tokio::select! {
