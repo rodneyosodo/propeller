@@ -22,7 +22,8 @@ jobs:
           # riscv64 disabled for manager and proxy until wasmtime-go adds
           # riscv64 support: https://github.com/bytecodealliance/wasmtime-go/pull/285
           - { svc: manager, platforms: "linux/amd64,linux/arm64" }
-          - { svc: cli,     platforms: "linux/amd64,linux/arm64,linux/riscv64" }
+          # cli: riscv64 also disabled — gcr.io/distroless/static-debian12 has no riscv64 image
+          - { svc: cli,     platforms: "linux/amd64,linux/arm64" }
           - { svc: proxy,   platforms: "linux/amd64,linux/arm64" }
 
     permissions:
