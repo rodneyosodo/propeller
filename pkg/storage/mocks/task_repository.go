@@ -376,7 +376,6 @@ func (_c *MockTaskRepository_ListByJobID_Call) RunAndReturn(run func(ctx context
 	return _c
 }
 
-
 // ListByWorkflowID provides a mock function for the type MockTaskRepository
 func (_mock *MockTaskRepository) ListByWorkflowID(ctx context.Context, workflowID string) ([]task.Task, error) {
 	ret := _mock.Called(ctx, workflowID)
