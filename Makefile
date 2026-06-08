@@ -133,7 +133,7 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner docker_proplet_wasinn push_proplet_wasinn mocks start-magistrala stop-magistrala start-propeller stop-propeller start-all stop-all
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner docker_proplet_wasinn push_proplet_wasinn mocks start-magistrala stop-magistrala start-propeller stop-propeller start-otel stop-otel start-all stop-all
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat http-client http-server filesystem hal-test attestation-test hal-runner
 
 clean:
@@ -167,6 +167,12 @@ start-propeller:
 
 stop-propeller:
 	docker compose -f docker/compose.propeller.yaml --env-file docker/.env down
+
+start-otel:
+	docker compose -f docker/addons/grafana/docker-compose.yaml --env-file docker/.env up -d
+
+stop-otel:
+	docker compose -f docker/addons/grafana/docker-compose.yaml --env-file docker/.env down
 
 start-all:
 	docker compose -f docker/compose.yaml --env-file docker/.env up -d
@@ -249,6 +255,8 @@ help:
 	@echo "  stop-magistrala:       stop Magistrala services only"
 	@echo "  start-propeller:       start Propeller services only (requires provisioned config.toml)"
 	@echo "  stop-propeller:        stop Propeller services only"
+	@echo "  start-otel:            start Prometheus and Grafana observability stack"
+	@echo "  stop-otel:             stop Prometheus and Grafana observability stack"
 	@echo "  start-all:             start Magistrala and Propeller services (requires provisioned config.toml)"
 	@echo "  stop-all:              stop Magistrala and Propeller services"
 	@echo "  mocks:                 generate mockery mocks for all interfaces"
