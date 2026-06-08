@@ -9,6 +9,7 @@ mod runtime;
 mod service;
 mod task_handler;
 mod tee_detection;
+mod telemetry;
 mod types;
 
 use crate::config::PropletConfig;
@@ -20,10 +21,33 @@ use crate::runtime::wasmtime_runtime::WasmtimeRuntime;
 use crate::runtime::Runtime;
 use crate::service::PropletService;
 use anyhow::Result;
+use opentelemetry::trace::TracerProvider as _;
+use opentelemetry::KeyValue;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::Resource;
 use std::sync::Arc;
-use tokio::sync::mpsc;
-use tracing::{debug, info, warn, Level};
-use tracing_subscriber::FmtSubscriber;
+use tokio::sync::{mpsc, oneshot};
+use tracing::{info, warn, Level};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
+
+fn init_tracer(endpoint: &str, ratio: f64) -> Result<opentelemetry_sdk::trace::TracerProvider> {
+    let exporter = opentelemetry_otlp::SpanExporter::builder()
+        .with_http()
+        .with_endpoint(endpoint)
+        .build()?;
+
+    let provider = opentelemetry_sdk::trace::TracerProvider::builder()
+        .with_batch_exporter(exporter, opentelemetry_sdk::runtime::Tokio)
+        .with_sampler(opentelemetry_sdk::trace::Sampler::TraceIdRatioBased(ratio))
+        .with_resource(Resource::new(vec![KeyValue::new(
+            "service.name",
+            "proplet",
+        )]))
+        .build();
+
+    Ok(provider)
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -40,17 +64,29 @@ async fn main() -> Result<()> {
         _ => Level::INFO,
     };
 
-    let subscriber = FmtSubscriber::builder()
-        .with_max_level(log_level)
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .json()
         .with_target(false)
         .with_thread_ids(false)
         .with_file(false)
-        .with_line_number(false)
-        .finish();
+        .with_line_number(false);
 
-    tracing::subscriber::set_global_default(subscriber)?;
+    let otel_layer = if let Some(url) = &config.otel_url {
+        let provider = init_tracer(url, config.trace_ratio)
+            .map_err(|e| anyhow::anyhow!("Failed to initialize OTLP tracer: {e}"))?;
+        let tracer = provider.tracer("proplet");
+        opentelemetry::global::set_tracer_provider(provider);
+        Some(tracing_opentelemetry::layer().with_tracer(tracer))
+    } else {
+        None
+    };
 
-    debug!("Proplet configuration: {:?}", config);
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::from(log_level))
+        .with(fmt_layer)
+        .with(otel_layer)
+        .try_init()
+        .map_err(|e| anyhow::anyhow!("Failed to set tracing subscriber: {e}"))?;
 
     info!("Starting Proplet (Rust) - Client ID: {}", config.client_id);
 
@@ -112,6 +148,23 @@ async fn main() -> Result<()> {
         None
     };
 
+    let proplet_metrics = Arc::new(
+        telemetry::PropletMetrics::new()
+            .map_err(|e| anyhow::anyhow!("Failed to initialize metrics: {e}"))?,
+    );
+
+    let telemetry_shutdown = if config.metrics_enabled {
+        let metrics_clone = proplet_metrics.clone();
+        let metrics_port = config.metrics_port;
+        let (tx, rx) = oneshot::channel::<()>();
+        tokio::spawn(async move {
+            telemetry::serve_telemetry(metrics_port, metrics_clone, rx).await;
+        });
+        Some(tx)
+    } else {
+        None
+    };
+
     let service = if config.tee_enabled {
         match TeeWasmRuntime::new(&config).await {
             Ok(tee_runtime) => {
@@ -122,6 +175,7 @@ async fn main() -> Result<()> {
                     runtime,
                     Arc::new(tee_runtime),
                     plugin_registry,
+                    proplet_metrics,
                 ))
             }
             Err(e) => {
@@ -138,6 +192,7 @@ async fn main() -> Result<()> {
             pubsub,
             runtime,
             plugin_registry,
+            proplet_metrics,
         ))
     };
 
@@ -153,7 +208,6 @@ async fn main() -> Result<()> {
         }
 
         info!("Graceful shutdown complete");
-        std::process::exit(0);
     });
 
     tokio::select! {
@@ -163,6 +217,12 @@ async fn main() -> Result<()> {
         _ = shutdown_handle => {
         }
     }
+
+    if let Some(tx) = telemetry_shutdown {
+        let _ = tx.send(());
+    }
+
+    opentelemetry::global::shutdown_tracer_provider();
 
     Ok(())
 }

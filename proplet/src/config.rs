@@ -57,6 +57,10 @@ pub struct PropletConfig {
     pub location: Option<String>,
     pub collect_system_info: bool,
     pub plugin_dir: Option<String>,
+    pub metrics_port: u16,
+    pub metrics_enabled: bool,
+    pub otel_url: Option<String>,
+    pub trace_ratio: f64,
 }
 
 impl Default for PropletConfig {
@@ -98,6 +102,10 @@ impl Default for PropletConfig {
             location: None,
             collect_system_info: true,
             plugin_dir: None,
+            metrics_port: 9092,
+            metrics_enabled: true,
+            otel_url: None,
+            trace_ratio: 0.0,
         }
     }
 }
@@ -391,6 +399,32 @@ impl PropletConfig {
         if let Ok(val) = env::var("PROPLET_PLUGIN_DIR") {
             if !val.is_empty() {
                 config.plugin_dir = Some(val);
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_METRICS_PORT") {
+            match val.parse::<u16>() {
+                Ok(0) | Err(_) => eprintln!(
+                    "warn: invalid PROPLET_METRICS_PORT '{}', using default {}",
+                    val, config.metrics_port
+                ),
+                Ok(port) => config.metrics_port = port,
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_METRICS_ENABLED") {
+            config.metrics_enabled = val.to_lowercase() == "true" || val == "1";
+        }
+
+        if let Ok(val) = env::var("PROPLET_OTEL_URL") {
+            if !val.is_empty() {
+                config.otel_url = Some(val);
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_TRACE_RATIO") {
+            if let Ok(ratio) = val.parse::<f64>() {
+                config.trace_ratio = ratio.clamp(0.0, 1.0);
             }
         }
 

@@ -426,18 +426,23 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
                                strlen(CONFIG_MQTT_TLS_CA_CERT));
       if (ret < 0) {
         LOG_ERR("Failed to register CA certificate [%d]", ret);
+        return ret;
       }
     }
 
     /* Register client certificate and key for mTLS if provided */
+    bool client_cert_registered = false;
+    bool client_key_registered  = false;
+
     if (creds != NULL && strlen(creds->tls_client_cert) > 0) {
       ret = tls_credential_add(TLS_CREDENTIAL_TAG + 1,
-                               TLS_CREDENTIAL_SERVER_CERT,
+                               TLS_CREDENTIAL_OWN_CERT,
                                creds->tls_client_cert,
                                strlen(creds->tls_client_cert));
       if (ret < 0) {
         LOG_ERR("Failed to register client certificate [%d]", ret);
       } else {
+        client_cert_registered = true;
         LOG_INF("Client certificate registered for mTLS");
       }
     }
@@ -450,6 +455,7 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
       if (ret < 0) {
         LOG_ERR("Failed to register client private key [%d]", ret);
       } else {
+        client_key_registered = true;
         LOG_INF("Client private key registered for mTLS");
       }
     }
@@ -461,14 +467,20 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
       return -errno;
     }
 
-    /* Set TLS security tag list — include client cert/key tags for mTLS */
-    sec_tag_t sec_tag_opt[] = {
-      TLS_CREDENTIAL_TAG,
-      TLS_CREDENTIAL_TAG + 1,
-      TLS_CREDENTIAL_TAG + 2,
-    };
+    /* Build security tag list from only the credentials that were registered */
+    sec_tag_t sec_tag_opt[3];
+    int sec_tag_count = 0;
+    if (strlen(CONFIG_MQTT_TLS_CA_CERT) > 0) {
+      sec_tag_opt[sec_tag_count++] = TLS_CREDENTIAL_TAG;
+    }
+    if (client_cert_registered) {
+      sec_tag_opt[sec_tag_count++] = TLS_CREDENTIAL_TAG + 1;
+    }
+    if (client_key_registered) {
+      sec_tag_opt[sec_tag_count++] = TLS_CREDENTIAL_TAG + 2;
+    }
     ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_SEC_TAG_LIST,
-                           sec_tag_opt, sizeof(sec_tag_opt));
+                           sec_tag_opt, sec_tag_count * sizeof(sec_tag_t));
     if (ret < 0) {
       LOG_ERR("Failed to set TLS security tag list [%d]", errno);
       zsock_close(tls_sock);

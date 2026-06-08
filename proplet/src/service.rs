@@ -5,6 +5,7 @@ use crate::mqtt::{build_topic, MqttMessage, PubSub};
 use crate::plugin::registry::PluginRegistry;
 use crate::plugin::{TaskInfo as PluginTaskInfo, TaskResult as PluginTaskResult};
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
+use crate::telemetry::PropletMetrics;
 use crate::types::*;
 use anyhow::{Context, Result};
 use reqwest::Client as HttpClient;
@@ -63,6 +64,7 @@ pub struct PropletService {
     metrics_collector: Arc<Mutex<MetricsCollector>>,
     http_client: HttpClient,
     plugin_registry: Option<Arc<PluginRegistry>>,
+    metrics: Arc<PropletMetrics>,
 }
 
 impl PropletService {
@@ -71,6 +73,7 @@ impl PropletService {
         pubsub: PubSub,
         runtime: Arc<dyn Runtime>,
         plugin_registry: Option<Arc<PluginRegistry>>,
+        metrics: Arc<PropletMetrics>,
     ) -> Self {
         let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
@@ -95,6 +98,7 @@ impl PropletService {
             metrics_collector,
             http_client,
             plugin_registry,
+            metrics,
         };
 
         service.start_chunk_expiry_task();
@@ -108,6 +112,7 @@ impl PropletService {
         runtime: Arc<dyn Runtime>,
         tee_runtime: Arc<dyn Runtime>,
         plugin_registry: Option<Arc<PluginRegistry>>,
+        metrics: Arc<PropletMetrics>,
     ) -> Self {
         let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
@@ -132,6 +137,7 @@ impl PropletService {
             metrics_collector,
             http_client,
             plugin_registry,
+            metrics,
         };
 
         service.start_chunk_expiry_task();
@@ -370,6 +376,11 @@ impl PropletService {
             collector.collect()
         };
 
+        self.metrics.cpu_usage.set(cpu_metrics.percent / 100.0);
+        self.metrics
+            .memory_rss_bytes
+            .set(memory_metrics.rss_bytes as f64);
+
         #[derive(serde::Serialize)]
         struct PropletMetricsMessage {
             proplet_id: String,
@@ -407,8 +418,12 @@ impl PropletService {
         // Handle reconnection - re-subscribe to topics
         if msg.is_reconnect {
             info!("Reconnection detected, re-subscribing to topics");
-            self.subscribe_topics().await?;
-            info!("Successfully re-subscribed to topics after reconnection");
+            self.metrics.mqtt_reconnects.inc();
+            if let Err(e) = self.subscribe_topics().await {
+                error!("Failed to re-subscribe after reconnection: {}", e);
+            } else {
+                info!("Successfully re-subscribed to topics after reconnection");
+            }
             return Ok(());
         }
 
@@ -432,10 +447,11 @@ impl PropletService {
 
     async fn handle_start_command(&self, msg: MqttMessage) -> Result<()> {
         let req: StartRequest = msg.decode().map_err(|e| {
-            error!("Failed to decode start request: {}", e);
-            if let Ok(payload_str) = String::from_utf8(msg.payload.clone()) {
-                error!("Payload was: {}", payload_str);
-            }
+            error!(
+                "Failed to decode start request ({} bytes): {}",
+                msg.payload.len(),
+                e
+            );
             e
         })?;
         req.validate()?;
@@ -502,6 +518,8 @@ impl PropletService {
             use std::collections::hash_map::Entry;
             if let Entry::Vacant(e) = tasks.entry(req.id.clone()) {
                 e.insert(TaskState::Running);
+                self.metrics.tasks_started.inc();
+                self.metrics.tasks_running.inc();
             } else {
                 warn!(
                     "Task {} is already running, ignoring duplicate start command",
@@ -516,11 +534,14 @@ impl PropletService {
             match STANDARD.decode(&req.file) {
                 Ok(decoded) => {
                     info!("Decoded wasm binary, size: {} bytes", decoded.len());
+                    self.metrics.wasm_fetch_bytes.inc_by(decoded.len() as u64);
                     decoded
                 }
                 Err(e) => {
                     error!("Failed to decode base64 file for task {}: {}", req.id, e);
                     self.running_tasks.lock().await.remove(&req.id);
+                    self.metrics.tasks_failed.inc();
+                    self.metrics.tasks_running.dec();
                     self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
                         .await?;
                     return Err(e.into());
@@ -533,10 +554,15 @@ impl PropletService {
             } else if req.image_url.starts_with("http://") || req.image_url.starts_with("https://")
             {
                 match self.fetch_wasm_from_http(&req.image_url).await {
-                    Ok(binary) => binary,
+                    Ok(binary) => {
+                        self.metrics.wasm_fetch_bytes.inc_by(binary.len() as u64);
+                        binary
+                    }
                     Err(e) => {
                         error!("Failed to fetch wasm for task {}: {}", req.id, e);
                         self.running_tasks.lock().await.remove(&req.id);
+                        self.metrics.tasks_failed.inc();
+                        self.metrics.tasks_running.dec();
                         self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
                             .await?;
                         return Err(e);
@@ -544,13 +570,29 @@ impl PropletService {
                 }
             } else {
                 info!("Requesting binary from registry: {}", req.image_url);
-                self.request_binary_from_registry(&req.image_url).await?;
+                if let Err(e) = self.request_binary_from_registry(&req.image_url).await {
+                    error!(
+                        "Failed to request binary from registry for task {}: {}",
+                        req.id, e
+                    );
+                    self.running_tasks.lock().await.remove(&req.id);
+                    self.metrics.tasks_failed.inc();
+                    self.metrics.tasks_running.dec();
+                    self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
+                        .await?;
+                    return Err(e);
+                }
 
                 match self.wait_for_binary(&req.image_url).await {
-                    Ok(binary) => binary,
+                    Ok(binary) => {
+                        self.metrics.wasm_fetch_bytes.inc_by(binary.len() as u64);
+                        binary
+                    }
                     Err(e) => {
                         error!("Failed to get binary for task {}: {}", req.id, e);
                         self.running_tasks.lock().await.remove(&req.id);
+                        self.metrics.tasks_failed.inc();
+                        self.metrics.tasks_running.dec();
                         self.publish_result(&req.id, Vec::new(), Some(e.to_string()))
                             .await?;
                         return Err(e);
@@ -561,6 +603,8 @@ impl PropletService {
             let err = anyhow::anyhow!("No wasm binary or image URL provided");
             error!("Validation error for task {}: {}", req.id, err);
             self.running_tasks.lock().await.remove(&req.id);
+            self.metrics.tasks_failed.inc();
+            self.metrics.tasks_running.dec();
             self.publish_result(&req.id, Vec::new(), Some(err.to_string()))
                 .await?;
             return Err(err);
@@ -577,6 +621,7 @@ impl PropletService {
         let pubsub = self.pubsub.clone();
         let running_tasks = self.running_tasks.clone();
         let monitor = self.monitor.clone();
+        let metrics = self.metrics.clone();
         let domain_id = self.config.domain_id.clone();
         let channel_id = self.config.channel_id.clone();
         let qos = self.config.qos();
@@ -591,8 +636,8 @@ impl PropletService {
                 env.len(),
                 task_id
             );
-            for (key, value) in &env {
-                debug!("  {}={}", key, value);
+            for key in env.keys() {
+                debug!("  env key: {}", key);
             }
         } else {
             warn!(
@@ -724,6 +769,9 @@ impl PropletService {
                     Some(url) => url,
                     None => {
                         error!("MODEL_REGISTRY_URL not set. Must be provided via environment variable in .env file.");
+                        running_tasks.lock().await.remove(&task_id);
+                        metrics.tasks_failed.inc();
+                        metrics.tasks_running.dec();
                         return;
                     }
                 };
@@ -836,10 +884,12 @@ impl PropletService {
                         "Task {} completed successfully. Result: {}",
                         task_id, result_str
                     );
+                    metrics.tasks_completed.inc();
                     (result_str, None)
                 }
                 Err(e) => {
                     error!("Task {} failed: {:#}", task_id, e);
+                    metrics.tasks_failed.inc();
                     (String::new(), Some(e.to_string()))
                 }
             };
@@ -869,6 +919,9 @@ impl PropletService {
                     Some(url) => url,
                     None => {
                         error!("MANAGER_COORDINATOR_URL not set. Must be provided via environment variable in .env file for FML tasks.");
+                        running_tasks.lock().await.remove(&task_id);
+                        metrics.tasks_failed.inc();
+                        metrics.tasks_running.dec();
                         return;
                     }
                 };
@@ -966,7 +1019,9 @@ impl PropletService {
                 }
             }
 
-            running_tasks.lock().await.remove(&task_id);
+            if running_tasks.lock().await.remove(&task_id).is_some() {
+                metrics.tasks_running.dec();
+            }
         });
 
         Ok(())
@@ -981,7 +1036,9 @@ impl PropletService {
         self.runtime.stop_app(req.id.clone()).await?;
         self.monitor.stop_monitoring(&req.id).await.ok();
 
-        self.running_tasks.lock().await.remove(&req.id);
+        if self.running_tasks.lock().await.remove(&req.id).is_some() {
+            self.metrics.tasks_running.dec();
+        }
 
         Ok(())
     }

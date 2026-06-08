@@ -55,13 +55,26 @@ impl PubSub {
                             .with_context(|| format!("Failed to read client key: {key_path}"))?;
                         Some((cert, key))
                     }
+                    (Some(_), None) | (None, Some(_)) => {
+                        warn!("mTLS requires both PROPLET_MQTT_TLS_CLIENT_CERT and PROPLET_MQTT_TLS_CLIENT_KEY — client auth disabled");
+                        None
+                    }
                     _ => None,
                 };
 
+                // Note: PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY is not supported by the
+                // rumqttc::Transport::tls() API and has no effect when a CA cert is provided.
+                // Use the Go manager/proxy if insecure TLS is required.
+                if config.tls_insecure_skip_verify {
+                    warn!("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY has no effect when PROPLET_MQTT_TLS_CA_CERT is set — certificate verification is always enforced");
+                }
                 rumqttc::Transport::tls(ca, client_auth, None)
             } else {
+                if config.tls_client_cert.is_some() || config.tls_client_key.is_some() {
+                    warn!("PROPLET_MQTT_TLS_CLIENT_CERT/KEY are set but ignored — mTLS requires PROPLET_MQTT_TLS_CA_CERT");
+                }
                 if config.tls_insecure_skip_verify {
-                    warn!("TLS certificate verification is DISABLED (insecure mode)");
+                    warn!("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY is not supported by the Rust proplet — certificate verification uses system root CAs");
                 }
                 rumqttc::Transport::tls_with_default_config()
             };
@@ -137,6 +150,8 @@ impl MqttMessage {
 pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<MqttMessage>) {
     info!("Starting MQTT event loop");
 
+    let mut backoff_secs: u64 = 1;
+
     loop {
         match eventloop.poll().await {
             Ok(Event::Incoming(Packet::Publish(publish))) => {
@@ -162,16 +177,23 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
                     };
                     if let Err(e) = tx.send(reconnect_msg).await {
                         error!("Failed to send reconnect notification: {}", e);
+                        // Do not reset backoff — re-subscription failed, keep pressure off broker
+                        continue;
                     }
                 }
+                backoff_secs = 1;
             }
             Ok(Event::Incoming(packet)) => {
                 debug!("Received MQTT packet: {:?}", packet);
             }
             Ok(Event::Outgoing(_)) => {}
             Err(e) => {
-                warn!("MQTT connection error: {}", e);
-                tokio::time::sleep(Duration::from_secs(1)).await;
+                warn!(
+                    "MQTT connection error, retrying in {}s: {}",
+                    backoff_secs, e
+                );
+                tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+                backoff_secs = (backoff_secs * 2).min(60);
             }
         }
     }

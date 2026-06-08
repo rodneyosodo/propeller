@@ -6,19 +6,27 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	"github.com/absmach/magistrala/pkg/jaeger"
 	"github.com/absmach/propeller"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
 )
 
 const (
-	svcName    = "proxy"
-	configPath = "config.toml"
+	svcName         = "proxy"
+	configPath      = "config.toml"
+	shutdownTimeout = 5 * time.Second
 )
 
 type config struct {
@@ -34,6 +42,9 @@ type config struct {
 	ChannelID       string        `env:"PROXY_CHANNEL_ID"`
 	ClientID        string        `env:"PROXY_CLIENT_ID"`
 	ClientKey       string        `env:"PROXY_CLIENT_KEY"`
+	HTTPPort        int           `env:"PROXY_HTTP_PORT"              envDefault:"9191"`
+	OTELURL         url.URL       `env:"PROXY_OTEL_URL"`
+	TraceRatio      float64       `env:"PROXY_TRACE_RATIO"            envDefault:"0"`
 	// HTTP Registry configuration
 	ChunkSize    int    `env:"PROXY_CHUNK_SIZE"            envDefault:"512000"`
 	Authenticate bool   `env:"PROXY_AUTHENTICATE"          envDefault:"false"`
@@ -44,8 +55,6 @@ type config struct {
 }
 
 func main() {
-	g, ctx := errgroup.WithContext(context.Background())
-
 	cfg := config{}
 	if err := env.Parse(&cfg); err != nil {
 		log.Fatalf("failed to load configuration : %s", err.Error())
@@ -82,6 +91,20 @@ func main() {
 	logger := slog.New(logHandler)
 	slog.SetDefault(logger)
 
+	sigCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	g, ctx := errgroup.WithContext(sigCtx)
+
+	shutdown, err := initTracerProvider(ctx, cfg, logger)
+	if err != nil {
+		return
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		shutdown(shutdownCtx)
+	}()
+
 	var mqttTLS *mqtt.TLSConfig
 	if cfg.MQTTTLSCAPath != "" || cfg.MQTTTLSCertPath != "" || cfg.MQTTTLSKeyPath != "" || cfg.MQTTTLSInsecure {
 		mqttTLS = &mqtt.TLSConfig{
@@ -99,7 +122,9 @@ func main() {
 		return
 	}
 	defer func() {
-		if err := mqttPubSub.Disconnect(ctx); err != nil {
+		disconnectCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := mqttPubSub.Disconnect(disconnectCtx); err != nil {
 			slog.Error("failed to disconnect MQTT client", "error", err)
 		}
 	}()
@@ -133,6 +158,14 @@ func main() {
 	slog.Info("successfully subscribed to topic")
 
 	g.Go(func() error {
+		if err := serveHealth(ctx, cfg, logger); err != nil {
+			logger.Error("health server exited", slog.Any("error", err))
+		}
+
+		return nil
+	})
+
+	g.Go(func() error {
 		return service.StreamHTTP(ctx)
 	})
 
@@ -143,6 +176,58 @@ func main() {
 	if err := g.Wait(); err != nil {
 		logger.Error(fmt.Sprintf("%s service exited with error: %s", svcName, err))
 	}
+}
+
+func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (func(context.Context), error) {
+	switch cfg.OTELURL {
+	case url.URL{}:
+		otel.SetTracerProvider(noop.NewTracerProvider())
+
+		return func(context.Context) {}, nil
+	default:
+		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		if err != nil {
+			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+
+			return nil, err
+		}
+		otel.SetTracerProvider(sdktp)
+
+		return func(ctx context.Context) {
+			if err := sdktp.Shutdown(ctx); err != nil {
+				logger.Error("error shutting down tracer provider", slog.Any("error", err))
+			}
+		}, nil
+	}
+}
+
+func serveHealth(ctx context.Context, cfg config, logger *slog.Logger) error {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","service":"proxy"}`)
+	})
+	srv := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.HTTPPort),
+		Handler:      mux,
+		ReadTimeout:  5 * time.Second,
+		WriteTimeout: 5 * time.Second,
+		IdleTimeout:  30 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		if err := srv.Shutdown(shutCtx); err != nil { //nolint:contextcheck
+			logger.Error("health server shutdown error", slog.Any("error", err))
+		}
+	}()
+	logger.Info("health server listening", slog.String("addr", fmt.Sprintf(":%d", cfg.HTTPPort)))
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+
+	return nil
 }
 
 func handle(logger *slog.Logger, containerChan chan<- string) func(topic string, msg map[string]any) error {

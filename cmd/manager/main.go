@@ -98,25 +98,17 @@ func main() {
 	defer stop()
 	g, ctx := errgroup.WithContext(ctx)
 
-	var tp trace.TracerProvider
-	switch cfg.OTELURL {
-	case url.URL{}:
-		tp = noop.NewTracerProvider()
-	default:
-		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
-		if err != nil {
-			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
-			exitCode = 1
+	tp, shutdown, err := initTracerProvider(ctx, cfg, logger)
+	if err != nil {
+		exitCode = 1
 
-			return
-		}
-		defer func() {
-			if err := sdktp.Shutdown(ctx); err != nil {
-				logger.Error("error shutting down tracer provider", slog.Any("error", err))
-			}
-		}()
-		tp = sdktp
+		return
 	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		defer cancel()
+		shutdown(shutdownCtx)
+	}()
 	tracer := tp.Tracer(svcName)
 
 	var mqttTLS *mqtt.TLSConfig
@@ -273,4 +265,24 @@ func ensureManagerCredentials(cfg *config) error {
 	}
 
 	return nil
+}
+
+func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (trace.TracerProvider, func(context.Context), error) {
+	switch cfg.OTELURL {
+	case url.URL{}:
+		return noop.NewTracerProvider(), func(context.Context) {}, nil
+	default:
+		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		if err != nil {
+			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
+
+			return nil, nil, err
+		}
+
+		return sdktp, func(ctx context.Context) {
+			if err := sdktp.Shutdown(ctx); err != nil {
+				logger.Error("error shutting down tracer provider", slog.Any("error", err))
+			}
+		}, nil
+	}
 }

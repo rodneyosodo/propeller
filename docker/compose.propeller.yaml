@@ -88,15 +88,17 @@ services:
     container_name: propeller-proplet
     restart: on-failure
     healthcheck:
-      test: ["CMD", "pgrep", "-x", "proplet"]
-      interval: 30s
-      timeout: 3s
-      start_period: 5s
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PROPLET_METRICS_PORT}/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
       retries: 3
     expose:
       - 8081
+      - ${PROPLET_METRICS_PORT}
     ports:
       - 8081:8081
+      - ${PROPLET_METRICS_PORT}:${PROPLET_METRICS_PORT}
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL}
       PROPLET_INSTANCE_ID: ${PROPLET_INSTANCE_ID}
@@ -111,6 +113,10 @@ services:
       PROPLET_HAL_ENABLED: ${PROPLET_HAL_ENABLED}
       PROPLET_HTTP_ENABLED: ${PROPLET_HTTP_ENABLED}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME}
+      PROPLET_METRICS_PORT: ${PROPLET_METRICS_PORT}
+      PROPLET_METRICS_ENABLED: ${PROPLET_METRICS_ENABLED:-true}
+      PROPLET_OTEL_URL: ${PROPLET_OTEL_URL}
+      PROPLET_TRACE_RATIO: ${PROPLET_TRACE_RATIO}
       PROPLET_MANAGER_K8S_NAMESPACE: ${PROPLET_MANAGER_K8S_NAMESPACE}
       PROPLET_CONFIG_FILE: ${PROPLET_CONFIG_FILE}
       PROPLET_CONFIG_SECTION: ${PROPLET_CONFIG_SECTION}
@@ -151,6 +157,16 @@ services:
     image: ghcr.io/absmach/propeller/proxy:${PROP_RELEASE_TAG}
     container_name: propeller-proxy
     restart: on-failure
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PROXY_HTTP_PORT}/health"]
+      interval: 15s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    expose:
+      - ${PROXY_HTTP_PORT}
+    ports:
+      - ${PROXY_HTTP_PORT}:${PROXY_HTTP_PORT}
     environment:
       PROXY_LOG_LEVEL: ${PROXY_LOG_LEVEL}
       PROXY_INSTANCE_ID: ${PROXY_INSTANCE_ID}
@@ -167,6 +183,9 @@ services:
       PROXY_REGISTRY_USERNAME: ${PROXY_REGISTRY_USERNAME}
       PROXY_REGISTRY_PASSWORD: ${PROXY_REGISTRY_PASSWORD}
       PROXY_REGISTRY_URL: ${PROXY_REGISTRY_URL}
+      PROXY_HTTP_PORT: ${PROXY_HTTP_PORT}
+      PROXY_OTEL_URL: ${PROXY_OTEL_URL}
+      PROXY_TRACE_RATIO: ${PROXY_TRACE_RATIO}
       # MQTT over TLS / mTLS — uncomment to enable.
       # Then also mount cert files (see volumes section below).
       # PROXY_MQTT_TLS_CA_CERT: ${PROXY_MQTT_TLS_CA_CERT}
