@@ -78,13 +78,10 @@ impl PropletService {
         let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
-        let http_client = HttpClient::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|e| {
-                warn!("Failed to create HTTP client, using default: {}", e);
-                HttpClient::new()
-            });
+        let http_client = build_http_client(
+            config.http_tls_ca_cert.as_deref(),
+            config.http_tls_insecure_skip_verify,
+        );
 
         let service = Self {
             config,
@@ -117,13 +114,10 @@ impl PropletService {
         let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
-        let http_client = HttpClient::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .unwrap_or_else(|e| {
-                warn!("Failed to create HTTP client, using default: {}", e);
-                HttpClient::new()
-            });
+        let http_client = build_http_client(
+            config.http_tls_ca_cert.as_deref(),
+            config.http_tls_insecure_skip_verify,
+        );
 
         let service = Self {
             config,
@@ -1366,6 +1360,35 @@ fn build_fl_update_envelope(
         "update_b64": update_b64,
         "format": update_format,
         "metrics": {}
+    })
+}
+
+fn build_http_client(ca_cert_path: Option<&str>, insecure_skip_verify: bool) -> HttpClient {
+    let mut builder = HttpClient::builder().timeout(std::time::Duration::from_secs(30));
+
+    if insecure_skip_verify {
+        builder = builder.danger_accept_invalid_certs(true);
+    }
+
+    if let Some(path) = ca_cert_path {
+        match std::fs::read(path) {
+            Ok(pem_bytes) => match reqwest::Certificate::from_pem(&pem_bytes) {
+                Ok(cert) => {
+                    builder = builder.add_root_certificate(cert);
+                }
+                Err(e) => {
+                    warn!("Failed to parse CA certificate '{}': {}", path, e);
+                }
+            },
+            Err(e) => {
+                warn!("Failed to read CA certificate '{}': {}", path, e);
+            }
+        }
+    }
+
+    builder.build().unwrap_or_else(|e| {
+        warn!("Failed to create HTTP client, using default: {}", e);
+        HttpClient::new()
     })
 }
 
