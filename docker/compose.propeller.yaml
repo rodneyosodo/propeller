@@ -88,7 +88,13 @@ services:
     container_name: propeller-proplet
     restart: on-failure
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:${PROPLET_METRICS_PORT}/health"]
+      test:
+        [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://localhost:${PROPLET_METRICS_PORT}/health",
+        ]
       interval: 15s
       timeout: 5s
       start_period: 10s
@@ -130,6 +136,10 @@ services:
       # PROPLET_MQTT_TLS_CLIENT_CERT: ${PROPLET_MQTT_TLS_CLIENT_CERT}
       # PROPLET_MQTT_TLS_CLIENT_KEY: ${PROPLET_MQTT_TLS_CLIENT_KEY}
       # PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY: ${PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY}
+      # Outgoing HTTP TLS — uncomment to trust custom/self-signed CA certificates
+      # for HTTPS requests made by WASM workloads and proplet itself.
+      # PROPLET_HTTP_TLS_CA_CERT: ${PROPLET_HTTP_TLS_CA_CERT}
+      # PROPLET_HTTP_TLS_INSECURE_SKIP_VERIFY: ${PROPLET_HTTP_TLS_INSECURE_SKIP_VERIFY}
     volumes:
       - ./config.toml:/home/proplet/config.toml
       # MQTT TLS certs (uncomment and change source paths when using ssl://):
@@ -145,6 +155,11 @@ services:
       #   source: ./ssl/certs/proplet.key
       #   target: /etc/propeller/tls/client.key
       #   read_only: true
+      # HTTP TLS CA cert (uncomment to trust custom CAs for outgoing HTTPS):
+      # - type: bind
+      #   source: ./ca.crt
+      #   target: /etc/propeller/tls/http-ca.crt
+      #   read_only: true
       # To run wasi-nn examples, uncomment the fixture volume and create the directory with model files.
       # See examples/wasi-nn/README.md for setup instructions.
       # - ../fixture:/home/proplet/fixture
@@ -158,7 +173,8 @@ services:
     container_name: propeller-proxy
     restart: on-failure
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:${PROXY_HTTP_PORT}/health"]
+      test:
+        ["CMD", "wget", "-qO-", "http://localhost:${PROXY_HTTP_PORT}/health"]
       interval: 15s
       timeout: 5s
       start_period: 10s
