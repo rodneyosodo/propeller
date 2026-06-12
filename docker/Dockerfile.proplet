@@ -58,7 +58,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         wget \
-        xz-utils && \
+        xz-utils \
+        libusb-1.0-0 && \
     case "${TARGETARCH}" in \
         amd64)   WASMTIME_ARCH="x86_64";    EXPECTED_SHA256="${WASMTIME_SHA256_AMD64}" ;; \
         arm64)   WASMTIME_ARCH="aarch64";   EXPECTED_SHA256="${WASMTIME_SHA256_ARM64}" ;; \

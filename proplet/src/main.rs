@@ -128,6 +128,8 @@ async fn main() -> Result<()> {
             config.usb_enabled,
             config.preopened_dirs.clone(),
             config.http_proxy_port,
+            config.http_tls_ca_cert.as_deref(),
+            config.http_tls_insecure_skip_verify,
         )?)
     };
 

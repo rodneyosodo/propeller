@@ -33,6 +33,8 @@ pub struct PropletConfig {
     pub mqtt_tls_client_cert: Option<String>,
     pub mqtt_tls_client_key: Option<String>,
     pub mqtt_tls_insecure_skip_verify: bool,
+    pub http_tls_ca_cert: Option<String>,
+    pub http_tls_insecure_skip_verify: bool,
     pub liveliness_interval: u64,
     pub metrics_interval: u64,
     pub domain_id: String,
@@ -78,6 +80,8 @@ impl Default for PropletConfig {
             mqtt_tls_client_cert: None,
             mqtt_tls_client_key: None,
             mqtt_tls_insecure_skip_verify: false,
+            http_tls_ca_cert: None,
+            http_tls_insecure_skip_verify: false,
             liveliness_interval: 10,
             metrics_interval: 10,
             domain_id: String::new(),
@@ -270,6 +274,16 @@ impl PropletConfig {
 
         if let Ok(val) = env::var("PROPLET_MQTT_TLS_INSECURE_SKIP_VERIFY") {
             config.mqtt_tls_insecure_skip_verify = val.to_lowercase() == "true" || val == "1";
+        }
+
+        if let Ok(val) = env::var("PROPLET_HTTP_TLS_CA_CERT") {
+            if !val.is_empty() {
+                config.http_tls_ca_cert = Some(val);
+            }
+        }
+
+        if let Ok(val) = env::var("PROPLET_HTTP_TLS_INSECURE_SKIP_VERIFY") {
+            config.http_tls_insecure_skip_verify = val.to_lowercase() == "true" || val == "1";
         }
 
         if let Ok(val) = env::var("PROPLET_LIVELINESS_INTERVAL") {

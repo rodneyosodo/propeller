@@ -4408,12 +4408,14 @@ dependencies = [
  "resource_uri",
  "rumqttc",
  "rustls",
+ "rustls-pemfile",
  "serde",
  "serde_json",
  "socket2 0.6.4",
  "sysinfo",
  "thiserror 2.0.18",
  "tokio",
+ "tokio-rustls",
  "toml 1.1.2+spec-1.1.0",
  "tracing",
  "tracing-opentelemetry",
@@ -4425,6 +4427,7 @@ dependencies = [
  "wasmtime-wasi",
  "wasmtime-wasi-http",
  "wasmtime-wasi-usb",
+ "webpki-roots 0.26.11",
  "wiremock",
 ]
 

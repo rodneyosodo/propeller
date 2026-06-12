@@ -4,7 +4,11 @@ use crate::hal_component;
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use elastic_tee_hal::StorageInterface;
+use http_body_util::BodyExt;
 use hyper::server::conn::http1;
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
+use rustls::{DigitallySignedStruct, RootCertStore, SignatureScheme};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -15,6 +19,7 @@ use tokio::sync::oneshot;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
+use tokio::time::timeout;
 use tracing::{error, info, warn};
 use wasm_wave;
 use wasmtime::component::ResourceTable;
@@ -25,7 +30,10 @@ use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::http::types::Scheme;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
-use wasmtime_wasi_http::p2::WasiHttpView;
+use wasmtime_wasi_http::p2::types::{HostFutureIncomingResponse, OutgoingRequestConfig};
+use wasmtime_wasi_http::p2::{
+    default_send_request, hyper_request_error, WasiHttpHooks, WasiHttpView,
+};
 use wasmtime_wasi_http::WasiHttpCtx;
 use wasmtime_wasi_usb::{WasiUsbCtx, WasiUsbCtxView, WasiUsbView};
 
@@ -117,19 +125,255 @@ fn scan_export_instance_names(bytes: &[u8]) -> Vec<String> {
     names
 }
 
+#[derive(Debug)]
+struct InsecureVerifier;
+
+impl ServerCertVerifier for InsecureVerifier {
+    fn verify_server_cert(
+        &self,
+        _end_entity: &CertificateDer<'_>,
+        _intermediates: &[CertificateDer<'_>],
+        _server_name: &ServerName<'_>,
+        _ocsp_response: &[u8],
+        _now: UnixTime,
+    ) -> Result<ServerCertVerified, rustls::Error> {
+        Ok(ServerCertVerified::assertion())
+    }
+
+    fn verify_tls12_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn verify_tls13_signature(
+        &self,
+        _message: &[u8],
+        _cert: &CertificateDer<'_>,
+        _dss: &DigitallySignedStruct,
+    ) -> Result<HandshakeSignatureValid, rustls::Error> {
+        Ok(HandshakeSignatureValid::assertion())
+    }
+
+    fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+        vec![
+            SignatureScheme::ECDSA_NISTP256_SHA256,
+            SignatureScheme::ECDSA_NISTP384_SHA384,
+            SignatureScheme::ED25519,
+            SignatureScheme::RSA_PSS_SHA256,
+            SignatureScheme::RSA_PSS_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA256,
+            SignatureScheme::RSA_PKCS1_SHA384,
+            SignatureScheme::RSA_PKCS1_SHA512,
+        ]
+    }
+}
+
+fn build_tls_client_config(
+    ca_cert_path: Option<&str>,
+    insecure_skip_verify: bool,
+) -> Result<rustls::ClientConfig> {
+    let mut root_cert_store = RootCertStore {
+        roots: webpki_roots::TLS_SERVER_ROOTS.into(),
+    };
+
+    if let Some(path) = ca_cert_path {
+        let pem_data = std::fs::read(path)
+            .with_context(|| format!("Failed to read CA certificate: {path}"))?;
+        let mut cursor = std::io::Cursor::new(pem_data);
+        let certs: Vec<CertificateDer<'_>> = rustls_pemfile::certs(&mut cursor)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| anyhow::anyhow!("Failed to parse CA certificate: {e}"))?;
+        for cert in certs {
+            root_cert_store
+                .add(cert)
+                .map_err(|e| anyhow::anyhow!("Failed to add CA certificate to root store: {e}"))?;
+        }
+    }
+
+    let mut config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_cert_store)
+        .with_no_client_auth();
+
+    if insecure_skip_verify {
+        config
+            .dangerous()
+            .set_certificate_verifier(Arc::new(InsecureVerifier));
+    }
+
+    Ok(config)
+}
+
+struct CustomTlsHttpHooks {
+    tls_config: Option<Arc<rustls::ClientConfig>>,
+}
+
+impl CustomTlsHttpHooks {
+    fn new(tls_config: Option<Arc<rustls::ClientConfig>>) -> Self {
+        Self { tls_config }
+    }
+}
+
+impl WasiHttpHooks for CustomTlsHttpHooks {
+    fn send_request(
+        &mut self,
+        request: hyper::Request<HyperOutgoingBody>,
+        config: OutgoingRequestConfig,
+    ) -> wasmtime_wasi_http::p2::HttpResult<HostFutureIncomingResponse> {
+        match &self.tls_config {
+            Some(tls_config) => {
+                let tls_config = tls_config.clone();
+                let handle = wasmtime_wasi::runtime::spawn(async move {
+                    Ok(custom_tls_send_request_handler(request, config, tls_config).await)
+                });
+                Ok(HostFutureIncomingResponse::pending(handle))
+            }
+            None => Ok(default_send_request(request, config)),
+        }
+    }
+}
+
+async fn custom_tls_send_request_handler(
+    mut request: hyper::Request<HyperOutgoingBody>,
+    OutgoingRequestConfig {
+        use_tls,
+        connect_timeout,
+        first_byte_timeout,
+        between_bytes_timeout,
+    }: OutgoingRequestConfig,
+    tls_config: Arc<rustls::ClientConfig>,
+) -> Result<
+    wasmtime_wasi_http::p2::types::IncomingResponse,
+    wasmtime_wasi_http::p2::bindings::http::types::ErrorCode,
+> {
+    use wasmtime_wasi_http::p2::bindings::http::types::ErrorCode;
+
+    let authority = if let Some(authority) = request.uri().authority() {
+        if authority.port().is_some() {
+            authority.to_string()
+        } else {
+            let port = if use_tls { 443 } else { 80 };
+            format!("{authority}:{port}")
+        }
+    } else {
+        return Err(ErrorCode::HttpRequestUriInvalid);
+    };
+
+    let tcp_stream = timeout(connect_timeout, tokio::net::TcpStream::connect(&authority))
+        .await
+        .map_err(|_| ErrorCode::ConnectionTimeout)?
+        .map_err(|e| match e.kind() {
+            std::io::ErrorKind::AddrNotAvailable => {
+                dns_error("address not available".to_string(), 0)
+            }
+            _ => {
+                if e.to_string()
+                    .starts_with("failed to lookup address information")
+                {
+                    dns_error("address not available".to_string(), 0)
+                } else {
+                    ErrorCode::ConnectionRefused
+                }
+            }
+        })?;
+
+    let (mut sender, worker) = if use_tls {
+        let connector = tokio_rustls::TlsConnector::from(tls_config);
+        let domain = ServerName::try_from(authority.split(':').next().unwrap_or(&authority))
+            .map_err(|e| {
+                tracing::warn!("dns lookup error: {e:?}");
+                dns_error("invalid dns name".to_string(), 0)
+            })?
+            .to_owned();
+        let stream = connector.connect(domain, tcp_stream).await.map_err(|e| {
+            tracing::warn!("tls protocol error: {e:?}");
+            ErrorCode::TlsProtocolError
+        })?;
+        let stream = TokioIo::new(stream);
+
+        let (sender, conn) = timeout(
+            connect_timeout,
+            hyper::client::conn::http1::handshake(stream),
+        )
+        .await
+        .map_err(|_| ErrorCode::ConnectionTimeout)?
+        .map_err(hyper_request_error)?;
+
+        let worker = wasmtime_wasi::runtime::spawn(async move {
+            match conn.await {
+                Ok(()) => {}
+                Err(e) => tracing::warn!("dropping error {e}"),
+            }
+        });
+
+        (sender, worker)
+    } else {
+        let tcp_stream = TokioIo::new(tcp_stream);
+        let (sender, conn) = timeout(
+            connect_timeout,
+            hyper::client::conn::http1::handshake(tcp_stream),
+        )
+        .await
+        .map_err(|_| ErrorCode::ConnectionTimeout)?
+        .map_err(hyper_request_error)?;
+
+        let worker = wasmtime_wasi::runtime::spawn(async move {
+            match conn.await {
+                Ok(()) => {}
+                Err(e) => tracing::warn!("dropping error {e}"),
+            }
+        });
+
+        (sender, worker)
+    };
+
+    *request.uri_mut() = hyper::Uri::builder()
+        .path_and_query(
+            request
+                .uri()
+                .path_and_query()
+                .map(|p| p.as_str())
+                .unwrap_or("/"),
+        )
+        .build()
+        .expect("comes from valid request");
+
+    let resp = timeout(first_byte_timeout, sender.send_request(request))
+        .await
+        .map_err(|_| ErrorCode::ConnectionReadTimeout)?
+        .map_err(hyper_request_error)?
+        .map(|body| body.map_err(hyper_request_error).boxed_unsync());
+
+    Ok(wasmtime_wasi_http::p2::types::IncomingResponse {
+        resp,
+        worker: Some(worker),
+        between_bytes_timeout,
+    })
+}
+
+fn dns_error(
+    rcode: String,
+    info_code: u16,
+) -> wasmtime_wasi_http::p2::bindings::http::types::ErrorCode {
+    wasmtime_wasi_http::p2::bindings::http::types::ErrorCode::DnsError(
+        wasmtime_wasi_http::p2::bindings::http::types::DnsErrorPayload {
+            rcode: Some(rcode),
+            info_code: Some(info_code),
+        },
+    )
+}
+
 pub struct StoreData {
     wasi: WasiCtx,
     http: WasiHttpCtx,
     usb: WasiUsbCtx,
     table: ResourceTable,
-    /// `Some` on paths that registered HAL bindings on the linker; `None` on
-    /// the async proxy path, which does not expose HAL in v1.
     pub(crate) hal: Option<Arc<PropletHal>>,
-    /// Per-task storage interface initialised at the task's `hal_storage_path`.
-    /// Each task gets its own root so concurrent workloads don't collide on
-    /// `container_<n>/` directories. Falls back to the shared `PropletHal`
-    /// storage when `None`.
     pub(crate) storage: Option<Arc<StorageInterface>>,
+    http_hooks: CustomTlsHttpHooks,
 }
 
 impl WasiView for StoreData {
@@ -146,7 +390,7 @@ impl WasiHttpView for StoreData {
         wasmtime_wasi_http::p2::WasiHttpCtxView {
             ctx: &mut self.http,
             table: &mut self.table,
-            hooks: Default::default(),
+            hooks: &mut self.http_hooks,
         }
     }
 }
@@ -166,12 +410,12 @@ pub struct WasmtimeRuntime {
     proxy_ports: Arc<Mutex<HashMap<u16, String>>>,
     proxy_cancellers: Arc<Mutex<HashMap<String, watch::Sender<bool>>>>,
     hal_enabled: bool,
-    /// Shared HAL provider instance, cloned (Arc) into each component store.
     hal: Arc<PropletHal>,
     http_enabled: bool,
     usb_enabled: bool,
     preopened_dirs: Vec<String>,
     proxy_port: u16,
+    http_tls_config: Option<Arc<rustls::ClientConfig>>,
 }
 
 impl WasmtimeRuntime {
@@ -181,6 +425,8 @@ impl WasmtimeRuntime {
         usb_enabled: bool,
         preopened_dirs: Vec<String>,
         proxy_port: u16,
+        http_tls_ca_cert: Option<&str>,
+        http_tls_insecure_skip_verify: bool,
     ) -> Result<Self> {
         let mut config = Config::new();
         config.wasm_reference_types(true);
@@ -189,6 +435,27 @@ impl WasmtimeRuntime {
         config.wasm_component_model(true);
 
         let engine = Engine::new(&config)?;
+
+        let http_tls_config = match (http_tls_ca_cert, http_tls_insecure_skip_verify) {
+            (Some(_), _) | (None, true) => {
+                match build_tls_client_config(http_tls_ca_cert, http_tls_insecure_skip_verify) {
+                    Ok(cfg) => {
+                        if http_tls_ca_cert.is_some() {
+                            info!("Custom TLS CA certificate loaded for outgoing HTTP requests");
+                        }
+                        if http_tls_insecure_skip_verify {
+                            warn!("TLS certificate verification is disabled for outgoing HTTP requests");
+                        }
+                        Some(Arc::new(cfg))
+                    }
+                    Err(e) => {
+                        warn!("Failed to build custom TLS config, using default: {e}");
+                        None
+                    }
+                }
+            }
+            _ => None,
+        };
 
         Ok(Self {
             engine,
@@ -201,6 +468,7 @@ impl WasmtimeRuntime {
             usb_enabled,
             preopened_dirs,
             proxy_port,
+            http_tls_config,
         })
     }
 }
@@ -397,6 +665,7 @@ impl WasmtimeRuntime {
             table: ResourceTable::new(),
             hal: self.hal_enabled.then(|| self.hal.clone()),
             storage,
+            http_hooks: CustomTlsHttpHooks::new(self.http_tls_config.clone()),
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -510,6 +779,7 @@ impl WasmtimeRuntime {
             table: ResourceTable::new(),
             hal: self.hal_enabled.then(|| self.hal.clone()),
             storage,
+            http_hooks: CustomTlsHttpHooks::new(self.http_tls_config.clone()),
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -717,6 +987,7 @@ impl WasmtimeRuntime {
         let task_id = config.id.clone();
         let tasks = self.tasks.clone();
         let proxy_cancellers = self.proxy_cancellers.clone();
+        let http_tls_config = self.http_tls_config.clone();
 
         let (cancel_tx, mut cancel_rx) = watch::channel(false);
         proxy_cancellers
@@ -753,6 +1024,7 @@ impl WasmtimeRuntime {
                 let dirs = preopened_dirs.clone();
                 let task_id_conn = task_id.clone();
                 let cancel_rx_conn = cancel_rx.clone();
+                let tls_config = http_tls_config.clone();
 
                 tokio::spawn(async move {
                     if *cancel_rx_conn.borrow() {
@@ -771,8 +1043,10 @@ impl WasmtimeRuntime {
                                 let env = env.clone();
                                 let dirs = dirs.clone();
                                 let task_id_req = task_id_conn.clone();
+                                let tls_cfg = tls_config.clone();
                                 async move {
-                                    handle_proxy_request(pre, env, dirs, req, task_id_req).await
+                                    handle_proxy_request(pre, env, dirs, req, task_id_req, tls_cfg)
+                                        .await
                                 }
                             }),
                         )
@@ -1011,6 +1285,7 @@ async fn handle_proxy_request(
     preopened_dirs: Vec<String>,
     req: hyper::Request<hyper::body::Incoming>,
     task_id: String,
+    http_tls_config: Option<Arc<rustls::ClientConfig>>,
 ) -> Result<hyper::Response<HyperOutgoingBody>> {
     let mut wasi_builder = WasiCtxBuilder::new();
     wasi_builder.inherit_stdio();
@@ -1028,10 +1303,9 @@ async fn handle_proxy_request(
         http: WasiHttpCtx::new(),
         usb: WasiUsbCtx::new(false),
         table: ResourceTable::new(),
-        // HAL is not registered on the async proxy linker in v1 (bindgen is
-        // sync); leave the field empty so we don't carry an unused provider.
         hal: None,
         storage: None,
+        http_hooks: CustomTlsHttpHooks::new(http_tls_config),
     };
 
     let mut store = Store::new(pre.engine(), store_data);
@@ -1080,27 +1354,31 @@ mod tests {
 
     #[test]
     fn test_wasmtime_runtime_new() {
-        let runtime = WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222);
+        let runtime =
+            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222, None, false);
         assert!(runtime.is_ok());
     }
 
     #[test]
     fn test_wasmtime_runtime_new_with_http() {
-        let runtime = WasmtimeRuntime::new_with_options(false, true, false, Vec::new(), 8222);
+        let runtime =
+            WasmtimeRuntime::new_with_options(false, true, false, Vec::new(), 8222, None, false);
         assert!(runtime.is_ok());
     }
 
     #[test]
     fn test_wasmtime_runtime_engine_configuration() {
         let runtime =
-            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222).unwrap();
+            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222, None, false)
+                .unwrap();
         assert!(runtime.tasks.try_lock().is_ok());
     }
 
     #[test]
     fn test_wasmtime_runtime_tasks_empty_on_creation() {
         let runtime =
-            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222).unwrap();
+            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222, None, false)
+                .unwrap();
         let tasks = runtime.tasks.try_lock().unwrap();
         assert_eq!(tasks.len(), 0);
     }
@@ -1108,7 +1386,8 @@ mod tests {
     #[tokio::test]
     async fn test_wasmtime_runtime_compile_invalid_wasm() {
         let runtime =
-            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222).unwrap();
+            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222, None, false)
+                .unwrap();
         let invalid_wasm = vec![0xFF, 0xFF, 0xFF, 0xFF];
         let result = Module::from_binary(&runtime.engine, &invalid_wasm);
         assert!(result.is_err());
@@ -1117,7 +1396,8 @@ mod tests {
     #[tokio::test]
     async fn test_wasmtime_runtime_compile_empty_wasm() {
         let runtime =
-            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222).unwrap();
+            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222, None, false)
+                .unwrap();
         let empty_wasm = vec![];
         let result = Module::from_binary(&runtime.engine, &empty_wasm);
         assert!(result.is_err());
