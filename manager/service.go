@@ -1492,10 +1492,8 @@ func (svc *service) updateInvokeResultsHandler(ctx context.Context, msg map[stri
 	}
 
 	t.Results = msg["results"]
+	t.Error = errMsg
 	t.UpdatedAt = time.Now()
-	if errMsg != "" {
-		t.Error = errMsg
-	}
 
 	return svc.taskRepo.Update(ctx, t)
 }
