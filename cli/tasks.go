@@ -327,6 +327,28 @@ func newTaskStopCmd() *cobra.Command {
 	}
 }
 
+func newTaskInvokeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "invoke <id> [inputs...]",
+		Short: "Invoke a latent task",
+		Long:  `Invoke a latent task with optional inputs.`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) < 1 {
+				logUsageCmd(*cmd, cmd.Use)
+
+				return
+			}
+
+			if err := psdk.InvokeTask(args[0], args[1:]); err != nil {
+				logErrorCmd(*cmd, err)
+
+				return
+			}
+			logOKCmd(*cmd)
+		},
+	}
+}
+
 func newTaskMetricsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "metrics <id>",
@@ -398,9 +420,9 @@ func newTaskUploadCmd() *cobra.Command {
 
 func NewTasksCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tasks [create|view|list|update|delete|start|stop|metrics|results|upload]",
+		Use:   "tasks [create|view|list|update|delete|start|stop|invoke|metrics|results|upload]",
 		Short: "Tasks manager",
-		Long:  `Create, view, list, update, delete, start, stop, and inspect tasks.`,
+		Long:  `Create, view, list, update, delete, start, stop, invoke, and inspect tasks.`,
 	}
 
 	cmd.AddCommand(newTaskCreateCmd())
@@ -410,6 +432,7 @@ func NewTasksCmd() *cobra.Command {
 	cmd.AddCommand(newTaskDeleteCmd())
 	cmd.AddCommand(newTaskStartCmd())
 	cmd.AddCommand(newTaskStopCmd())
+	cmd.AddCommand(newTaskInvokeCmd())
 	cmd.AddCommand(newTaskMetricsCmd())
 	cmd.AddCommand(newTaskResultsCmd())
 	cmd.AddCommand(newTaskUploadCmd())
