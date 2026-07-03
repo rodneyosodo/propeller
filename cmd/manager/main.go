@@ -47,10 +47,10 @@ type config struct {
 	MQTTTLSCertPath string        `env:"MANAGER_MQTT_TLS_CLIENT_CERT"`
 	MQTTTLSKeyPath  string        `env:"MANAGER_MQTT_TLS_CLIENT_KEY"`
 	MQTTTLSInsecure bool          `env:"MANAGER_MQTT_TLS_INSECURE_SKIP_VERIFY"`
-	DomainID        string        `env:"MANAGER_DOMAIN_ID"`
+	TenantID        string        `env:"MANAGER_TENANT_ID"`
 	ChannelID       string        `env:"MANAGER_CHANNEL_ID"`
-	ClientID        string        `env:"MANAGER_CLIENT_ID"`
-	ClientKey       string        `env:"MANAGER_CLIENT_KEY"`
+	EntityID        string        `env:"MANAGER_ENTITY_ID"`
+	APIKey          string        `env:"MANAGER_API_KEY"`
 	CoordinatorURL  string        `env:"MANAGER_COORDINATOR_URL"`
 	Server          server.Config
 	OTELURL         url.URL `env:"MANAGER_OTEL_URL"`
@@ -121,7 +121,7 @@ func main() {
 		}
 	}
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.EntityID, cfg.EntityID, cfg.APIKey, cfg.TenantID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
 	if err != nil {
 		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
 		exitCode = 1
@@ -169,7 +169,7 @@ func main() {
 		repos,
 		scheduler.NewRoundRobin(),
 		mqttPubSub,
-		cfg.DomainID,
+		cfg.TenantID,
 		cfg.ChannelID,
 		cfg.CoordinatorURL,
 		logger,
@@ -209,7 +209,7 @@ func main() {
 		return
 	}
 
-	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.ClientID), logger)
+	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.EntityID), logger)
 
 	g.Go(func() error {
 		return hs.Start()
@@ -243,7 +243,7 @@ func main() {
 }
 
 func ensureManagerCredentials(cfg *config) error {
-	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+	if cfg.TenantID == "" || cfg.EntityID == "" || cfg.APIKey == "" || cfg.ChannelID == "" {
 		_, err := os.Stat(configPath)
 		switch err {
 		case nil:
@@ -251,17 +251,17 @@ func ensureManagerCredentials(cfg *config) error {
 			if err != nil {
 				return fmt.Errorf("failed to load TOML configuration: %w", err)
 			}
-			cfg.DomainID = conf.Manager.DomainID
-			cfg.ClientID = conf.Manager.ClientID
-			cfg.ClientKey = conf.Manager.ClientKey
+			cfg.TenantID = conf.Manager.TenantID
+			cfg.EntityID = conf.Manager.EntityID
+			cfg.APIKey = conf.Manager.APIKey
 			cfg.ChannelID = conf.Manager.ChannelID
 		default:
 			return fmt.Errorf("failed to load TOML configuration: %w", err)
 		}
 	}
 
-	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
-		return errors.New("MANAGER_DOMAIN_ID, MANAGER_CHANNEL_ID, MANAGER_CLIENT_ID, and MANAGER_CLIENT_KEY must be set")
+	if cfg.TenantID == "" || cfg.ChannelID == "" || cfg.EntityID == "" || cfg.APIKey == "" {
+		return errors.New("MANAGER_TENANT_ID, MANAGER_CHANNEL_ID, MANAGER_ENTITY_ID, and MANAGER_API_KEY must be set")
 	}
 
 	return nil

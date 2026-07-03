@@ -23,7 +23,7 @@ const (
 type ProxyService struct {
 	orasconfig    HTTPProxyConfig
 	pubsub        pkgmqtt.PubSub
-	domainID      string
+	tenantID      string
 	channelID     string
 	logger        *slog.Logger
 	containerChan chan string
@@ -33,11 +33,11 @@ type ProxyService struct {
 	activeFetches int
 }
 
-func NewService(ctx context.Context, pubsub pkgmqtt.PubSub, domainID, channelID string, httpCfg HTTPProxyConfig, logger *slog.Logger) (*ProxyService, error) {
+func NewService(ctx context.Context, pubsub pkgmqtt.PubSub, tenantID, channelID string, httpCfg HTTPProxyConfig, logger *slog.Logger) (*ProxyService, error) {
 	return &ProxyService{
 		orasconfig:    httpCfg,
 		pubsub:        pubsub,
-		domainID:      domainID,
+		tenantID:      tenantID,
 		channelID:     channelID,
 		logger:        logger,
 		containerChan: make(chan string, containerChanSize),
@@ -124,7 +124,7 @@ func (s *ProxyService) StreamMQTT(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case chunk := <-s.dataChan:
-			if err := s.pubsub.Publish(ctx, fmt.Sprintf(PubTopic, s.domainID, s.channelID), chunk); err != nil {
+			if err := s.pubsub.Publish(ctx, fmt.Sprintf(PubTopic, s.tenantID, s.channelID), chunk); err != nil {
 				s.logger.Error("failed to publish container chunk",
 					slog.Any("error", err),
 					slog.Int("chunk", chunk.ChunkIdx),

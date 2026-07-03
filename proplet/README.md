@@ -27,10 +27,10 @@ cargo build --release
 | `PROPLET_MQTT_TIMEOUT`          | MQTT operation timeout (seconds)                          | `30`                   |
 | `PROPLET_MQTT_QOS`              | MQTT Quality of Service level                             | `2`                    |
 | `PROPLET_LIVELINESS_INTERVAL`   | Heartbeat interval in seconds                             | `10`                   |
-| `PROPLET_DOMAIN_ID`             | Magistrala domain ID                                      |                        |
+| `PROPLET_TENANT_ID`             | Magistrala tenant ID                                      |                        |
 | `PROPLET_CHANNEL_ID`            | Magistrala channel ID                                     |                        |
-| `PROPLET_CLIENT_ID`             | MQTT client ID                                            |                        |
-| `PROPLET_CLIENT_KEY`            | MQTT client key                                           |                        |
+| `PROPLET_ENTITY_ID`             | MQTT entity ID                                            |                        |
+| `PROPLET_API_KEY`               | MQTT entity key                                           |                        |
 | `PROPLET_EXTERNAL_WASM_RUNTIME` | Path to external Wasm runtime; uses Wasmtime if unset     | `""` (empty)           |
 | `PROPLET_HAL_ENABLED`           | Expose the ELASTIC TEE HAL to workloads (see HAL section) | `true`                 |
 | `PROPLET_KBS_URI`               | Key Broker Service URL (required for encrypted workloads) |                        |
@@ -42,20 +42,20 @@ cargo build --release
 ### Embedded Wasmtime runtime (default)
 
 ```bash
-export PROPLET_DOMAIN_ID="your_domain_id"
+export PROPLET_TENANT_ID="your_tenant_id"
 export PROPLET_CHANNEL_ID="your_channel_id"
-export PROPLET_CLIENT_ID="your_client_id"
-export PROPLET_CLIENT_KEY="your_client_key"
+export PROPLET_ENTITY_ID="your_entity_id"
+export PROPLET_API_KEY="your_api_key"
 ./target/release/proplet
 ```
 
 ### External host runtime
 
 ```bash
-export PROPLET_DOMAIN_ID="your_domain_id"
+export PROPLET_TENANT_ID="your_tenant_id"
 export PROPLET_CHANNEL_ID="your_channel_id"
-export PROPLET_CLIENT_ID="your_client_id"
-export PROPLET_CLIENT_KEY="your_client_key"
+export PROPLET_ENTITY_ID="your_entity_id"
+export PROPLET_API_KEY="your_api_key"
 export PROPLET_EXTERNAL_WASM_RUNTIME="/usr/bin/wasmtime"
 ./target/release/proplet
 ```
@@ -115,10 +115,10 @@ INFO No TEE detected, running in standard mode
 ### Start proplet in TEE mode
 
 ```bash
-export PROPLET_DOMAIN_ID="your_domain_id"
+export PROPLET_TENANT_ID="your_tenant_id"
 export PROPLET_CHANNEL_ID="your_channel_id"
-export PROPLET_CLIENT_ID="your_client_id"
-export PROPLET_CLIENT_KEY="your_client_key"
+export PROPLET_ENTITY_ID="your_entity_id"
+export PROPLET_API_KEY="your_api_key"
 export PROPLET_MQTT_ADDRESS="your_mqtt_address"
 export PROPLET_KBS_URI="http://10.0.2.2:8082"
 export PROPLET_AA_CONFIG_PATH="/etc/default/proplet.toml"

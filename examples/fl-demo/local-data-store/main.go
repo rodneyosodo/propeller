@@ -19,7 +19,7 @@ import (
 type Dataset struct {
 	Schema    string                   `json:"schema"`
 	PropletID string                   `json:"proplet_id,omitempty"`
-	ClientID  string                   `json:"client_id,omitempty"` // Legacy field for backward compatibility
+	ClientID  string                   `json:"entity_id,omitempty"` // Legacy field for backward compatibility
 	Data      []map[string]interface{} `json:"data"`
 	Size      int                      `json:"size"`
 }
@@ -58,11 +58,11 @@ func main() {
 	r := mux.NewRouter()
 	r.HandleFunc("/health", healthHandler).Methods("GET")
 	r.HandleFunc("/datasets", listDatasetsHandler).Methods("GET")
-	// Support both proplet_id and client_id for backward compatibility
+	// Support both proplet_id and entity_id for backward compatibility
 	r.HandleFunc("/datasets/{proplet_id}", getDatasetHandler).Methods("GET")
 	r.HandleFunc("/datasets/{proplet_id}", postDatasetHandler).Methods("POST")
-	r.HandleFunc("/datasets/{client_id}", getDatasetHandler).Methods("GET")   // Legacy route
-	r.HandleFunc("/datasets/{client_id}", postDatasetHandler).Methods("POST") // Legacy route
+	r.HandleFunc("/datasets/{entity_id}", getDatasetHandler).Methods("GET")   // Legacy route
+	r.HandleFunc("/datasets/{entity_id}", postDatasetHandler).Methods("POST") // Legacy route
 
 	slog.Info("Local Data Store HTTP server starting", "port", port, "data_dir", store.dataDir)
 
@@ -108,11 +108,11 @@ func getDatasetHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	propletID := vars["proplet_id"]
 	if propletID == "" {
-		// Fallback to client_id for backward compatibility
-		propletID = vars["client_id"]
+		// Fallback to entity_id for backward compatibility
+		propletID = vars["entity_id"]
 	}
 	if propletID == "" {
-		http.Error(w, "proplet_id or client_id is required", http.StatusBadRequest)
+		http.Error(w, "proplet_id or entity_id is required", http.StatusBadRequest)
 		return
 	}
 
@@ -152,11 +152,11 @@ func postDatasetHandler(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	propletID := vars["proplet_id"]
 	if propletID == "" {
-		// Fallback to client_id for backward compatibility
-		propletID = vars["client_id"]
+		// Fallback to entity_id for backward compatibility
+		propletID = vars["entity_id"]
 	}
 	if propletID == "" {
-		http.Error(w, "proplet_id or client_id is required", http.StatusBadRequest)
+		http.Error(w, "proplet_id or entity_id is required", http.StatusBadRequest)
 		return
 	}
 
@@ -212,15 +212,15 @@ func getParticipantUUIDs() []string {
 		}
 	}
 
-	// Fallback to individual PROPLET_*_CLIENT_ID env vars
+	// Fallback to individual PROPLET_*_ENTITY_ID env vars
 	var uuids []string
-	if id := os.Getenv("PROPLET_CLIENT_ID"); id != "" {
+	if id := os.Getenv("PROPLET_ENTITY_ID"); id != "" {
 		uuids = append(uuids, id)
 	}
-	if id := os.Getenv("PROPLET_2_CLIENT_ID"); id != "" {
+	if id := os.Getenv("PROPLET_2_ENTITY_ID"); id != "" {
 		uuids = append(uuids, id)
 	}
-	if id := os.Getenv("PROPLET_3_CLIENT_ID"); id != "" {
+	if id := os.Getenv("PROPLET_3_ENTITY_ID"); id != "" {
 		uuids = append(uuids, id)
 	}
 

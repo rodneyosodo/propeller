@@ -5,25 +5,23 @@ import (
 	"os"
 	"strings"
 
-	"github.com/absmach/magistrala/pkg/errors"
-	smqSDK "github.com/absmach/magistrala/pkg/sdk"
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 )
 
 var addProxyCmd = &cobra.Command{
 	Use:   "add-proxy",
-	Short: "Add a proxy client to an existing provisioned setup",
-	Long: `Creates a new Magistrala client for the proxy service and updates the config file.
+	Short: "Add a proxy entity to an existing provisioned setup",
+	Long: `Creates a new Atom service entity for the proxy, an API key, connects it to the channel,
+and updates the config file.
 
-Reads domain_id and channel_id from the existing config file,
-creates a new client, connects it to the channel, and writes its credentials.
+Reads tenant_id and channel_id from the existing config file.
 
 Example:
   propeller-cli provision add-proxy
   propeller-cli provision add-proxy -f /path/to/config.toml`,
 	Run: func(cmd *cobra.Command, args []string) {
-		domainID, channelID, _, err := readExistingConfig(fileName)
+		tenantID, channelID, _, err := readExistingConfig(fileName)
 		if err != nil {
 			logErrorCmd(*cmd, fmt.Errorf("failed to read %s: %w", fileName, err))
 
@@ -31,22 +29,22 @@ Example:
 		}
 
 		var (
-			username  string
-			password  string
-			token     smqSDK.Token
-			proxyName string
-			proxyID   string
-			proxyKey  string
+			identifier    string
+			secret        string
+			token         string
+			proxyName     string
+			proxyEntityID string
+			proxyAPIKey   string
 		)
 
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
-					Title("Enter your username").
-					Value(&username).
+					Title("Enter your Atom username").
+					Value(&identifier).
 					Validate(func(str string) error {
 						if str == "" {
-							return errors.New("username is required")
+							return fmt.Errorf("username is required")
 						}
 
 						return nil
@@ -54,18 +52,16 @@ Example:
 				huh.NewInput().
 					Title("Enter your password").
 					EchoMode(huh.EchoModePassword).
-					Value(&password).
+					Value(&secret).
 					Validate(func(str string) error {
 						if str == "" {
-							return errors.New("password is required")
+							return fmt.Errorf("password is required")
 						}
-						u := smqSDK.Login{
-							Username: username,
-							Password: password,
-						}
-						token, err = smqsdk.CreateToken(cmd.Context(), u)
+
+						var err error
+						token, err = atomSDK.Login(cmd.Context(), identifier, secret)
 						if err != nil {
-							return errors.Wrap(errFailedToCreateToken, err)
+							return fmt.Errorf("%w: %w", errFailedToCreateToken, err)
 						}
 
 						return nil
@@ -73,31 +69,25 @@ Example:
 			),
 			huh.NewGroup(
 				huh.NewInput().
-					Title("Enter proxy client name (leave empty to auto generate)").
+					Title("Enter proxy entity name (leave empty to auto generate)").
 					Value(&proxyName).
 					Validate(func(str string) error {
 						if str == "" {
 							proxyName = namegen.Generate()
 						}
-						proxyClient := smqSDK.Client{
-							Name:   proxyName,
-							Tags:   []string{"proxy", "propeller"},
-							Status: "enabled",
-						}
-						created, err := smqsdk.CreateClient(cmd.Context(), proxyClient, domainID, token.AccessToken)
-						if err != nil {
-							return errors.Wrap(errFailedClientCreation, err)
-						}
-						proxyID = created.ID
-						proxyKey = created.Credentials.Secret
 
-						conn := smqSDK.Connection{
-							ClientIDs:  []string{proxyID},
-							ChannelIDs: []string{channelID},
-							Types:      []string{"publish", "subscribe"},
+						var err error
+						proxyEntityID, err = atomSDK.CreateServiceEntity(cmd.Context(), proxyName, tenantID, token)
+						if err != nil {
+							return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
 						}
-						if err = smqsdk.Connect(cmd.Context(), conn, domainID, token.AccessToken); err != nil {
-							return errors.Wrap(errFailedConnectionCreation, err)
+						proxyAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
+						if err != nil {
+							return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+						}
+
+						if err := atomSDK.Connect(cmd.Context(), proxyEntityID, channelID, tenantID, token); err != nil {
+							return fmt.Errorf("%w: %w", errFailedConnectionCreation, err)
 						}
 
 						return nil
@@ -121,14 +111,14 @@ Example:
 		var newSection strings.Builder
 		fmt.Fprintf(&newSection, `
 [proxy]
-domain_id = "%s"
-client_id = "%s"
-client_key = "%s"
+tenant_id = "%s"
+entity_id = "%s"
+api_key = "%s"
 channel_id = "%s"
 `,
-			domainID,
-			proxyID,
-			proxyKey,
+			tenantID,
+			proxyEntityID,
+			proxyAPIKey,
 			channelID,
 		)
 
@@ -150,6 +140,6 @@ channel_id = "%s"
 			return
 		}
 
-		logSuccessCmd(*cmd, "Added proxy client to "+fileName)
+		logSuccessCmd(*cmd, "Added proxy entity to "+fileName)
 	},
 }

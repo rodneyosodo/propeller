@@ -70,7 +70,7 @@ type service struct {
 func NewService(
 	repos *storage.Repositories,
 	s scheduler.Scheduler, pubsub mqtt.PubSub,
-	domainID, channelID, coordinatorURL string, logger *slog.Logger, plugins plugin.Registry,
+	tenantID, channelID, coordinatorURL string, logger *slog.Logger, plugins plugin.Registry,
 ) (Service, CronScheduler, *WorkflowCoordinator) {
 	var httpClient *http.Client
 	if coordinatorURL != "" {
@@ -89,7 +89,7 @@ func NewService(
 		jobRepo:          repos.Jobs,
 		metricsRepo:      repos.Metrics,
 		scheduler:        s,
-		baseTopic:        fmt.Sprintf(baseTopicFmt, domainID, channelID),
+		baseTopic:        fmt.Sprintf(baseTopicFmt, tenantID, channelID),
 		pubsub:           pubsub,
 		logger:           logger,
 		flCoordinatorURL: coordinatorURL,

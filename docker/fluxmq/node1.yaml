@@ -70,24 +70,7 @@ storage:
   sync_writes: false
 
 cluster:
-  enabled: true
-  node_id: "node1"
-  etcd:
-    data_dir: "/tmp/fluxmq/etcd"
-    bind_addr: "172.30.0.201:2380"
-    client_addr: "172.30.0.201:2379"
-    initial_cluster: "node1=http://172.30.0.201:2380,node2=http://172.30.0.202:2380,node3=http://172.30.0.203:2380"
-    bootstrap: true
-    hybrid_retained_size_threshold: 1024
-  transport:
-    bind_addr: "0.0.0.0:7948"
-    peers:
-      node2: "fluxmq-node2:7948"
-      node3: "fluxmq-node3:7948"
-    route_batch_max_size: 256
-    route_batch_max_delay: 50ms
-    route_batch_flush_workers: 8
-    route_publish_timeout: 15s
+  enabled: false
 
 queue_manager:
   auto_commit_interval: 5s
@@ -120,7 +103,7 @@ queues:
       max_length_bytes: 1073741824
 
 auth:
-  url: "http://fluxmq-auth:7016"
+  url: "fluxmq-auth:7016"
   transport: "grpc"
   timeout: 15s
   protocols:

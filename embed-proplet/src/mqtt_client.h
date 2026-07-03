@@ -73,40 +73,40 @@ extern bool mqtt_connected;
  * Connects using proplet_id as MQTT client ID and username, client_key as
  * password.
  *
- * @param domain_id   Domain ID used for topic generation (e.g.,
- * m/<domain>/c/<channel>/...).
- * @param proplet_id  Proplet identity (Magistrala client_id) — used as MQTT
+ * @param tenant_id   Tenant ID used for topic generation (e.g.,
+ * m/<tenant>/c/<channel>/...).
+ * @param proplet_id  Proplet identity (Magistrala entity_id) — used as MQTT
  * username.
- * @param client_key  Magistrala client secret — used as MQTT password.
+ * @param api_key     Magistrala Entity secret — used as MQTT password.
  * @param channel_id  Channel ID used for topic generation.
  *
  * @return 0 on success, negative errno on failure.
  */
-int mqtt_client_connect(const char *domain_id, const char *proplet_id,
-                        const char *client_key, const char *channel_id);
+int mqtt_client_connect(const char *tenant_id, const char *proplet_id,
+                        const char *api_key, const char *channel_id);
 
 /**
  * @brief Subscribe to the manager/control topics for a channel.
  *
- * @param domain_id  Domain ID used for topic generation.
+ * @param tenant_id  Tenant ID used for topic generation.
  * @param channel_id Channel ID used for topic generation.
  *
  * @return 0 on success, negative errno on failure.
  */
-int subscribe(const char *domain_id, const char *channel_id);
+int subscribe(const char *tenant_id, const char *channel_id);
 
 /**
  * @brief Publish a message to a specific MQTT topic.
  *
- * @param domain_id       Domain ID used for topic generation.
+ * @param tenant_id       Tenant ID used for topic generation.
  * @param channel_id      Channel ID used for topic generation.
- * @param topic_template  Topic template string that accepts (domain_id,
+ * @param topic_template  Topic template string that accepts (tenant_id,
  * channel_id).
  * @param payload         Null-terminated JSON payload string.
  *
  * @return 0 on success, negative errno on failure.
  */
-int publish(const char *domain_id, const char *channel_id,
+int publish(const char *tenant_id, const char *channel_id,
             const char *topic_template, const char *payload);
 
 /**
@@ -115,32 +115,32 @@ int publish(const char *domain_id, const char *channel_id,
  *
  * Uses the proplet_id captured during mqtt_client_connect().
  *
- * @param domain_id  Domain ID used for topic generation.
+ * @param tenant_id  Tenant ID used for topic generation.
  * @param channel_id Channel ID used for topic generation.
  */
-void publish_alive_message(const char *domain_id, const char *channel_id);
+void publish_alive_message(const char *tenant_id, const char *channel_id);
 
 /**
  * @brief Publish periodic CPU/memory metrics.
  *
  * Payload shape: { proplet_id, namespace, metrics: {...} }
  *
- * @param domain_id   Domain ID used for topic generation.
- * @param channel_id  Channel ID used for topic generation.
- * @param proplet_id  Proplet identity.
- * @param namespace   Namespace label (e.g. "embedded").
+ * @param tenant_id         Tenant ID used for topic generation.
+ * @param channel_id        Channel ID used for topic generation.
+ * @param proplet_id        Proplet identity.
+ * @param k8s_namespace     Kubernetes namespace label (e.g. "embedded").
  */
-void publish_metrics_message(const char *domain_id, const char *channel_id,
-                             const char *proplet_id, const char *namespace);
+void publish_metrics_message(const char *tenant_id, const char *channel_id,
+                             const char *proplet_id, const char *k8s_namespace);
 
 /**
  * @brief Publish a request to fetch a file from the registry.
  *
- * @param domain_id  Domain ID used for topic generation.
+ * @param tenant_id  Tenant ID used for topic generation.
  * @param channel_id Channel ID used for topic generation.
  * @param app_name   Registry app name / image reference to fetch.
  */
-void publish_registry_request(const char *domain_id, const char *channel_id,
+void publish_registry_request(const char *tenant_id, const char *channel_id,
                               const char *app_name);
 
 /**
@@ -149,7 +149,7 @@ void publish_registry_request(const char *domain_id, const char *channel_id,
  * Auto-detected fields (ip, environment, os, hostname, cpu_arch,
  * total_memory_bytes, wasm_runtime) are resolved inside the function.
  *
- * @param domain_id   Domain ID used for topic generation.
+ * @param tenant_id   Tenant ID used for topic generation.
  * @param proplet_id  Proplet identity.
  * @param channel_id  Channel ID used for topic generation.
  * @param description Human-readable description of this proplet (may be empty).
@@ -160,7 +160,7 @@ void publish_registry_request(const char *domain_id, const char *channel_id,
  *
  * @return 0 on success, negative errno on failure.
  */
-int publish_discovery(const char *domain_id, const char *proplet_id,
+int publish_discovery(const char *tenant_id, const char *proplet_id,
                       const char *channel_id, const char *description,
                       const char *tags, const char *location,
                       const char *version);
@@ -168,24 +168,24 @@ int publish_discovery(const char *domain_id, const char *proplet_id,
 /**
  * @brief Publish the results of a completed task.
  *
- * @param domain_id  Domain ID used for topic generation.
+ * @param tenant_id  Tenant ID used for topic generation.
  * @param channel_id Channel ID used for topic generation.
  * @param task_id    Task identifier.
  * @param results    Result string (will be JSON-escaped by caller if needed).
  */
-void publish_results(const char *domain_id, const char *channel_id,
+void publish_results(const char *tenant_id, const char *channel_id,
                      const char *task_id, const char *results);
 
 /**
  * @brief Publish the results of a completed task with optional error message.
  *
- * @param domain_id  Domain ID used for topic generation.
+ * @param tenant_id  Tenant ID used for topic generation.
  * @param channel_id Channel ID used for topic generation.
  * @param task_id    Task identifier.
  * @param results    Result string (will be JSON-escaped by caller if needed).
  * @param error_msg  Optional error message (NULL if no error).
  */
-void publish_results_with_error(const char *domain_id, const char *channel_id,
+void publish_results_with_error(const char *tenant_id, const char *channel_id,
                                 const char *task_id, const char *results,
                                 const char *error_msg);
 
@@ -194,12 +194,12 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
  * Publishes CPU, memory, and timing metrics for a running or recently
  * completed WASM task.
  *
- * @param domain_id   Domain ID used for topic generation.
+ * @param tenant_id   Tenant ID used for topic generation.
  * @param channel_id  Channel ID used for topic generation.
  * @param task_id     Task identifier being monitored.
  * @param proplet_id  Proplet identity.
  */
-void publish_task_metrics(const char *domain_id, const char *channel_id,
+void publish_task_metrics(const char *tenant_id, const char *channel_id,
                           const char *task_id, const char *proplet_id);
 
 /**
@@ -207,11 +207,11 @@ void publish_task_metrics(const char *domain_id, const char *channel_id,
  *
  * Iterates through all currently monitored tasks and publishes their metrics.
  *
- * @param domain_id   Domain ID used for topic generation.
+ * @param tenant_id   Tenant ID used for topic generation.
  * @param channel_id  Channel ID used for topic generation.
  * @param proplet_id  Proplet identity.
  */
-void publish_active_task_metrics(const char *domain_id, const char *channel_id,
+void publish_active_task_metrics(const char *tenant_id, const char *channel_id,
                                  const char *proplet_id);
 
 /**

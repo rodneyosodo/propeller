@@ -20,7 +20,7 @@ For a complete end-to-end test, follow these steps in order:
 1. **[Build and Push WASM Client](#step-1-build-and-push-wasm-client)** - Build the FL client WASM and push to GHCR
 2. **[Configure GHCR Authentication [ONE-TIME]](#step-2-configure-ghcr-authentication-one-time)** - Set up authentication for private GHCR packages
 3. **[Build and Start Services](#step-3-build-and-start-services)** - Build Docker images and start all services
-4. **[Provision Magistrala Resources [ONE-TIME]](#step-4-provision-magistrala-resources-one-time)** - Create domain, channel, and clients (one-time setup)
+4. **[Provision Magistrala Resources [ONE-TIME]](#step-4-provision-magistrala-resources-one-time)** - Create tenant, channel, and clients (one-time setup)
 5. **[Recreate Services After Provisioning](#step-5-recreate-services-after-provisioning)** - Recreate services to pick up new credentials
 6. **[Initialize Model Registry](#step-6-initialize-model-registry)** - Create initial model (version 0)
 7. **[Run FL Round](#step-7-trigger-a-federated-learning-round)** - Configure and start a federated learning round
@@ -29,21 +29,21 @@ For a complete end-to-end test, follow these steps in order:
 
 For automated testing, use the [Complete Test Script](#complete-test-script) at the end of this document.
 
-## Understanding CLIENT_IDs vs Instance IDs
+## Understanding ENTITY_IDs vs Instance IDs
 
-**IMPORTANT**: When configuring FL experiments, you must use **Magistrala CLIENT_IDs** (UUIDs), not instance IDs.
+**IMPORTANT**: When configuring FL experiments, you must use **Magistrala ENTITY_IDs** (UUIDs), not instance IDs.
 
 - **Instance IDs**: `"proplet-1"`, `"proplet-2"`, `"proplet-3"` - These are just labels for identification
-- **CLIENT_IDs**: `"3fe95a65-74f1-4ede-bf20-ef565f04cecb"` - These are the actual Magistrala client credentials that proplets use to register with the manager
+- **ENTITY_IDs**: `"3fe95a65-74f1-4ede-bf20-ef565f04cecb"` - These are the actual Magistrala client credentials that proplets use to register with the manager
 
-Proplets register themselves using their CLIENT_ID (from `PROPLET_CLIENT_ID`, `PROPLET_2_CLIENT_ID`, `PROPLET_3_CLIENT_ID` in your `docker/.env` file). The manager tracks proplets by these CLIENT_IDs.
+Proplets register themselves using their ENTITY_ID (from `PROPLET_ENTITY_ID`, `PROPLET_2_ENTITY_ID`, `PROPLET_3_ENTITY_ID` in your `docker/.env` file). The manager tracks proplets by these ENTITY_IDs.
 
 For example, your `docker/.env` file should contain:
 
 ```bash
-PROPLET_CLIENT_ID=3fe95a65-74f1-4ede-bf20-ef565f04cecb      # For proplet-1
-PROPLET_2_CLIENT_ID=1f074cd1-4e22-4e21-92ca-e35a21d3ce29    # For proplet-2
-PROPLET_3_CLIENT_ID=0d89e6d7-6410-40b5-bcda-07b0217796b8   # For proplet-3
+PROPLET_ENTITY_ID=3fe95a65-74f1-4ede-bf20-ef565f04cecb      # For proplet-1
+PROPLET_2_ENTITY_ID=1f074cd1-4e22-4e21-92ca-e35a21d3ce29    # For proplet-2
+PROPLET_3_ENTITY_ID=0d89e6d7-6410-40b5-bcda-07b0217796b8   # For proplet-3
 ```
 
 ## Step 1: Build and Push WASM Client
@@ -210,7 +210,7 @@ This starts:
 
 **One-time setup**: This creates persistent data in Magistrala databases. Only needs to be repeated if you remove Docker volumes (e.g., `docker compose down -v`).
 
-**IMPORTANT**: Before the manager and proplets can connect to MQTT, you must provision the necessary Magistrala resources (domain, channel, and clients).
+**IMPORTANT**: Before the manager and proplets can connect to MQTT, you must provision the necessary Magistrala resources (tenant, channel, and clients).
 
 > **When to provision**:
 >
@@ -240,23 +240,23 @@ From the repository root:
 
 The script will:
 
-- Create a domain named "fl-demo"
+- Create a tenant named "fl-demo"
 - Create clients: manager, proplet-1, proplet-2, proplet-3, fl-coordinator, proxy
 - Create a channel named "fl"
 - Display the client IDs and keys
-- Automatically update `docker/.env` with the new client credentials, domain ID, and channel ID (backup created as `docker/.env.bak`)
+- Automatically update `docker/.env` with the new client credentials, tenant ID, and channel ID (backup created as `docker/.env.bak`)
 
-**Note**: If the domain already exists (route conflict), the script will use the existing domain.
+**Note**: If the tenant already exists (route conflict), the script will use the existing tenant.
 
 The script updates the following environment variables in `docker/.env`:
 
-- `MANAGER_CLIENT_ID` and `MANAGER_CLIENT_KEY`
-- `PROPLET_CLIENT_ID` and `PROPLET_CLIENT_KEY` (for proplet-1)
-- `PROPLET_2_CLIENT_ID` and `PROPLET_2_CLIENT_KEY` (for proplet-2)
-- `PROPLET_3_CLIENT_ID` and `PROPLET_3_CLIENT_KEY` (for proplet-3)
-- `COORDINATOR_CLIENT_ID` and `COORDINATOR_CLIENT_KEY`
-- `PROXY_CLIENT_ID` and `PROXY_CLIENT_KEY`
-- `MANAGER_DOMAIN_ID`, `PROPLET_DOMAIN_ID`, and `PROXY_DOMAIN_ID`
+- `MANAGER_ENTITY_ID` and `MANAGER_CLIENT_KEY`
+- `PROPLET_ENTITY_ID` and `PROPLET_CLIENT_KEY` (for proplet-1)
+- `PROPLET_2_ENTITY_ID` and `PROPLET_2_CLIENT_KEY` (for proplet-2)
+- `PROPLET_3_ENTITY_ID` and `PROPLET_3_CLIENT_KEY` (for proplet-3)
+- `COORDINATOR_ENTITY_ID` and `COORDINATOR_CLIENT_KEY`
+- `PROXY_ENTITY_ID` and `PROXY_CLIENT_KEY`
+- `MANAGER_TENANT_ID`, `PROPLET_TENANT_ID`, and `PROXY_TENANT_ID`
 - `MANAGER_CHANNEL_ID`, `PROPLET_CHANNEL_ID`, and `PROXY_CHANNEL_ID`
 
 **Important**: You must also manually set `PROXY_REGISTRY_URL` in `docker/.env`:
@@ -365,16 +365,16 @@ curl http://localhost:8084/models/0
 > ```
 
 ```bash
-# IMPORTANT: Export CLIENT_IDs from docker/.env (Magistrala client IDs, NOT instance IDs)
+# IMPORTANT: Export ENTITY_IDs from docker/.env (Magistrala client IDs, NOT instance IDs)
 # The participants array must use UUIDs, not "proplet-1", "proplet-2", "proplet-3"
-export PROPLET_CLIENT_ID=$(grep '^PROPLET_CLIENT_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
-export PROPLET_2_CLIENT_ID=$(grep '^PROPLET_2_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
-export PROPLET_3_CLIENT_ID=$(grep '^PROPLET_3_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
+export PROPLET_ENTITY_ID=$(grep '^PROPLET_ENTITY_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
+export PROPLET_2_ENTITY_ID=$(grep '^PROPLET_2_ENTITY_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
+export PROPLET_3_ENTITY_ID=$(grep '^PROPLET_3_ENTITY_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
 
 # Verify they're set correctly (should show UUIDs, not "proplet-1", etc.)
-echo "PROPLET_CLIENT_ID=$PROPLET_CLIENT_ID"
-echo "PROPLET_2_CLIENT_ID=$PROPLET_2_CLIENT_ID"
-echo "PROPLET_3_CLIENT_ID=$PROPLET_3_CLIENT_ID"
+echo "PROPLET_ENTITY_ID=$PROPLET_ENTITY_ID"
+echo "PROPLET_2_ENTITY_ID=$PROPLET_2_ENTITY_ID"
+echo "PROPLET_3_ENTITY_ID=$PROPLET_3_ENTITY_ID"
 
 # Configure experiment (replace YOUR_GITHUB_USERNAME with your actual username)
 # GHCR repository names are case-sensitive - use the EXACT same name you used when pushing
@@ -384,7 +384,7 @@ curl -X POST http://localhost:7070/fl/experiments \
     \"experiment_id\": \"exp-r-$(date +%s)\",
     \"round_id\": \"r-$(date +%s)\",
     \"model_ref\": \"fl/models/global_model_v0\",
-    \"participants\": [\"$PROPLET_CLIENT_ID\", \"$PROPLET_2_CLIENT_ID\", \"$PROPLET_3_CLIENT_ID\"],
+    \"participants\": [\"$PROPLET_ENTITY_ID\", \"$PROPLET_2_ENTITY_ID\", \"$PROPLET_3_ENTITY_ID\"],
     \"hyperparams\": {\"epochs\": 1, \"lr\": 0.01, \"batch_size\": 16},
     \"k_of_n\": 3,
     \"timeout_s\": 60,
@@ -403,14 +403,14 @@ Publish a round start message to the MQTT topic. **MQTT connections require auth
 # Get client credentials from docker/.env or provisioning output
 # Use the manager client ID and key, or fl-coordinator client credentials
 mosquitto_pub -h localhost -p 1883 \
-  -u "<CLIENT_ID>" \
+  -u "<ENTITY_ID>" \
   -P "<CLIENT_KEY>" \
   -t "fl/rounds/start" \
   -m '{
     "round_id": "r-0001",
     "model_uri": "fl/models/global_model_v0",
     "task_wasm_image": "ghcr.io/YOUR_GITHUB_USERNAME/fl-client-wasm:latest",
-    "participants": ["<PROPLET_CLIENT_ID>", "<PROPLET_2_CLIENT_ID>", "<PROPLET_3_CLIENT_ID>"],
+    "participants": ["<PROPLET_ENTITY_ID>", "<PROPLET_2_ENTITY_ID>", "<PROPLET_3_ENTITY_ID>"],
     "hyperparams": {"epochs": 1, "lr": 0.01, "batch_size": 16},
     "k_of_n": 3,
     "timeout_s": 30
@@ -421,7 +421,7 @@ mosquitto_pub -h localhost -p 1883 \
 >
 > - MQTT connections go through nginx. The port is configured via `SMQ_NGINX_MQTT_PORT` in your `docker/.env` file (default: 1883).
 > - Use `-u` for client ID (username) and `-P` for client key (password).
-> - Get the current client ID and key from `docker/.env` (MANAGER_CLIENT_ID and MANAGER_CLIENT_KEY) or from the provisioning script output.
+> - Get the current client ID and key from `docker/.env` (MANAGER_ENTITY_ID and MANAGER_CLIENT_KEY) or from the provisioning script output.
 
 ## Step 8: Verify Round Execution
 
@@ -513,7 +513,7 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 Before running an FL round, ensure that:
 
 1. Local Data Store service is running
-2. Participant UUIDs are set in `docker/.env` (PROPLET_CLIENT_ID, PROPLET_2_CLIENT_ID, PROPLET_3_CLIENT_ID)
+2. Participant UUIDs are set in `docker/.env` (PROPLET_ENTITY_ID, PROPLET_2_ENTITY_ID, PROPLET_3_ENTITY_ID)
 3. Datasets have been auto-seeded on Local Data Store startup
 
 ### Verify Datasets Are Available
@@ -522,19 +522,19 @@ Check that datasets exist for each participant UUID:
 
 ```bash
 # Extract participant UUIDs from docker/.env
-export PROPLET_CLIENT_ID=$(grep '^PROPLET_CLIENT_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
-export PROPLET_2_CLIENT_ID=$(grep '^PROPLET_2_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
-export PROPLET_3_CLIENT_ID=$(grep '^PROPLET_3_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
+export PROPLET_ENTITY_ID=$(grep '^PROPLET_ENTITY_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
+export PROPLET_2_ENTITY_ID=$(grep '^PROPLET_2_ENTITY_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
+export PROPLET_3_ENTITY_ID=$(grep '^PROPLET_3_ENTITY_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
 
 # Verify each dataset is accessible
-echo "Checking dataset for proplet-1 (UUID: $PROPLET_CLIENT_ID)..."
-curl -s http://localhost:8083/datasets/$PROPLET_CLIENT_ID | jq '.schema, .proplet_id, .size' || echo "ERROR: Dataset not found"
+echo "Checking dataset for proplet-1 (UUID: $PROPLET_ENTITY_ID)..."
+curl -s http://localhost:8083/datasets/$PROPLET_ENTITY_ID | jq '.schema, .proplet_id, .size' || echo "ERROR: Dataset not found"
 
-echo "Checking dataset for proplet-2 (UUID: $PROPLET_2_CLIENT_ID)..."
-curl -s http://localhost:8083/datasets/$PROPLET_2_CLIENT_ID | jq '.schema, .proplet_id, .size' || echo "ERROR: Dataset not found"
+echo "Checking dataset for proplet-2 (UUID: $PROPLET_2_ENTITY_ID)..."
+curl -s http://localhost:8083/datasets/$PROPLET_2_ENTITY_ID | jq '.schema, .proplet_id, .size' || echo "ERROR: Dataset not found"
 
-echo "Checking dataset for proplet-3 (UUID: $PROPLET_3_CLIENT_ID)..."
-curl -s http://localhost:8083/datasets/$PROPLET_3_CLIENT_ID | jq '.schema, .proplet_id, .size' || echo "ERROR: Dataset not found"
+echo "Checking dataset for proplet-3 (UUID: $PROPLET_3_ENTITY_ID)..."
+curl -s http://localhost:8083/datasets/$PROPLET_3_ENTITY_ID | jq '.schema, .proplet_id, .size' || echo "ERROR: Dataset not found"
 ```
 
 **Expected output**: Each curl should return a JSON object with:
@@ -586,7 +586,7 @@ docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-fil
 
 If datasets are missing:
 
-1. **Check environment variables**: Ensure `PROPLET_CLIENT_ID`, `PROPLET_2_CLIENT_ID`, `PROPLET_3_CLIENT_ID` are set in `docker/.env` and passed to `local-data-store` service.
+1. **Check environment variables**: Ensure `PROPLET_ENTITY_ID`, `PROPLET_2_ENTITY_ID`, `PROPLET_3_ENTITY_ID` are set in `docker/.env` and passed to `local-data-store` service.
 
 2. **Restart Local Data Store**: Datasets are auto-seeded on startup:
 
@@ -604,7 +604,7 @@ If datasets are missing:
 4. **Check dataset format**: Verify the dataset JSON structure:
 
    ```bash
-   docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env exec local-data-store cat /data/datasets/$PROPLET_CLIENT_ID.json | jq '.schema, .proplet_id, .size'
+   docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env exec local-data-store cat /data/datasets/$PROPLET_ENTITY_ID.json | jq '.schema, .proplet_id, .size'
    ```
 
 ### Dataset Format
@@ -707,7 +707,7 @@ The script:
 - Builds WASM if needed
 - Checks services are running
 - Creates initial model if needed
-- Exports CLIENT_IDs
+- Exports ENTITY_IDs
 - Configures and runs an experiment
 - Waits for round completion
 - Verifies results
@@ -788,7 +788,7 @@ If you see `"connection refused"` when manager tries to connect to coordinator:
    docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env logs coordinator-http --tail 50
    ```
 
-4. **Verify coordinator MQTT credentials**: Ensure `COORDINATOR_CLIENT_ID` and `COORDINATOR_CLIENT_KEY` are set in `docker/.env` (updated by provisioning script)
+4. **Verify coordinator MQTT credentials**: Ensure `COORDINATOR_ENTITY_ID` and `COORDINATOR_CLIENT_KEY` are set in `docker/.env` (updated by provisioning script)
 5. **Restart coordinator if needed**:
 
    ```bash
@@ -865,30 +865,30 @@ If you see this error in manager logs:
 }
 ```
 
-**Root Cause**: The `participants` array in ConfigureExperiment is using instance IDs (`"proplet-1"`, `"proplet-2"`, `"proplet-3"`) instead of Magistrala CLIENT_IDs (UUIDs).
+**Root Cause**: The `participants` array in ConfigureExperiment is using instance IDs (`"proplet-1"`, `"proplet-2"`, `"proplet-3"`) instead of Magistrala ENTITY_IDs (UUIDs).
 
 **Solution**:
 
-1. **Verify your `docker/.env` file has CLIENT_IDs**:
+1. **Verify your `docker/.env` file has ENTITY_IDs**:
 
    ```bash
-   grep -E '^(PROPLET_CLIENT_ID|PROPLET_2_CLIENT_ID|PROPLET_3_CLIENT_ID)=' docker/.env
+   grep -E '^(PROPLET_ENTITY_ID|PROPLET_2_ENTITY_ID|PROPLET_3_ENTITY_ID)=' docker/.env
    ```
 
    Should show UUIDs like:
 
    ```text
-   PROPLET_CLIENT_ID=3fe95a65-74f1-4ede-bf20-ef565f04cecb
-   PROPLET_2_CLIENT_ID=1f074cd1-4e22-4e21-92ca-e35a21d3ce29
-   PROPLET_3_CLIENT_ID=0d89e6d7-6410-40b5-bcda-07b0217796b8
+   PROPLET_ENTITY_ID=3fe95a65-74f1-4ede-bf20-ef565f04cecb
+   PROPLET_2_ENTITY_ID=1f074cd1-4e22-4e21-92ca-e35a21d3ce29
+   PROPLET_3_ENTITY_ID=0d89e6d7-6410-40b5-bcda-07b0217796b8
    ```
 
-2. **Export CLIENT_IDs before calling ConfigureExperiment**:
+2. **Export ENTITY_IDs before calling ConfigureExperiment**:
 
    ```bash
-   export PROPLET_CLIENT_ID=$(grep '^PROPLET_CLIENT_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
-   export PROPLET_2_CLIENT_ID=$(grep '^PROPLET_2_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
-   export PROPLET_3_CLIENT_ID=$(grep '^PROPLET_3_CLIENT_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
+   export PROPLET_ENTITY_ID=$(grep '^PROPLET_ENTITY_ID=' docker/.env | grep -v '=""' | tail -1 | cut -d '=' -f2 | tr -d '"')
+   export PROPLET_2_ENTITY_ID=$(grep '^PROPLET_2_ENTITY_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
+   export PROPLET_3_ENTITY_ID=$(grep '^PROPLET_3_ENTITY_ID=' docker/.env | cut -d '=' -f2 | tr -d '"')
    ```
 
 3. **Verify success**: Check manager logs for:
@@ -899,7 +899,7 @@ If you see this error in manager logs:
 
    You should see 3 "launched task" messages with UUID proplet_ids, not warnings about "proplet not found".
 
-**Why this happens**: Proplets register themselves with their Magistrala CLIENT_ID (UUID), not their instance ID. The manager looks up proplets by the ID they registered with, so you must use CLIENT_IDs in the participants array.
+**Why this happens**: Proplets register themselves with their Magistrala ENTITY_ID (UUID), not their instance ID. The manager looks up proplets by the ID they registered with, so you must use ENTITY_IDs in the participants array.
 
 ### "Round timeout exceeded" with 0 updates - WASM Not Executing
 
@@ -1005,13 +1005,13 @@ And proplet logs show `"Requesting binary from registry: ghcr.io/..."` but no ex
 
    See [Step 2: Configure GHCR Authentication](#step-2-configure-ghcr-authentication-one-time) for detailed instructions.
 
-4. **Verify proxy has correct domain/channel IDs**:
+4. **Verify proxy has correct tenant/channel IDs**:
 
    ```bash
-   grep -E '^(PROXY_DOMAIN_ID|PROXY_CHANNEL_ID|PROXY_CLIENT_ID|PROXY_CLIENT_KEY)=' docker/.env
+   grep -E '^(PROXY_TENANT_ID|PROXY_CHANNEL_ID|PROXY_ENTITY_ID|PROXY_CLIENT_KEY)=' docker/.env
    ```
 
-   These should match your manager/proplet domain and channel IDs.
+   These should match your manager/proplet tenant and channel IDs.
 
 5. **Restart proxy after configuration**:
 
@@ -1044,15 +1044,15 @@ If you see `"failed to load TOML configuration: stat config.toml: no such file o
 
    ```bash
    # Proxy Service Configuration (for WASM binary fetching)
-   # Use the same domain and channel as manager/proplet
+   # Use the same tenant and channel as manager/proplet
    # IMPORTANT: Replace these placeholders with actual values from your provisioning output
-   PROXY_DOMAIN_ID=<YOUR_DOMAIN_ID>  # Replace with your actual domain ID (UUID format)
+   PROXY_TENANT_ID=<YOUR_TENANT_ID>  # Replace with your actual tenant ID (UUID format)
    PROXY_CHANNEL_ID=<YOUR_CHANNEL_ID>  # Replace with your actual channel ID (UUID format)
 
    # Provision a client for proxy (or reuse manager client for testing)
    # Option 1: Use manager client credentials (for quick testing)
    # IMPORTANT: Replace these placeholders with actual values from your provisioning output
-   PROXY_CLIENT_ID=<YOUR_PROXY_CLIENT_ID>  # Replace with your actual proxy client ID (UUID format)
+   PROXY_ENTITY_ID=<YOUR_PROXY_ENTITY_ID>  # Replace with your actual proxy client ID (UUID format)
    PROXY_CLIENT_KEY=<YOUR_PROXY_CLIENT_KEY>  # Replace with your actual proxy client key (UUID format)
 
    # Option 2: Provision a separate client for proxy (recommended for production)
@@ -1071,7 +1071,7 @@ If you see `"failed to load TOML configuration: stat config.toml: no such file o
    PROXY_CHUNK_SIZE=512000
    ```
 
-   > **Note**: Replace all placeholders (`<YOUR_DOMAIN_ID>`, `<YOUR_CHANNEL_ID>`, `<YOUR_PROXY_CLIENT_ID>`, `<YOUR_PROXY_CLIENT_KEY>`, `YOUR_GITHUB_USERNAME`, `ghp_xxxxx`) with your actual values. These values are typically generated by the provisioning script (Step 4) or can be obtained from your `docker/.env` file after provisioning.
+   > **Note**: Replace all placeholders (`<YOUR_TENANT_ID>`, `<YOUR_CHANNEL_ID>`, `<YOUR_PROXY_ENTITY_ID>`, `<YOUR_PROXY_CLIENT_KEY>`, `YOUR_GITHUB_USERNAME`, `ghp_xxxxx`) with your actual values. These values are typically generated by the provisioning script (Step 4) or can be obtained from your `docker/.env` file after provisioning.
 
 2. **Restart proxy service**:
 

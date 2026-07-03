@@ -3,8 +3,8 @@ package main
 import (
 	"log"
 
-	smqsdk "github.com/absmach/magistrala/pkg/sdk"
 	"github.com/absmach/propeller/cli"
+	"github.com/absmach/propeller/pkg/atomsdk"
 	"github.com/absmach/propeller/pkg/sdk"
 	"github.com/spf13/cobra"
 )
@@ -12,11 +12,7 @@ import (
 var (
 	tlsVerification = false
 	managerURL      = "http://localhost:7070"
-	usersURL        = "http://localhost:9002"
-	domainsURL      = "http://localhost:9003"
-	clientsURL      = "http://localhost:9006"
-	channelsURL     = "http://localhost:9005"
-	msgContentType  = string(smqsdk.CTJSONSenML)
+	atomURL         = "http://localhost:8080"
 )
 
 func main() {
@@ -32,19 +28,10 @@ func main() {
 			s := sdk.NewSDK(sdkConf)
 			cli.SetPropellerSDK(s)
 
-			smqSDKConf := smqsdk.Config{
-				UsersURL:       usersURL,
-				DomainsURL:     domainsURL,
-				ClientsURL:     clientsURL,
-				ChannelsURL:    channelsURL,
-				MsgContentType: smqsdk.ContentType(msgContentType),
-			}
-
-			if smqSDKConf.MsgContentType == "" {
-				smqSDKConf.MsgContentType = smqsdk.ContentType(msgContentType)
-			}
-			sdk := smqsdk.NewSDK(smqSDKConf)
-			cli.SetMagistralaSDK(sdk)
+			atomSDK := atomsdk.New(atomsdk.Config{
+				AtomURL: atomURL,
+			})
+			cli.SetAtomSDK(atomSDK)
 		},
 	}
 
@@ -70,43 +57,11 @@ func main() {
 	)
 
 	rootCmd.PersistentFlags().StringVarP(
-		&usersURL,
-		"users-url",
-		"u",
-		usersURL,
-		"Users service URL",
-	)
-
-	rootCmd.PersistentFlags().StringVarP(
-		&domainsURL,
-		"domains-url",
-		"d",
-		domainsURL,
-		"Domains service URL",
-	)
-
-	rootCmd.PersistentFlags().StringVarP(
-		&clientsURL,
-		"clients-url",
-		"c",
-		clientsURL,
-		"Clients service URL",
-	)
-
-	rootCmd.PersistentFlags().StringVarP(
-		&channelsURL,
-		"channels-url",
-		"z",
-		channelsURL,
-		"Channels service URL",
-	)
-
-	rootCmd.PersistentFlags().StringVarP(
-		&msgContentType,
-		"content-type",
-		"t",
-		msgContentType,
-		"Message content type",
+		&atomURL,
+		"atom-url",
+		"a",
+		atomURL,
+		"Atom (identity & authorization) URL",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

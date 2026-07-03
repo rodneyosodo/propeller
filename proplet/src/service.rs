@@ -75,7 +75,7 @@ impl PropletService {
         plugin_registry: Option<Arc<PluginRegistry>>,
         metrics: Arc<PropletMetrics>,
     ) -> Self {
-        let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
+        let proplet = Proplet::new(config.entity_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
         let http_client = build_http_client(
@@ -111,7 +111,7 @@ impl PropletService {
         plugin_registry: Option<Arc<PluginRegistry>>,
         metrics: Arc<PropletMetrics>,
     ) -> Self {
-        let proplet = Proplet::new(config.client_id.clone(), "proplet".to_string());
+        let proplet = Proplet::new(config.entity_id.clone(), "proplet".to_string());
         let monitor = Arc::new(SystemMonitor::new(MonitoringProfile::default()));
         let metrics_collector = Arc::new(Mutex::new(MetricsCollector::new()));
         let http_client = build_http_client(
@@ -209,21 +209,21 @@ impl PropletService {
         let qos = self.config.qos();
 
         let start_topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "control/manager/start",
         );
         self.pubsub.subscribe(&start_topic, qos).await?;
 
         let stop_topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "control/manager/stop",
         );
         self.pubsub.subscribe(&stop_topic, qos).await?;
 
         let chunk_topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "registry/server",
         );
@@ -274,7 +274,7 @@ impl PropletService {
         };
 
         let discovery = DiscoveryMessage {
-            proplet_id: self.config.client_id.clone(),
+            proplet_id: self.config.entity_id.clone(),
             namespace: self
                 .config
                 .k8s_namespace
@@ -296,7 +296,7 @@ impl PropletService {
         };
 
         let topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "control/proplet/create",
         );
@@ -329,7 +329,7 @@ impl PropletService {
         proplet.task_count = running_tasks.len();
 
         let liveliness = LivelinessMessage {
-            proplet_id: self.config.client_id.clone(),
+            proplet_id: self.config.entity_id.clone(),
             status: "alive".to_string(),
             namespace: self
                 .config
@@ -339,7 +339,7 @@ impl PropletService {
         };
 
         let topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "control/proplet/alive",
         );
@@ -395,7 +395,7 @@ impl PropletService {
         }
 
         let msg = PropletMetricsMessage {
-            proplet_id: self.config.client_id.clone(),
+            proplet_id: self.config.entity_id.clone(),
             namespace: self
                 .config
                 .k8s_namespace
@@ -407,7 +407,7 @@ impl PropletService {
         };
 
         let topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "control/proplet/metrics",
         );
@@ -469,7 +469,7 @@ impl PropletService {
 
         if !req.broadcast {
             if let Some(ref target_id) = req.proplet_id {
-                if target_id != &self.config.client_id {
+                if target_id != &self.config.entity_id {
                     return Ok(());
                 }
             }
@@ -633,10 +633,10 @@ impl PropletService {
         let running_tasks = self.running_tasks.clone();
         let monitor = self.monitor.clone();
         let metrics = self.metrics.clone();
-        let domain_id = self.config.domain_id.clone();
+        let tenant_id = self.config.tenant_id.clone();
         let channel_id = self.config.channel_id.clone();
         let qos = self.config.qos();
-        let proplet_id = self.config.client_id.clone();
+        let proplet_id = self.config.entity_id.clone();
         let task_id = req.id.clone();
         let task_name = req.name.clone();
         let plugin_registry = self.plugin_registry.clone();
@@ -721,7 +721,7 @@ impl PropletService {
                 let runtime_clone = runtime.clone();
                 let task_id_clone = task_id.clone();
                 let pubsub_clone = pubsub.clone();
-                let domain_clone = domain_id.clone();
+                let tenant_clone = tenant_id.clone();
                 let channel_clone = channel_id.clone();
                 let proplet_id_clone = proplet_id.clone();
 
@@ -734,7 +734,7 @@ impl PropletService {
                         monitor_clone
                             .attach_pid(&task_id_clone, pid, move |metrics, aggregated| {
                                 let pubsub = pubsub_clone.clone();
-                                let domain = domain_clone.clone();
+                                let tenant = tenant_clone.clone();
                                 let channel = channel_clone.clone();
                                 let task_id = task_id_for_closure.clone();
                                 let proplet_id = proplet_id_for_closure.clone();
@@ -749,7 +749,7 @@ impl PropletService {
                                     };
 
                                     let topic = build_topic(
-                                        &domain,
+                                        &tenant,
                                         &channel,
                                         "control/proplet/task_metrics",
                                     );
@@ -1011,7 +1011,7 @@ impl PropletService {
                     error,
                 };
 
-                let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");
+                let topic = build_topic(&tenant_id, &channel_id, "control/proplet/results");
                 info!("Publishing FL update for task {}", task_id);
 
                 if let Err(e) = pubsub.publish(&topic, &fl_result, qos).await {
@@ -1027,7 +1027,7 @@ impl PropletService {
                     error,
                 };
 
-                let topic = build_topic(&domain_id, &channel_id, "control/proplet/results");
+                let topic = build_topic(&tenant_id, &channel_id, "control/proplet/results");
 
                 info!("Publishing result for task {}", task_id);
 
@@ -1112,7 +1112,7 @@ impl PropletService {
 
     async fn request_binary_from_registry(&self, app_name: &str) -> Result<()> {
         let topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "registry/proplet",
         );
@@ -1183,7 +1183,7 @@ impl PropletService {
         results: Vec<u8>,
         error: Option<String>,
     ) -> Result<()> {
-        let proplet_id = self.config.client_id.clone();
+        let proplet_id = self.config.entity_id.clone();
         let result_str = String::from_utf8_lossy(&results).to_string();
 
         let result_msg = ResultMessage {
@@ -1194,7 +1194,7 @@ impl PropletService {
         };
 
         let topic = build_topic(
-            &self.config.domain_id,
+            &self.config.tenant_id,
             &self.config.channel_id,
             "control/proplet/results",
         );

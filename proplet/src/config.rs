@@ -27,9 +27,9 @@ fn is_falsy(s: &str) -> bool {
 /// Configuration fields that can be loaded from TOML file
 #[derive(Debug, Clone, Deserialize)]
 pub struct PropletFileConfig {
-    pub domain_id: String,
-    pub client_id: String,
-    pub client_key: String,
+    pub tenant_id: String,
+    pub entity_id: String,
+    pub api_key: String,
     pub channel_id: String,
 }
 
@@ -51,10 +51,10 @@ pub struct PropletConfig {
     pub http_tls_insecure_skip_verify: bool,
     pub liveliness_interval: u64,
     pub metrics_interval: u64,
-    pub domain_id: String,
+    pub tenant_id: String,
     pub channel_id: String,
-    pub client_id: String,
-    pub client_key: String,
+    pub entity_id: String,
+    pub api_key: String,
     pub k8s_namespace: Option<String>,
     pub external_wasm_runtime: Option<String>,
     pub enable_monitoring: bool,
@@ -98,10 +98,10 @@ impl Default for PropletConfig {
             http_tls_insecure_skip_verify: false,
             liveliness_interval: 10,
             metrics_interval: 10,
-            domain_id: String::new(),
+            tenant_id: String::new(),
             channel_id: String::new(),
-            client_id: String::new(),
-            client_key: String::new(),
+            entity_id: String::new(),
+            api_key: String::new(),
             k8s_namespace: None,
             external_wasm_runtime: None,
             enable_monitoring: true,
@@ -132,9 +132,9 @@ impl PropletConfig {
     pub fn load() -> Result<Self, Box<dyn std::error::Error>> {
         let mut config = Self::from_env();
 
-        if config.domain_id.is_empty()
-            || config.client_id.is_empty()
-            || config.client_key.is_empty()
+        if config.tenant_id.is_empty()
+            || config.entity_id.is_empty()
+            || config.api_key.is_empty()
             || config.channel_id.is_empty()
         {
             let config_path =
@@ -144,17 +144,17 @@ impl PropletConfig {
                 Ok(_) => {
                     let file_config = Self::from_file(&config_path)?;
 
-                    if config.client_id.is_empty() {
-                        config.client_id = file_config.client_id;
+                    if config.entity_id.is_empty() {
+                        config.entity_id = file_config.entity_id;
                     }
-                    if config.client_key.is_empty() {
-                        config.client_key = file_config.client_key;
+                    if config.api_key.is_empty() {
+                        config.api_key = file_config.api_key;
                     }
                     if config.channel_id.is_empty() {
                         config.channel_id = file_config.channel_id;
                     }
-                    if config.domain_id.is_empty() {
-                        config.domain_id = file_config.domain_id;
+                    if config.tenant_id.is_empty() {
+                        config.tenant_id = file_config.tenant_id;
                     }
                 }
                 Err(e) => {
@@ -164,17 +164,17 @@ impl PropletConfig {
         }
 
         let mut missing = Vec::new();
-        if config.domain_id.is_empty() {
-            missing.push("domain_id/PROPLET_DOMAIN_ID");
+        if config.tenant_id.is_empty() {
+            missing.push("tenant_id/PROPLET_TENANT_ID");
         }
         if config.channel_id.is_empty() {
             missing.push("channel_id/PROPLET_CHANNEL_ID");
         }
-        if config.client_id.is_empty() {
-            missing.push("client_id/PROPLET_CLIENT_ID");
+        if config.entity_id.is_empty() {
+            missing.push("entity_id/PROPLET_ENTITY_ID");
         }
-        if config.client_key.is_empty() {
-            missing.push("client_key/PROPLET_CLIENT_KEY");
+        if config.api_key.is_empty() {
+            missing.push("api_key/PROPLET_API_KEY");
         }
         if !missing.is_empty() {
             return Err(format!(
@@ -306,9 +306,14 @@ impl PropletConfig {
             }
         }
 
-        if let Ok(val) = env::var("PROPLET_DOMAIN_ID") {
+        if let Ok(val) = env::var("PROPLET_TENANT_ID") {
             if !val.is_empty() {
-                config.domain_id = val;
+                config.tenant_id = val;
+            }
+        }
+        if let Ok(val) = env::var("PROPLET_TENANT_ID") {
+            if !val.is_empty() && config.tenant_id.is_empty() {
+                config.tenant_id = val;
             }
         }
 
@@ -318,15 +323,25 @@ impl PropletConfig {
             }
         }
 
-        if let Ok(val) = env::var("PROPLET_CLIENT_ID") {
+        if let Ok(val) = env::var("PROPLET_ENTITY_ID") {
             if !val.is_empty() {
-                config.client_id = val;
+                config.entity_id = val;
+            }
+        }
+        if let Ok(val) = env::var("PROPLET_ENTITY_ID") {
+            if !val.is_empty() && config.entity_id.is_empty() {
+                config.entity_id = val;
             }
         }
 
-        if let Ok(val) = env::var("PROPLET_CLIENT_KEY") {
+        if let Ok(val) = env::var("PROPLET_API_KEY") {
             if !val.is_empty() {
-                config.client_key = val;
+                config.api_key = val;
+            }
+        }
+        if let Ok(val) = env::var("PROPLET_API_KEY") {
+            if !val.is_empty() && config.api_key.is_empty() {
+                config.api_key = val;
             }
         }
 
@@ -505,10 +520,10 @@ mod tests {
         assert_eq!(config.mqtt_timeout, 30);
         assert_eq!(config.mqtt_qos, 2);
         assert_eq!(config.liveliness_interval, 10);
-        assert!(config.domain_id.is_empty());
+        assert!(config.tenant_id.is_empty());
         assert!(config.channel_id.is_empty());
-        assert!(config.client_id.is_empty());
-        assert!(config.client_key.is_empty());
+        assert!(config.entity_id.is_empty());
+        assert!(config.api_key.is_empty());
         assert!(config.k8s_namespace.is_none());
         assert!(config.external_wasm_runtime.is_none());
 
@@ -631,13 +646,13 @@ mod tests {
     }
 
     #[test]
-    fn test_proplet_config_from_env_domain_id() {
+    fn test_proplet_config_from_env_tenant_id() {
         let _lock = env_lock();
-        env::set_var("PROPLET_DOMAIN_ID", "domain-123");
+        env::set_var("PROPLET_TENANT_ID", "tenant-123");
         let config = PropletConfig::from_env();
-        env::remove_var("PROPLET_DOMAIN_ID");
+        env::remove_var("PROPLET_TENANT_ID");
 
-        assert_eq!(config.domain_id, "domain-123");
+        assert_eq!(config.tenant_id, "tenant-123");
     }
 
     #[test]
@@ -651,23 +666,23 @@ mod tests {
     }
 
     #[test]
-    fn test_proplet_config_from_env_client_id() {
+    fn test_proplet_config_from_env_entity_id() {
         let _lock = env_lock();
-        env::set_var("PROPLET_CLIENT_ID", "client-789");
+        env::set_var("PROPLET_ENTITY_ID", "entity-789");
         let config = PropletConfig::from_env();
-        env::remove_var("PROPLET_CLIENT_ID");
+        env::remove_var("PROPLET_ENTITY_ID");
 
-        assert_eq!(config.client_id, "client-789");
+        assert_eq!(config.entity_id, "entity-789");
     }
 
     #[test]
-    fn test_proplet_config_from_env_client_key() {
+    fn test_proplet_config_from_env_api_key() {
         let _lock = env_lock();
-        env::set_var("PROPLET_CLIENT_KEY", "secret-key");
+        env::set_var("PROPLET_API_KEY", "secret-key");
         let config = PropletConfig::from_env();
-        env::remove_var("PROPLET_CLIENT_KEY");
+        env::remove_var("PROPLET_API_KEY");
 
-        assert_eq!(config.client_key, "secret-key");
+        assert_eq!(config.api_key, "secret-key");
     }
 
     #[test]
@@ -722,10 +737,10 @@ mod tests {
             "PROPLET_MQTT_TIMEOUT",
             "PROPLET_MQTT_QOS",
             "PROPLET_LIVELINESS_INTERVAL",
-            "PROPLET_DOMAIN_ID",
+            "PROPLET_TENANT_ID",
             "PROPLET_CHANNEL_ID",
-            "PROPLET_CLIENT_ID",
-            "PROPLET_CLIENT_KEY",
+            "PROPLET_ENTITY_ID",
+            "PROPLET_API_KEY",
             "PROPLET_MANAGER_K8S_NAMESPACE",
             "PROPLET_EXTERNAL_WASM_RUNTIME",
         ];

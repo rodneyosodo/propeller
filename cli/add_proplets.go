@@ -6,8 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/absmach/magistrala/pkg/errors"
-	smqSDK "github.com/absmach/magistrala/pkg/sdk"
 	"github.com/charmbracelet/huh"
 	toml "github.com/pelletier/go-toml"
 	"github.com/spf13/cobra"
@@ -18,14 +16,15 @@ var addPropletsCmd = &cobra.Command{
 	Short: "Add proplets to an existing provisioned setup",
 	Long: `Add more proplets to an existing Propeller deployment without re-provisioning from scratch.
 
-Reads domain_id, channel_id, and the current proplet count from the existing config file,
-then creates new Magistrala clients and appends their credentials to that file.
+Reads tenant_id, channel_id, and the current proplet count from the existing config file,
+then creates new Atom entities (kind: service, profile: Service Account), API keys,
+connects them to the channel, and appends their credentials to that file.
 
 Example:
   propeller-cli provision add-proplets
   propeller-cli provision add-proplets -f /path/to/config.toml`,
 	Run: func(cmd *cobra.Command, args []string) {
-		domainID, channelID, numExisting, err := readExistingConfig(fileName)
+		tenantID, channelID, numExisting, err := readExistingConfig(fileName)
 		if err != nil {
 			logErrorCmd(*cmd, fmt.Errorf("failed to read %s: %w", fileName, err))
 
@@ -33,22 +32,22 @@ Example:
 		}
 
 		var (
-			username    string
-			password    string
-			token       smqSDK.Token
+			identifier  string
+			secret      string
+			token       string
 			numNewStr   string
 			numNew      int
-			newProplets []smqSDK.Client
+			newProplets []propletCreds
 		)
 
 		form := huh.NewForm(
 			huh.NewGroup(
 				huh.NewInput().
-					Title("Enter your username").
-					Value(&username).
+					Title("Enter your Atom username").
+					Value(&identifier).
 					Validate(func(str string) error {
 						if str == "" {
-							return errors.New("username is required")
+							return fmt.Errorf("username is required")
 						}
 
 						return nil
@@ -56,18 +55,16 @@ Example:
 				huh.NewInput().
 					Title("Enter your password").
 					EchoMode(huh.EchoModePassword).
-					Value(&password).
+					Value(&secret).
 					Validate(func(str string) error {
 						if str == "" {
-							return errors.New("password is required")
+							return fmt.Errorf("password is required")
 						}
-						u := smqSDK.Login{
-							Username: username,
-							Password: password,
-						}
-						token, err = smqsdk.CreateToken(cmd.Context(), u)
+
+						var err error
+						token, err = atomSDK.Login(cmd.Context(), identifier, secret)
 						if err != nil {
-							return errors.Wrap(errFailedToCreateToken, err)
+							return fmt.Errorf("%w: %w", errFailedToCreateToken, err)
 						}
 
 						return nil
@@ -82,38 +79,29 @@ Example:
 						case "":
 							numNew = 1
 						default:
+							var err error
 							numNew, err = strconv.Atoi(str)
 							if err != nil || numNew < 1 {
-								return errors.New("number of proplets must be a positive integer")
+								return fmt.Errorf("number of proplets must be a positive integer")
 							}
 						}
 
-						newProplets = make([]smqSDK.Client, numNew)
+						newProplets = make([]propletCreds, numNew)
 						for i := range numNew {
-							propletClientName := namegen.Generate()
-							propletClient := smqSDK.Client{
-								Name:   propletClientName,
-								Tags:   []string{"proplet", "propeller"},
-								Status: "enabled",
-							}
-							propletClient, err = smqsdk.CreateClient(cmd.Context(), propletClient, domainID, token.AccessToken)
+							pn := namegen.Generate()
+							eid, err := atomSDK.CreateServiceEntity(cmd.Context(), pn, tenantID, token)
 							if err != nil {
-								return errors.Wrap(errFailedClientCreation, err)
+								return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
 							}
-							newProplets[i] = propletClient
-						}
+							key, err := atomSDK.CreateAPIKey(cmd.Context(), eid, "proplet-mqtt", token)
+							if err != nil {
+								return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+							}
+							newProplets[i] = propletCreds{EntityID: eid, APIKey: key}
 
-						clientIDs := make([]string, numNew)
-						for i, p := range newProplets {
-							clientIDs[i] = p.ID
-						}
-						conn := smqSDK.Connection{
-							ClientIDs:  clientIDs,
-							ChannelIDs: []string{channelID},
-							Types:      []string{"publish", "subscribe"},
-						}
-						if err = smqsdk.Connect(cmd.Context(), conn, domainID, token.AccessToken); err != nil {
-							return errors.Wrap(errFailedConnectionCreation, err)
+							if err := atomSDK.Connect(cmd.Context(), eid, channelID, tenantID, token); err != nil {
+								return fmt.Errorf("%w: %w", errFailedConnectionCreation, err)
+							}
 						}
 
 						return nil
@@ -128,19 +116,19 @@ Example:
 		}
 
 		var newSections strings.Builder
-		for i, propletClient := range newProplets {
+		for i, pc := range newProplets {
 			sectionIndex := numExisting + i + 1
 			fmt.Fprintf(&newSections, `
 [proplet%d]
-domain_id = "%s"
-client_id = "%s"
-client_key = "%s"
+tenant_id = "%s"
+entity_id = "%s"
+api_key = "%s"
 channel_id = "%s"
 `,
 				sectionIndex,
-				domainID,
-				propletClient.ID,
-				propletClient.Credentials.Secret,
+				tenantID,
+				pc.EntityID,
+				pc.APIKey,
 				channelID,
 			)
 		}
@@ -169,7 +157,7 @@ channel_id = "%s"
 	},
 }
 
-func readExistingConfig(path string) (domainID, channelID string, numExisting int, err error) {
+func readExistingConfig(path string) (tenantID, channelID string, numExisting int, err error) {
 	tree, err := toml.LoadFile(path)
 	if err != nil {
 		return "", "", 0, err
@@ -177,17 +165,17 @@ func readExistingConfig(path string) (domainID, channelID string, numExisting in
 
 	manager, ok := tree.Get("manager").(*toml.Tree)
 	if !ok {
-		return "", "", 0, errors.New("missing [manager] section in config file")
+		return "", "", 0, fmt.Errorf("missing [manager] section in config file")
 	}
-	domainID, _ = manager.Get("domain_id").(string)
+	tenantID, _ = manager.Get("tenant_id").(string)
 	channelID, _ = manager.Get("channel_id").(string)
-	if domainID == "" || channelID == "" {
-		return "", "", 0, errors.New("domain_id and channel_id are required in [manager] section")
+	if tenantID == "" || channelID == "" {
+		return "", "", 0, fmt.Errorf("tenant_id and channel_id are required in [manager] section")
 	}
 
 	numExisting = countExistingProplets(tree)
 
-	return domainID, channelID, numExisting, nil
+	return tenantID, channelID, numExisting, nil
 }
 
 func countExistingProplets(tree *toml.Tree) int {

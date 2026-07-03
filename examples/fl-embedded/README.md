@@ -67,11 +67,11 @@ curl -X POST http://localhost:7070/tasks/fl-task-embedded-1/start
 
 ## Workflow
 
-1. **Manager** creates task and publishes to Magistrala MQTT topic: `m/{domain}/c/{channel}/control/manager/start`
+1. **Manager** creates task and publishes to Magistrala MQTT topic: `m/{tenant_id}/c/{channel}/control/manager/start`
 
 2. **Embedded Proplet** receives start command:
    - Detects FL task via `ROUND_ID` environment variable
-   - Sets `PROPLET_ID` from `config.client_id`
+   - Sets `PROPLET_ID` from `config.entity_id`
    - Fetches model from Model Registry via HTTP GET
    - Fetches dataset from Data Store via HTTP GET
    - Stores data for WASM module access

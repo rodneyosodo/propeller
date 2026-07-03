@@ -304,13 +304,13 @@ async fn custom_tls_send_request_handler(
 
     let (mut sender, worker) = if use_tls {
         let connector = tokio_rustls::TlsConnector::from(tls_config);
-        let domain = ServerName::try_from(authority.split(':').next().unwrap_or(&authority))
+        let tenant = ServerName::try_from(authority.split(':').next().unwrap_or(&authority))
             .map_err(|e| {
                 tracing::warn!("dns lookup error: {e:?}");
                 dns_error("invalid dns name".to_string(), 0)
             })?
             .to_owned();
-        let stream = connector.connect(domain, tcp_stream).await.map_err(|e| {
+        let stream = connector.connect(tenant, tcp_stream).await.map_err(|e| {
             tracing::warn!("tls protocol error: {e:?}");
             ErrorCode::TlsProtocolError
         })?;
@@ -1122,6 +1122,8 @@ impl WasmtimeRuntime {
         let args = config.args.clone();
         let tasks = self.tasks.clone();
 
+        let (result_tx, result_rx) = tokio::sync::oneshot::channel::<Result<Vec<u8>>>();
+
         let handle = tokio::task::spawn(async move {
             let task_id_for_blocking = task_id.clone();
             let result = tokio::task::spawn_blocking(move || {
@@ -1286,12 +1288,15 @@ impl WasmtimeRuntime {
                         task_id,
                         data.len()
                     );
+                    let _ = result_tx.send(Ok(data));
                 }
                 Ok(Err(e)) => {
                     error!("Task {} failed: {}", task_id, e);
+                    let _ = result_tx.send(Err(e));
                 }
                 Err(e) => {
                     error!("Task {} join error: {}", task_id, e);
+                    let _ = result_tx.send(Err(anyhow::anyhow!("join error: {}", e)));
                 }
             }
         });
@@ -1309,29 +1314,10 @@ impl WasmtimeRuntime {
                 "Running in synchronous mode, waiting for task: {}",
                 config.id
             );
-            // Spawn a watcher that signals completion via the registered handle
-            let task_id = config.id.clone();
-            let tasks = self.tasks.clone();
-            let (result_tx, result_rx) = oneshot::channel();
-
-            let watcher = tokio::spawn(async move {
-                loop {
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    let tasks_guard = tasks.lock().await;
-                    if !tasks_guard.contains_key(&task_id) {
-                        let _ = result_tx.send(Ok(Vec::new()));
-                        break;
-                    }
-                    drop(tasks_guard);
-                }
-            });
-
-            let result = match result_rx.await {
+            match result_rx.await {
                 Ok(result) => result,
                 Err(_) => Err(anyhow::anyhow!("Task was cancelled or panicked")),
-            };
-            watcher.abort();
-            result
+            }
         }
     }
 }

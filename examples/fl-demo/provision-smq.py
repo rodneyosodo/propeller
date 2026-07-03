@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Provision Magistrala resources for FL demo.
-This script creates the necessary domain, clients, and channel for the demo.
+This script creates the necessary tenant, clients, and channel for the demo.
 """
 
 import json
@@ -157,7 +157,7 @@ def create_domain(token):
         return None
 
 
-def create_client(token, domain_id, client_name):
+def create_client(token, tenant_id, client_name):
     """Create a client."""
     client_data = {
         "name": client_name,
@@ -169,7 +169,7 @@ def create_client(token, domain_id, client_name):
 
     try:
         response = requests.post(
-            f"{CLIENTS_URL}/{domain_id}/clients",
+            f"{CLIENTS_URL}/{tenant_id}/clients",
             json=client_data,
             headers=headers,
             timeout=10,
@@ -183,7 +183,7 @@ def create_client(token, domain_id, client_name):
             # Client already exists, try to get it
             print(f"  Client {client_name} already exists, fetching...")
             response = requests.get(
-                f"{CLIENTS_URL}/{domain_id}/clients",
+                f"{CLIENTS_URL}/{tenant_id}/clients",
                 headers=headers,
                 params={"name": client_name},
                 timeout=10,
@@ -205,7 +205,7 @@ def create_client(token, domain_id, client_name):
         return None
 
 
-def create_channel(token, domain_id):
+def create_channel(token, tenant_id):
     """Create or get channel."""
     print("\n=== Creating Channel ===")
     channel_data = {"name": CHANNEL_NAME, "status": "enabled"}
@@ -214,7 +214,7 @@ def create_channel(token, domain_id):
 
     try:
         response = requests.post(
-            f"{CHANNELS_URL}/{domain_id}/channels",
+            f"{CHANNELS_URL}/{tenant_id}/channels",
             json=channel_data,
             headers=headers,
             timeout=10,
@@ -228,7 +228,7 @@ def create_channel(token, domain_id):
             # Channel already exists, try to get it
             print("Channel already exists, fetching...")
             response = requests.get(
-                f"{CHANNELS_URL}/{domain_id}/channels",
+                f"{CHANNELS_URL}/{tenant_id}/channels",
                 headers=headers,
                 params={"name": CHANNEL_NAME},
                 timeout=10,
@@ -250,13 +250,13 @@ def create_channel(token, domain_id):
         return None
 
 
-def connect_clients_to_channel(token, domain_id, client_ids, channel_id):
+def connect_clients_to_channel(token, tenant_id, entity_ids, channel_id):
     """Connect clients to channel."""
     print("\n=== Connecting Clients to Channel ===")
-    # Note: The API expects channel_ids and client_ids (with underscores)
+    # Note: The API expects channel_ids and entity_ids (with underscores)
     # and types must be valid connection types
     connection_data = {
-        "client_ids": client_ids,
+        "entity_ids": entity_ids,
         "channel_ids": [channel_id],
         "types": ["publish", "subscribe"],
     }
@@ -265,14 +265,14 @@ def connect_clients_to_channel(token, domain_id, client_ids, channel_id):
 
     try:
         response = requests.post(
-            f"{CHANNELS_URL}/{domain_id}/channels/connect",
+            f"{CHANNELS_URL}/{tenant_id}/channels/connect",
             json=connection_data,
             headers=headers,
             timeout=10,
         )
 
         if response.status_code in [200, 201]:
-            print(f"✓ Connected {len(client_ids)} clients to channel")
+            print(f"✓ Connected {len(entity_ids)} clients to channel")
             return True
         else:
             response.raise_for_status()
@@ -283,7 +283,7 @@ def connect_clients_to_channel(token, domain_id, client_ids, channel_id):
         return False
 
 
-def update_env_file(env_file, clients, domain_id, channel_id):
+def update_env_file(env_file, clients, tenant_id, channel_id):
     """Update docker/.env file with new client credentials."""
     if not env_file.exists():
         print(f"Warning: .env file not found: {env_file}")
@@ -296,21 +296,21 @@ def update_env_file(env_file, clients, domain_id, channel_id):
 
     # Map client names to their corresponding environment variable names
     client_mapping = {
-        "manager": {"id_var": "MANAGER_CLIENT_ID", "key_var": "MANAGER_CLIENT_KEY"},
-        "proplet-1": {"id_var": "PROPLET_CLIENT_ID", "key_var": "PROPLET_CLIENT_KEY"},
+        "manager": {"id_var": "MANAGER_ENTITY_ID", "key_var": "MANAGER_CLIENT_KEY"},
+        "proplet-1": {"id_var": "PROPLET_ENTITY_ID", "key_var": "PROPLET_CLIENT_KEY"},
         "proplet-2": {
-            "id_var": "PROPLET_2_CLIENT_ID",
+            "id_var": "PROPLET_2_ENTITY_ID",
             "key_var": "PROPLET_2_CLIENT_KEY",
         },
         "proplet-3": {
-            "id_var": "PROPLET_3_CLIENT_ID",
+            "id_var": "PROPLET_3_ENTITY_ID",
             "key_var": "PROPLET_3_CLIENT_KEY",
         },
         "fl-coordinator": {
-            "id_var": "COORDINATOR_CLIENT_ID",
+            "id_var": "COORDINATOR_ENTITY_ID",
             "key_var": "COORDINATOR_CLIENT_KEY",
         },
-        "proxy": {"id_var": "PROXY_CLIENT_ID", "key_var": "PROXY_CLIENT_KEY"},
+        "proxy": {"id_var": "PROXY_ENTITY_ID", "key_var": "PROXY_CLIENT_KEY"},
     }
 
     # Function to update or add an environment variable
@@ -347,9 +347,9 @@ def update_env_file(env_file, clients, domain_id, channel_id):
         content = "\n".join(new_lines)
 
     # Update domain IDs
-    update_env_var("MANAGER_DOMAIN_ID", domain_id)
-    update_env_var("PROPLET_DOMAIN_ID", domain_id)
-    update_env_var("PROXY_DOMAIN_ID", domain_id)
+    update_env_var("MANAGER_TENANT_ID", tenant_id)
+    update_env_var("PROPLET_TENANT_ID", tenant_id)
+    update_env_var("PROXY_TENANT_ID", tenant_id)
 
     # Update channel IDs
     update_env_var("MANAGER_CHANNEL_ID", channel_id)
@@ -365,13 +365,13 @@ def update_env_file(env_file, clients, domain_id, channel_id):
         id_var = mapping["id_var"]
         key_var = mapping["key_var"]
 
-        client_id = client.get("id")
+        entity_id = client.get("id")
         client_key = client.get("credentials", {}).get("secret", "N/A")
 
-        if not client_id or client_key == "N/A":
+        if not entity_id or client_key == "N/A":
             continue
 
-        update_env_var(id_var, client_id)
+        update_env_var(id_var, entity_id)
         update_env_var(key_var, client_key)
 
     if content != original_content:
@@ -415,13 +415,13 @@ def main():
     if not domain:
         print("\n✗ Provisioning failed: Could not create domain")
         sys.exit(1)
-    domain_id = domain.get("id")
+    tenant_id = domain.get("id")
 
     # Create clients
     print("\n=== Creating Clients ===")
     clients = {}
     for client_name in CLIENT_NAMES:
-        client = create_client(token, domain_id, client_name)
+        client = create_client(token, tenant_id, client_name)
         if client:
             clients[client_name] = client
         else:
@@ -432,29 +432,29 @@ def main():
         sys.exit(1)
 
     # Create channel
-    channel = create_channel(token, domain_id)
+    channel = create_channel(token, tenant_id)
     if not channel:
         print("\n✗ Provisioning failed: Could not create channel")
         sys.exit(1)
     channel_id = channel.get("id")
 
     # Connect clients to channel
-    client_ids = [c.get("id") for c in clients.values() if c.get("id")]
-    if not connect_clients_to_channel(token, domain_id, client_ids, channel_id):
+    entity_ids = [c.get("id") for c in clients.values() if c.get("id")]
+    if not connect_clients_to_channel(token, tenant_id, entity_ids, channel_id):
         print("\n⚠ Warning: Could not connect all clients to channel")
 
     # Print summary
     print("\n" + "=" * 60)
     print("Provisioning Summary")
     print("=" * 60)
-    print(f"Domain ID: {domain_id}")
+    print(f"Domain ID: {tenant_id}")
     print(f"Channel ID: {channel_id}")
     print("\nClients:")
     for name, client in clients.items():
-        client_id = client.get("id")
+        entity_id = client.get("id")
         client_key = client.get("credentials", {}).get("secret", "N/A")
         print(f"  {name}:")
-        print(f"    ID: {client_id}")
+        print(f"    ID: {entity_id}")
         print(f"    Key: {client_key}")
 
     print("\n✓ Provisioning completed successfully!")
@@ -462,7 +462,7 @@ def main():
     # Update docker/.env with new credentials
     repo_root = Path(__file__).parent.parent.parent
     env_file = repo_root / "docker" / ".env"
-    if update_env_file(env_file, clients, domain_id, channel_id):
+    if update_env_file(env_file, clients, tenant_id, channel_id):
         print(f"\n✓ Updated {env_file} with new credentials")
     else:
         print(f"\n⚠ Could not update {env_file} automatically")

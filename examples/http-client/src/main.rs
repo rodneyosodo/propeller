@@ -29,7 +29,11 @@ async fn main() {
     match client.send(req).await {
         Ok(mut res) => {
             println!("Status: {}", res.status());
-            let body = res.body_mut().contents().await.expect("failed to read body");
+            let body = res
+                .body_mut()
+                .contents()
+                .await
+                .expect("failed to read body");
             println!("{}\n", String::from_utf8_lossy(body));
         }
         Err(e) => {
@@ -45,7 +49,11 @@ async fn main() {
         .unwrap();
     let mut res = client.send(req).await.expect("GET httpbin HTTPS failed");
     println!("Status: {}", res.status());
-    let body = res.body_mut().contents().await.expect("failed to read body");
+    let body = res
+        .body_mut()
+        .contents()
+        .await
+        .expect("failed to read body");
     println!("{}\n", String::from_utf8_lossy(body));
 
     // --- 3. POST with a body against an external echo endpoint ---
@@ -59,6 +67,10 @@ async fn main() {
         .unwrap();
     let mut res = client.send(req).await.expect("POST httpbin failed");
     println!("Status: {}", res.status());
-    let body = res.body_mut().contents().await.expect("failed to read body");
+    let body = res
+        .body_mut()
+        .contents()
+        .await
+        .expect("failed to read body");
     println!("{}\n", String::from_utf8_lossy(body));
 }

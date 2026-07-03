@@ -38,10 +38,10 @@ type config struct {
 	MQTTTLSCertPath string        `env:"PROXY_MQTT_TLS_CLIENT_CERT"`
 	MQTTTLSKeyPath  string        `env:"PROXY_MQTT_TLS_CLIENT_KEY"`
 	MQTTTLSInsecure bool          `env:"PROXY_MQTT_TLS_INSECURE_SKIP_VERIFY"`
-	DomainID        string        `env:"PROXY_DOMAIN_ID"`
+	TenantID        string        `env:"PROXY_TENANT_ID"`
 	ChannelID       string        `env:"PROXY_CHANNEL_ID"`
-	ClientID        string        `env:"PROXY_CLIENT_ID"`
-	ClientKey       string        `env:"PROXY_CLIENT_KEY"`
+	EntityID        string        `env:"PROXY_ENTITY_ID"`
+	APIKey          string        `env:"PROXY_API_KEY"`
 	HTTPPort        int           `env:"PROXY_HTTP_PORT"              envDefault:"9191"`
 	OTELURL         url.URL       `env:"PROXY_OTEL_URL"`
 	TraceRatio      float64       `env:"PROXY_TRACE_RATIO"            envDefault:"0"`
@@ -60,7 +60,7 @@ func main() {
 		log.Fatalf("failed to load configuration : %s", err.Error())
 	}
 
-	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+	if cfg.TenantID == "" || cfg.EntityID == "" || cfg.APIKey == "" || cfg.ChannelID == "" {
 		_, err := os.Stat(configPath)
 		switch err {
 		case nil:
@@ -68,17 +68,17 @@ func main() {
 			if err != nil {
 				log.Fatalf("failed to load TOML configuration: %s", err.Error())
 			}
-			cfg.DomainID = conf.Proxy.DomainID
-			cfg.ClientID = conf.Proxy.ClientID
-			cfg.ClientKey = conf.Proxy.ClientKey
+			cfg.TenantID = conf.Proxy.TenantID
+			cfg.EntityID = conf.Proxy.EntityID
+			cfg.APIKey = conf.Proxy.APIKey
 			cfg.ChannelID = conf.Proxy.ChannelID
 		default:
 			log.Fatalf("failed to load TOML configuration: %s", err.Error())
 		}
 	}
 
-	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
-		log.Fatal("PROXY_DOMAIN_ID, PROXY_CHANNEL_ID, PROXY_CLIENT_ID, and PROXY_CLIENT_KEY must be set")
+	if cfg.TenantID == "" || cfg.ChannelID == "" || cfg.EntityID == "" || cfg.APIKey == "" {
+		log.Fatal("PROXY_TENANT_ID, PROXY_CHANNEL_ID, PROXY_ENTITY_ID, and PROXY_API_KEY must be set")
 	}
 
 	var level slog.Level
@@ -115,7 +115,7 @@ func main() {
 		}
 	}
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.EntityID, cfg.EntityID, cfg.APIKey, cfg.TenantID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
 	if err != nil {
 		logger.Error("failed to initialize mqtt client", slog.Any("error", err))
 
@@ -140,7 +140,7 @@ func main() {
 
 	logger.Info("successfully initialized MQTT and HTTP config")
 
-	service, err := proxy.NewService(ctx, mqttPubSub, cfg.DomainID, cfg.ChannelID, httpCfg, logger)
+	service, err := proxy.NewService(ctx, mqttPubSub, cfg.TenantID, cfg.ChannelID, httpCfg, logger)
 	if err != nil {
 		logger.Error("failed to create proxy service", slog.Any("error", err))
 
@@ -149,7 +149,7 @@ func main() {
 
 	logger.Info("starting proxy service")
 
-	if err := mqttPubSub.Subscribe(ctx, fmt.Sprintf(proxy.SubTopic, cfg.DomainID, cfg.ChannelID), handle(logger, service.ContainerChan())); err != nil {
+	if err := mqttPubSub.Subscribe(ctx, fmt.Sprintf(proxy.SubTopic, cfg.TenantID, cfg.ChannelID), handle(logger, service.ContainerChan())); err != nil {
 		logger.Error("failed to subscribe to container requests", slog.Any("error", err))
 
 		return

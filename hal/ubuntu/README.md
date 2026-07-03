@@ -21,9 +21,9 @@ Set these before running the script:
 
 | Variable               | Description                     | Default                |
 | ---------------------- | ------------------------------- | ---------------------- |
-| `PROPLET_DOMAIN_ID`    | Magistrala domain ID            |                        |
-| `PROPLET_CLIENT_ID`    | Magistrala client ID            |                        |
-| `PROPLET_CLIENT_KEY`   | Magistrala client key           |                        |
+| `PROPLET_TENANT_ID`    | Magistrala tenant ID            |                        |
+| `PROPLET_ENTITY_ID`    | Magistrala entity ID            |                        |
+| `PROPLET_API_KEY`      | Magistrala entity key           |                        |
 | `PROPLET_CHANNEL_ID`   | Magistrala channel ID           |                        |
 | `PROPLET_MQTT_ADDRESS` | MQTT broker address             | `tcp://localhost:1883` |
 | `KBS_URL`              | Key Broker Service URL          | `http://10.0.2.2:8082` |
@@ -37,9 +37,9 @@ Set these before running the script:
 The script re-executes itself with `sudo -E` to preserve exported variables.
 
 ```bash
-export PROPLET_DOMAIN_ID="your-domain-id"
-export PROPLET_CLIENT_ID="your-client-id"
-export PROPLET_CLIENT_KEY="your-client-key"
+export PROPLET_TENANT_ID="your-tenant-id"
+export PROPLET_ENTITY_ID="your-entity-id"
+export PROPLET_API_KEY="your-api-key"
 export PROPLET_CHANNEL_ID="your-channel-id"
 export PROPLET_MQTT_ADDRESS="tcp://mqtt.example.com:1883"
 export KBS_URL="http://10.0.2.2:8082"

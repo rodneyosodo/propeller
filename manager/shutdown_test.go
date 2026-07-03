@@ -98,7 +98,7 @@ func TestShutdownSignalsStopBeforeInterrupt(t *testing.T) {
 	pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()
 	pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
 
-	svc, _, _ := manager.NewService(repos, scheduler.NewRoundRobin(), pubsub, "test-domain", "test-channel", "", slog.Default(), nil)
+	svc, _, _ := manager.NewService(repos, scheduler.NewRoundRobin(), pubsub, "test-tenant", "test-channel", "", slog.Default(), nil)
 
 	created, err := svc.CreateTask(ctx, task.Task{
 		Name:      "running-task",
@@ -107,7 +107,7 @@ func TestShutdownSignalsStopBeforeInterrupt(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	stopTopic := "m/test-domain/c/test-channel/control/manager/stop"
+	stopTopic := "m/test-tenant/c/test-channel/control/manager/stop"
 	pubsub.On("Publish", mock.Anything, stopTopic, mock.MatchedBy(func(msg any) bool {
 		payload, ok := msg.(map[string]any)
 		if !ok {
