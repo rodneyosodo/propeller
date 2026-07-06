@@ -99,7 +99,7 @@ func main() {
 
 	mqttBroker := os.Getenv("MQTT_BROKER")
 	if mqttBroker == "" {
-		mqttBroker = "tcp://mqtt:1883"
+		mqttBroker = "tcp://fluxmq-node1:1883"
 	}
 	mqttClientID := os.Getenv("MQTT_ENTITY_ID")
 	if mqttClientID == "" {

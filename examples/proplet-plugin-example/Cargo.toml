@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 propeller-proplet-plugin-sdk = { path = "../../crates/propeller-proplet-plugin-sdk" }
+wit-bindgen = "0.58"
 
 [profile.release]
 opt-level = "s"

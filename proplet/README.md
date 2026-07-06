@@ -28,7 +28,7 @@ cargo build --release
 | `PROPLET_MQTT_QOS`              | MQTT Quality of Service level                             | `2`                    |
 | `PROPLET_LIVELINESS_INTERVAL`   | Heartbeat interval in seconds                             | `10`                   |
 | `PROPLET_TENANT_ID`             | Propeller tenant ID                                       |                        |
-| `PROPLET_CHANNEL_ID`            | Magistrala channel ID                                     |                        |
+| `PROPLET_CHANNEL_ID`            | Propeller channel ID                                      |                        |
 | `PROPLET_ENTITY_ID`             | MQTT entity ID                                            |                        |
 | `PROPLET_API_KEY`               | MQTT entity key                                           |                        |
 | `PROPLET_EXTERNAL_WASM_RUNTIME` | Path to external Wasm runtime; uses Wasmtime if unset     | `""` (empty)           |

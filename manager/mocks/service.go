@@ -706,41 +706,47 @@ func (_c *MockService_GetProplet_Call) RunAndReturn(run func(ctx context.Context
 	return _c
 }
 
-// GetPropletSDF provides a mock function for the type MockService
-func (_mock *MockService) GetPropletSDF(ctx context.Context, propletID string) (sdf.Document, error) {
-	ret := _mock.Called(ctx, propletID)
+// GetPropletAliveHistory provides a mock function for the type MockService
+func (_mock *MockService) GetPropletAliveHistory(ctx context.Context, propletID string, offset uint64, limit uint64) (proplet.PropletAliveHistoryPage, error) {
+	ret := _mock.Called(ctx, propletID, offset, limit)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetPropletSDF")
+		panic("no return value specified for GetPropletAliveHistory")
 	}
 
-	var r0 sdf.Document
+	var r0 proplet.PropletAliveHistoryPage
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (sdf.Document, error)); ok {
-		return returnFunc(ctx, propletID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, uint64, uint64) (proplet.PropletAliveHistoryPage, error)); ok {
+		return returnFunc(ctx, propletID, offset, limit)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) sdf.Document); ok {
-		r0 = returnFunc(ctx, propletID)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, uint64, uint64) proplet.PropletAliveHistoryPage); ok {
+		r0 = returnFunc(ctx, propletID, offset, limit)
 	} else {
-		r0 = ret.Get(0).(sdf.Document)
+		r0 = ret.Get(0).(proplet.PropletAliveHistoryPage)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, propletID)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, uint64, uint64) error); ok {
+		r1 = returnFunc(ctx, propletID, offset, limit)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-type MockService_GetPropletSDF_Call struct {
+// MockService_GetPropletAliveHistory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPropletAliveHistory'
+type MockService_GetPropletAliveHistory_Call struct {
 	*mock.Call
 }
 
-func (_e *MockService_Expecter) GetPropletSDF(ctx interface{}, propletID interface{}) *MockService_GetPropletSDF_Call {
-	return &MockService_GetPropletSDF_Call{Call: _e.mock.On("GetPropletSDF", ctx, propletID)}
+// GetPropletAliveHistory is a helper method to define mock.On call
+//   - ctx context.Context
+//   - propletID string
+//   - offset uint64
+//   - limit uint64
+func (_e *MockService_Expecter) GetPropletAliveHistory(ctx interface{}, propletID interface{}, offset interface{}, limit interface{}) *MockService_GetPropletAliveHistory_Call {
+	return &MockService_GetPropletAliveHistory_Call{Call: _e.mock.On("GetPropletAliveHistory", ctx, propletID, offset, limit)}
 }
 
-func (_c *MockService_GetPropletSDF_Call) Run(run func(ctx context.Context, propletID string)) *MockService_GetPropletSDF_Call {
+func (_c *MockService_GetPropletAliveHistory_Call) Run(run func(ctx context.Context, propletID string, offset uint64, limit uint64)) *MockService_GetPropletAliveHistory_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -750,17 +756,30 @@ func (_c *MockService_GetPropletSDF_Call) Run(run func(ctx context.Context, prop
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		run(arg0, arg1)
+		var arg2 uint64
+		if args[2] != nil {
+			arg2 = args[2].(uint64)
+		}
+		var arg3 uint64
+		if args[3] != nil {
+			arg3 = args[3].(uint64)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
 	})
 	return _c
 }
 
-func (_c *MockService_GetPropletSDF_Call) Return(doc sdf.Document, err error) *MockService_GetPropletSDF_Call {
-	_c.Call.Return(doc, err)
+func (_c *MockService_GetPropletAliveHistory_Call) Return(propletAliveHistoryPage proplet.PropletAliveHistoryPage, err error) *MockService_GetPropletAliveHistory_Call {
+	_c.Call.Return(propletAliveHistoryPage, err)
 	return _c
 }
 
-func (_c *MockService_GetPropletSDF_Call) RunAndReturn(run func(ctx context.Context, propletID string) (sdf.Document, error)) *MockService_GetPropletSDF_Call {
+func (_c *MockService_GetPropletAliveHistory_Call) RunAndReturn(run func(ctx context.Context, propletID string, offset uint64, limit uint64) (proplet.PropletAliveHistoryPage, error)) *MockService_GetPropletAliveHistory_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -843,47 +862,45 @@ func (_c *MockService_GetPropletMetrics_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
-// GetPropletAliveHistory provides a mock function for the type MockService
-func (_mock *MockService) GetPropletAliveHistory(ctx context.Context, propletID string, offset uint64, limit uint64) (proplet.PropletAliveHistoryPage, error) {
-	ret := _mock.Called(ctx, propletID, offset, limit)
+// GetPropletSDF provides a mock function for the type MockService
+func (_mock *MockService) GetPropletSDF(ctx context.Context, propletID string) (sdf.Document, error) {
+	ret := _mock.Called(ctx, propletID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetPropletAliveHistory")
+		panic("no return value specified for GetPropletSDF")
 	}
 
-	var r0 proplet.PropletAliveHistoryPage
+	var r0 sdf.Document
 	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, uint64, uint64) (proplet.PropletAliveHistoryPage, error)); ok {
-		return returnFunc(ctx, propletID, offset, limit)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (sdf.Document, error)); ok {
+		return returnFunc(ctx, propletID)
 	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string, uint64, uint64) proplet.PropletAliveHistoryPage); ok {
-		r0 = returnFunc(ctx, propletID, offset, limit)
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) sdf.Document); ok {
+		r0 = returnFunc(ctx, propletID)
 	} else {
-		r0 = ret.Get(0).(proplet.PropletAliveHistoryPage)
+		r0 = ret.Get(0).(sdf.Document)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string, uint64, uint64) error); ok {
-		r1 = returnFunc(ctx, propletID, offset, limit)
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, propletID)
 	} else {
 		r1 = ret.Error(1)
 	}
 	return r0, r1
 }
 
-// MockService_GetPropletAliveHistory_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPropletAliveHistory'
-type MockService_GetPropletAliveHistory_Call struct {
+// MockService_GetPropletSDF_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetPropletSDF'
+type MockService_GetPropletSDF_Call struct {
 	*mock.Call
 }
 
-// GetPropletAliveHistory is a helper method to define mock.On call
+// GetPropletSDF is a helper method to define mock.On call
 //   - ctx context.Context
 //   - propletID string
-//   - offset uint64
-//   - limit uint64
-func (_e *MockService_Expecter) GetPropletAliveHistory(ctx interface{}, propletID interface{}, offset interface{}, limit interface{}) *MockService_GetPropletAliveHistory_Call {
-	return &MockService_GetPropletAliveHistory_Call{Call: _e.mock.On("GetPropletAliveHistory", ctx, propletID, offset, limit)}
+func (_e *MockService_Expecter) GetPropletSDF(ctx interface{}, propletID interface{}) *MockService_GetPropletSDF_Call {
+	return &MockService_GetPropletSDF_Call{Call: _e.mock.On("GetPropletSDF", ctx, propletID)}
 }
 
-func (_c *MockService_GetPropletAliveHistory_Call) Run(run func(ctx context.Context, propletID string, offset uint64, limit uint64)) *MockService_GetPropletAliveHistory_Call {
+func (_c *MockService_GetPropletSDF_Call) Run(run func(ctx context.Context, propletID string)) *MockService_GetPropletSDF_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -893,30 +910,20 @@ func (_c *MockService_GetPropletAliveHistory_Call) Run(run func(ctx context.Cont
 		if args[1] != nil {
 			arg1 = args[1].(string)
 		}
-		var arg2 uint64
-		if args[2] != nil {
-			arg2 = args[2].(uint64)
-		}
-		var arg3 uint64
-		if args[3] != nil {
-			arg3 = args[3].(uint64)
-		}
 		run(
 			arg0,
 			arg1,
-			arg2,
-			arg3,
 		)
 	})
 	return _c
 }
 
-func (_c *MockService_GetPropletAliveHistory_Call) Return(page proplet.PropletAliveHistoryPage, err error) *MockService_GetPropletAliveHistory_Call {
-	_c.Call.Return(page, err)
+func (_c *MockService_GetPropletSDF_Call) Return(document sdf.Document, err error) *MockService_GetPropletSDF_Call {
+	_c.Call.Return(document, err)
 	return _c
 }
 
-func (_c *MockService_GetPropletAliveHistory_Call) RunAndReturn(run func(ctx context.Context, propletID string, offset uint64, limit uint64) (proplet.PropletAliveHistoryPage, error)) *MockService_GetPropletAliveHistory_Call {
+func (_c *MockService_GetPropletSDF_Call) RunAndReturn(run func(ctx context.Context, propletID string) (sdf.Document, error)) *MockService_GetPropletSDF_Call {
 	_c.Call.Return(run)
 	return _c
 }

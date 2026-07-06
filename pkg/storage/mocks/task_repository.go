@@ -293,7 +293,12 @@ func (_c *MockTaskRepository_List_Call) Run(run func(ctx context.Context, filter
 		if args[3] != nil {
 			arg3 = args[3].(uint64)
 		}
-		run(arg0, arg1, arg2, arg3)
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
 	})
 	return _c
 }

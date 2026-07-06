@@ -21,12 +21,12 @@ distinguished_name = dn
 prompt = no
 
 [dn]
-CN = mg.svc
+CN = propeller.svc
 C  = RS
 ST = RS
 L  = BELGRADE
-O  = SUPERMQ
-OU = SUPERMQ
+O  = Propeller
+OU = Propeller
 
 [v3_req]
 subjectAltName = @alt_names

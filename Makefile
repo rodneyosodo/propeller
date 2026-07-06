@@ -279,6 +279,6 @@ help:
 	@echo "  start-otel:            start Prometheus and Grafana observability stack"
 	@echo "  stop-otel:             stop Prometheus and Grafana observability stack"
 	@echo "  start-all:             start base and Propeller services (requires provisioned config.toml)"
-	@echo "  stop-all:              stop Magistrala and Propeller services"
+	@echo "  stop-all:              stop Atom, FluxMQ, and Propeller services"
 	@echo "  mocks:                 generate mockery mocks for all interfaces"
 	@echo "  help:                  display this help message"

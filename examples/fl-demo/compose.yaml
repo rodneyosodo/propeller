@@ -1,5 +1,5 @@
 # FL Demo Extension for docker/compose.yaml
-# This file extends the base Magistrala + Propeller setup with FL-specific services
+# This file extends the base Propeller (Atom + FluxMQ) setup with FL-specific services
 #
 # Usage (from repository root):
 #     docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d
@@ -7,7 +7,7 @@
 # To build and start:
 #     docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d --build
 #
-# Note: Requires docker/.env file with Magistrala configuration variables.
+# Note: Requires docker/.env file with Propeller configuration variables.
 # IMPORTANT: When using multiple -f files, Docker Compose resolves build contexts relative
 # to the FIRST file's directory (docker/). So we use '..' to go from docker/ to project root.
 # Commands must be run from the repository root.
@@ -91,14 +91,13 @@ services:
     depends_on:
       - model-registry
       - aggregator
-      - mqtt-adapter
     ports:
       - "8086:8080"
     environment:
       COORDINATOR_PORT: "8080"
       MODEL_REGISTRY_URL: http://model-registry:8081
       AGGREGATOR_URL: http://aggregator:8082
-      MQTT_BROKER: tcp://mqtt-adapter:1883
+      MQTT_BROKER: tcp://fluxmq-node1:1883
       MQTT_ENTITY_ID: ${COORDINATOR_ENTITY_ID}
       MQTT_USERNAME: ${COORDINATOR_ENTITY_ID}
       MQTT_PASSWORD: ${COORDINATOR_API_KEY}
@@ -125,7 +124,7 @@ services:
     environment:
       MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL:-info}
       MANAGER_INSTANCE_ID: ${MANAGER_INSTANCE_ID:-}
-      MANAGER_MQTT_ADDRESS: ${MANAGER_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      MANAGER_MQTT_ADDRESS: ${MANAGER_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       MANAGER_MQTT_QOS: ${MANAGER_MQTT_QOS:-2}
       MANAGER_MQTT_TIMEOUT: ${MANAGER_MQTT_TIMEOUT:-30s}
       MANAGER_TENANT_ID: ${MANAGER_TENANT_ID}
@@ -142,7 +141,6 @@ services:
     ports:
       - "${MANAGER_HTTP_PORT:-7070}:${MANAGER_HTTP_PORT:-7070}"
     depends_on:
-      - mqtt-adapter
       - coordinator-http
 
   # ============================================================================
@@ -160,7 +158,7 @@ services:
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL:-info}
       PROPLET_INSTANCE_ID: proplet-1
-      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS:-2}
       PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT:-30s}
       PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL:-10s}
@@ -173,7 +171,6 @@ services:
       MODEL_REGISTRY_URL: http://model-registry:8081
       MANAGER_COORDINATOR_URL: http://coordinator-http:8080
     depends_on:
-      - mqtt-adapter
       - manager
       - local-data-store
       - model-registry
@@ -195,14 +192,13 @@ services:
     container_name: propeller-proplet-2
     restart: on-failure
     depends_on:
-      - mqtt-adapter
       - manager
       - local-data-store
       - model-registry
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL:-info}
       PROPLET_INSTANCE_ID: proplet-2
-      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS:-2}
       PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT:-30s}
       PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL:-10s}
@@ -230,14 +226,13 @@ services:
     container_name: propeller-proplet-3
     restart: on-failure
     depends_on:
-      - mqtt-adapter
       - manager
       - local-data-store
       - model-registry
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL:-info}
       PROPLET_INSTANCE_ID: proplet-3
-      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS:-2}
       PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT:-30s}
       PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL:-10s}
@@ -256,7 +251,7 @@ services:
 
   # ============================================================================
   # Note: In production setup, nginx handles MQTT port exposure
-  # mqtt-adapter is accessed internally via nginx, so no need to expose ports here
+  # fluxmq-node1 is accessed internally via the propeller-base-net
   # ============================================================================
 
 # ============================================================================
