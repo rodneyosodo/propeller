@@ -75,9 +75,9 @@ extern bool mqtt_connected;
  *
  * @param tenant_id   Tenant ID used for topic generation (e.g.,
  * m/<tenant>/c/<channel>/...).
- * @param proplet_id  Proplet identity (Magistrala entity_id) — used as MQTT
+ * @param proplet_id  Proplet identity (Propeller entity_id) — used as MQTT
  * username.
- * @param api_key     Magistrala Entity secret — used as MQTT password.
+ * @param api_key     Propeller Entity secret — used as MQTT password.
  * @param channel_id  Channel ID used for topic generation.
  *
  * @return 0 on success, negative errno on failure.

@@ -18,9 +18,9 @@ WASMTIME_VERSION ?= 44.0.0
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \
 	go build -ldflags "-s -w \
-	-X 'github.com/absmach/magistrala.BuildTime=$(TIME)' \
-	-X 'github.com/absmach/magistrala.Version=$(VERSION)' \
-	-X 'github.com/absmach/magistrala.Commit=$(COMMIT)'" \
+	-X 'github.com/absmach/propeller.BuildTime=$(TIME)' \
+	-X 'github.com/absmach/propeller.Version=$(VERSION)' \
+	-X 'github.com/absmach/propeller.Commit=$(COMMIT)'" \
 	-o ${BUILD_DIR}/$(1) cmd/$(1)/main.go
 endef
 
@@ -133,7 +133,7 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-magistrala stop-magistrala start-propeller stop-propeller start-otel stop-otel start-all stop-all
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-propeller stop-propeller start-otel stop-otel start-all stop-all
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat http-client http-client-raw-wit http-server filesystem hal-test attestation-test hal-runner
 
 clean:
@@ -161,15 +161,15 @@ check-certs:
 		echo "CA certificates not found, generating..."; \
 		$(MAKE) -C docker/ssl ca; \
 	fi
-	@if [ ! -f docker/ssl/certs/magistrala-server.crt ] || [ ! -f docker/ssl/certs/magistrala-server.key ]; then \
+	@if [ ! -f docker/ssl/certs/propeller-server.crt ] || [ ! -f docker/ssl/certs/propeller-server.key ]; then \
 		echo "Server certificates not found, generating..."; \
 		$(MAKE) -C docker/ssl server_cert; \
 	fi
 
-start-magistrala: check-certs
+start-base: check-certs
 	docker compose -f docker/compose.yaml --env-file docker/.env up -d
 
-stop-magistrala:
+stop-base:
 	docker compose -f docker/compose.yaml --env-file docker/.env down
 
 start-propeller:
@@ -272,13 +272,13 @@ help:
 	@echo "  docker_proplet_wasinn: build proplet wasi-nn Docker image"
 	@echo "  push_proplet_wasinn:   push proplet:wasi-nn Docker image"
 	@echo "  latest:                build and push all Go service Docker images"
-	@echo "  start-magistrala:      start Magistrala services only"
-	@echo "  stop-magistrala:       stop Magistrala services only"
+	@echo "  start-base:            start base services (Atom, FluxMQ, Nginx) only"
+	@echo "  stop-base:             stop base services only"
 	@echo "  start-propeller:       start Propeller services only (requires provisioned config.toml)"
 	@echo "  stop-propeller:        stop Propeller services only"
 	@echo "  start-otel:            start Prometheus and Grafana observability stack"
 	@echo "  stop-otel:             stop Prometheus and Grafana observability stack"
-	@echo "  start-all:             start Magistrala and Propeller services (requires provisioned config.toml)"
+	@echo "  start-all:             start base and Propeller services (requires provisioned config.toml)"
 	@echo "  stop-all:              stop Magistrala and Propeller services"
 	@echo "  mocks:                 generate mockery mocks for all interfaces"
 	@echo "  help:                  display this help message"

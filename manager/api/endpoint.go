@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 
-	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/absmach/propeller/manager"
+	"github.com/absmach/propeller/pkg/api"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	"github.com/go-kit/kit/endpoint"
 )
@@ -14,10 +14,10 @@ func listPropletsEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(listEntityReq)
 		if !ok {
-			return listpropletResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return listpropletResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return listpropletResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return listpropletResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		proplets, err := svc.ListProplets(ctx, req.offset, req.limit, req.status)
@@ -35,10 +35,10 @@ func getPropletEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return propletResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return propletResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return propletResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return propletResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		node, err := svc.GetProplet(ctx, req.id)
@@ -56,10 +56,10 @@ func getPropletAliveHistoryEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(metricsReq)
 		if !ok {
-			return propletAliveHistoryResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return propletAliveHistoryResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return propletAliveHistoryResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return propletAliveHistoryResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		page, err := svc.GetPropletAliveHistory(ctx, req.id, req.offset, req.limit)
@@ -75,10 +75,10 @@ func getPropletSDFEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return propletSDFResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return propletSDFResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return propletSDFResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return propletSDFResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		doc, err := svc.GetPropletSDF(ctx, req.id)
@@ -94,10 +94,10 @@ func deletePropletEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return propletResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return propletResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return propletResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return propletResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		if err := svc.DeleteProplet(ctx, req.id); err != nil {
@@ -114,10 +114,10 @@ func createTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(taskReq)
 		if !ok {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return taskResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return taskResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		task, err := svc.CreateTask(ctx, req.Task)
@@ -136,10 +136,10 @@ func createWorkflowEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(workflowReq)
 		if !ok {
-			return workflowResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return workflowResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return workflowResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return workflowResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		tasks, err := svc.CreateWorkflow(ctx, req.Tasks)
@@ -157,10 +157,10 @@ func createJobEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(jobReq)
 		if !ok {
-			return jobResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return jobResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return jobResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return jobResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		jobID, tasks, err := svc.CreateJob(ctx, req.Name, req.Tasks, req.ExecutionMode)
@@ -179,10 +179,10 @@ func getJobEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return jobResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return jobResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return jobResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return jobResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		tasks, err := svc.GetJob(ctx, req.id)
@@ -201,10 +201,10 @@ func listJobsEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(listEntityReq)
 		if !ok {
-			return listJobResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return listJobResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return listJobResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return listJobResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		jobs, err := svc.ListJobs(ctx, req.offset, req.limit, req.status)
@@ -222,10 +222,10 @@ func startJobEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return messageResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return messageResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		if err := svc.StartJob(ctx, req.id); err != nil {
@@ -243,10 +243,10 @@ func stopJobEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return messageResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return messageResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		if err := svc.StopJob(ctx, req.id); err != nil {
@@ -264,10 +264,10 @@ func listTasksEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(listTasksReq)
 		if !ok {
-			return listTaskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return listTaskResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return listTaskResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return listTaskResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		pm := manager.PageMetadata{
@@ -288,10 +288,10 @@ func getTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return taskResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return taskResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		task, err := svc.GetTask(ctx, req.id)
@@ -309,7 +309,7 @@ func updateTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(taskReq)
 		if !ok {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return taskResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 
 		task, err := svc.UpdateTask(ctx, req.Task)
@@ -327,10 +327,10 @@ func deleteTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return taskResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return taskResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return taskResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		if err := svc.DeleteTask(ctx, req.id); err != nil {
@@ -347,10 +347,10 @@ func startTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return messageResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return messageResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		if err := svc.StartTask(ctx, req.id); err != nil {
@@ -367,10 +367,10 @@ func stopTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return messageResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return messageResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return messageResponse{}, errors.Join(api.ErrValidation, err)
 		}
 		if err := svc.StopTask(ctx, req.id); err != nil {
 			return messageResponse{}, err
@@ -386,10 +386,10 @@ func getTaskMetricsEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(metricsReq)
 		if !ok {
-			return taskMetricsResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return taskMetricsResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return taskMetricsResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return taskMetricsResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		metrics, err := svc.GetTaskMetrics(ctx, req.id, req.offset, req.limit)
@@ -407,10 +407,10 @@ func getPropletMetricsEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(metricsReq)
 		if !ok {
-			return propletMetricsResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return propletMetricsResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return propletMetricsResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return propletMetricsResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		metrics, err := svc.GetPropletMetrics(ctx, req.id, req.offset, req.limit)
@@ -428,10 +428,10 @@ func getTaskResultsEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(entityReq)
 		if !ok {
-			return taskResultsResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return taskResultsResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 		if err := req.validate(); err != nil {
-			return taskResultsResponse{}, errors.Join(apiutil.ErrValidation, err)
+			return taskResultsResponse{}, errors.Join(api.ErrValidation, err)
 		}
 
 		results, err := svc.GetTaskResults(ctx, req.id)

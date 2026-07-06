@@ -62,6 +62,21 @@ services:
       ATOM_MIN_PASSWORD_CHARS: ${ATOM_MIN_PASSWORD_CHARS:-8}
       ATOM_JWT_AUDIENCE: ${ATOM_JWT_AUDIENCE}
       JWT_EXPIRY_SECS: ${ATOM_JWT_EXPIRY_SECS}
+      ATOM_LOGIN_FAILURE_LIMIT: ${ATOM_LOGIN_FAILURE_LIMIT:-1000}
+      ATOM_LOGIN_FAILURE_WINDOW_SECS: ${ATOM_LOGIN_FAILURE_WINDOW_SECS:-30}
+    networks:
+      - propeller-base-net
+
+  atom-ui:
+    image: ghcr.io/absmach/atom-ui:${ATOM_UI_IMAGE_TAG:-latest}
+    container_name: propeller-atom-ui
+    restart: on-failure
+    depends_on:
+      - atom
+    environment:
+      ATOM_GRAPHQL_URL: http://atom:${ATOM_HTTP_PORT:-8080}/graphql
+    ports:
+      - ${ATOM_UI_HTTP_PORT:-3005}:3000
     networks:
       - propeller-base-net
 
@@ -117,11 +132,11 @@ services:
       - ./nginx/snippets:/etc/nginx/snippets
       - ./ssl/authorization.js:/etc/nginx/authorization.js
       - type: bind
-        source: ${MG_NGINX_SERVER_CERT:-./ssl/certs/magistrala-server.crt}
-        target: /etc/ssl/certs/magistrala-server.crt
+        source: ${MG_NGINX_SERVER_CERT:-./ssl/certs/propeller-server.crt}
+        target: /etc/ssl/certs/propeller-server.crt
       - type: bind
-        source: ${MG_NGINX_SERVER_KEY:-./ssl/certs/magistrala-server.key}
-        target: /etc/ssl/private/magistrala-server.key
+        source: ${MG_NGINX_SERVER_KEY:-./ssl/certs/propeller-server.key}
+        target: /etc/ssl/private/propeller-server.key
       - type: bind
         source: ${MG_NGINX_SERVER_CLIENT_CA:-./ssl/certs/ca.crt}
         target: /etc/ssl/certs/ca.crt

@@ -12,10 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/absmach/magistrala/pkg/jaeger"
-	"github.com/absmach/magistrala/pkg/prometheus"
-	"github.com/absmach/magistrala/pkg/server"
-	httpserver "github.com/absmach/magistrala/pkg/server/http"
 	"github.com/absmach/propeller"
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/manager/api"
@@ -23,8 +19,18 @@ import (
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/scheduler"
+	pkgserver "github.com/absmach/propeller/pkg/server"
 	"github.com/absmach/propeller/pkg/storage"
 	"github.com/caarlos0/env/v11"
+	kitprometheus "github.com/go-kit/kit/metrics/prometheus"
+	stdprometheus "github.com/prometheus/client_golang/prometheus"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
@@ -52,7 +58,7 @@ type config struct {
 	EntityID        string        `env:"MANAGER_ENTITY_ID"`
 	APIKey          string        `env:"MANAGER_API_KEY"`
 	CoordinatorURL  string        `env:"MANAGER_COORDINATOR_URL"`
-	Server          server.Config
+	Server          pkgserver.Config
 	OTELURL         url.URL `env:"MANAGER_OTEL_URL"`
 	TraceRatio      float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
 	PluginDir       string  `env:"MANAGER_PLUGIN_DIR"`
@@ -178,11 +184,8 @@ func main() {
 	svc = middleware.Plugin(pluginRegistry, logger, svc)
 	svc = middleware.Logging(logger, svc)
 	svc = middleware.Tracing(tracer, svc)
-	counter, latency := prometheus.MakeMetrics(svcName, "api")
+	counter, latency := makeMetrics(svcName, "api")
 	svc = middleware.Metrics(counter, latency, svc)
-	// Wire the fully-wrapped service back into cron and workflow coordinator so
-	// that cron- and workflow-triggered StartTask calls flow through the full
-	// middleware chain (plugin authorize, logging, tracing, metrics).
 	cronScheduler.SetService(svc)
 	workflowCoordinator.SetService(svc)
 
@@ -201,7 +204,7 @@ func main() {
 		return cronScheduler.Start(ctx)
 	})
 
-	httpServerConfig := server.Config{Port: defHTTPPort}
+	httpServerConfig := pkgserver.Config{Port: defHTTPPort}
 	if err := env.ParseWithOptions(&httpServerConfig, env.Options{Prefix: envPrefixHTTP}); err != nil {
 		logger.Error(fmt.Sprintf("failed to load %s HTTP server configuration : %s", svcName, err.Error()))
 		exitCode = 1
@@ -209,14 +212,14 @@ func main() {
 		return
 	}
 
-	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.EntityID), logger)
+	hs := pkgserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.EntityID), logger)
 
 	g.Go(func() error {
 		return hs.Start()
 	})
 
 	g.Go(func() error {
-		return server.StopSignalHandler(ctx, stop, logger, svcName, hs)
+		return pkgserver.StopSignalHandler(ctx, stop, logger, svcName, hs)
 	})
 
 	if err := g.Wait(); err != nil {
@@ -224,9 +227,6 @@ func main() {
 		exitCode = 1
 	}
 
-	// Coordinated shutdown: use a fresh background context because the parent ctx
-	// is already cancelled (that's what triggered the shutdown). The timeout
-	// ensures we don't wait indefinitely for in-flight operations.
 	logger.Info("initiating graceful shutdown")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
@@ -272,7 +272,7 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (t
 	case url.URL{}:
 		return noop.NewTracerProvider(), func(context.Context) {}, nil
 	default:
-		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		sdktp, err := newJaegerProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
 		if err != nil {
 			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
 
@@ -285,4 +285,70 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (t
 			}
 		}, nil
 	}
+}
+
+func newJaegerProvider(ctx context.Context, svcName string, jaegerURL url.URL, instanceID string, fraction float64) (*sdktrace.TracerProvider, error) {
+	if jaegerURL == (url.URL{}) {
+		return nil, errors.New("URL is empty")
+	}
+	if svcName == "" {
+		return nil, errors.New("service Name is empty")
+	}
+
+	var client otlptrace.Client
+	switch jaegerURL.Scheme {
+	case "http":
+		client = otlptracehttp.NewClient(otlptracehttp.WithEndpoint(jaegerURL.Host), otlptracehttp.WithURLPath(jaegerURL.Path), otlptracehttp.WithInsecure())
+	case "https":
+		client = otlptracehttp.NewClient(otlptracehttp.WithEndpoint(jaegerURL.Host), otlptracehttp.WithURLPath(jaegerURL.Path))
+	default:
+		return nil, fmt.Errorf("unsupported tracing url scheme: %s", jaegerURL.Scheme)
+	}
+
+	exporter, err := otlptrace.New(ctx, client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(svcName),
+			semconv.ServiceInstanceID(instanceID),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(fraction)),
+	)
+	otelSetGlobalTracerProvider(tp)
+
+	return tp, nil
+}
+
+func otelSetGlobalTracerProvider(tp *sdktrace.TracerProvider) {
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
+}
+
+func makeMetrics(namespace, subsystem string) (*kitprometheus.Counter, *kitprometheus.Summary) {
+	counter := kitprometheus.NewCounterFrom(stdprometheus.CounterOpts{
+		Namespace: namespace,
+		Subsystem: subsystem,
+		Name:      "request_count",
+		Help:      "Number of requests received.",
+	}, []string{"method"})
+	latency := kitprometheus.NewSummaryFrom(stdprometheus.SummaryOpts{
+		Namespace:  namespace,
+		Subsystem:  subsystem,
+		Objectives: map[float64]float64{0.5: 0.05, 0.9: 0.01, 0.99: 0.001},
+		Name:       "request_latency_microseconds",
+		Help:       "Total duration of requests in microseconds.",
+	}, []string{"method"})
+
+	return counter, latency
 }

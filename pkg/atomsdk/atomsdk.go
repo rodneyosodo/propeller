@@ -1,6 +1,3 @@
-// Copyright (c) Abstract Machines
-// SPDX-License-Identifier: Apache-2.0
-
 package atomsdk
 
 import (
@@ -16,28 +13,22 @@ import (
 const (
 	loginPath = "/auth/login"
 
-	createTenantMutation = `mutation($name:String!){
-		createTenant(input:{name:$name}){id name}
-	}`
-
-	tenantsQuery = `query{
-		tenants(limit:100){items{id name}}
-	}`
-
-	createServiceEntityMutation = `mutation($tid:ID!,$name:String!){
+	createEntityMutation = `mutation($tid:ID!,$name:String!){
 		createEntity(input:{kind:service,name:$name,tenantId:$tid,attributes:{}}){id}
 	}`
 
-	createSharedKeyMutation = `mutation($eid:ID!,$desc:String!){
-		createSharedKey(entityId:$eid,input:{description:$desc}){credentialId key}
+	createAccessTokenMutation = `mutation($eid:ID!,$desc:String!,$name:String!){
+		createAccessToken(input:{
+			subjectId:$eid,
+			name:$name,
+			description:$desc,
+			scoped:false,
+			permissions:[]
+		}){credentialId token}
 	}`
 
 	createResourceMutation = `mutation($tid:ID!,$name:String!){
 		createResource(input:{kind:"channel",name:$name,tenantId:$tid,attributes:{}}){id}
-	}`
-
-	actionsQuery = `query{
-		actions(limit:100,offset:0){items{id name}}
 	}`
 
 	createPermissionBlockMutation = `mutation($tid:ID!,$cid:ID!,$aid1:ID!,$aid2:ID!){
@@ -55,6 +46,26 @@ const (
 	createDirectPolicyMutation = `mutation($tid:ID!,$sid:ID!,$pbid:ID!){
 		createDirectPolicy(input:{tenantId:$tid,subjectKind:entity,subjectId:$sid,permissionBlockId:$pbid}){id}
 	}`
+
+	deleteEntityMutation = `mutation($id:ID!){
+		deleteEntity(id:$id)
+	}`
+
+	deleteResourceMutation = `mutation($id:ID!){
+		deleteResource(id:$id)
+	}`
+
+	createTenantMutation = `mutation($name:String!){
+		createTenant(input:{name:$name}){id name}
+	}`
+
+	tenantsQuery = `query{
+		tenants(limit:100){items{id name}}
+	}`
+
+	actionsQuery = `query{
+		actions(limit:100,offset:0){items{id name}}
+	}`
 )
 
 const (
@@ -64,6 +75,7 @@ const (
 
 type Config struct {
 	AtomURL string
+	Token   string
 }
 
 type SDK interface {
@@ -74,11 +86,22 @@ type SDK interface {
 	CreateAPIKey(ctx context.Context, entityID, description, token string) (string, error)
 	CreateResource(ctx context.Context, name, tenantID, token string) (string, error)
 	Connect(ctx context.Context, entityID, resourceID, tenantID, token string) error
+	DeleteEntity(ctx context.Context, id, token string) error
+	DeleteResource(ctx context.Context, id, token string) error
+}
+
+type Entity struct {
+	ID string
+}
+
+type Resource struct {
+	ID string
 }
 
 type sdk struct {
-	cfg    Config
-	client *http.Client
+	cfg       Config
+	client    *http.Client
+	actionIDs map[string]string
 }
 
 func New(cfg Config) SDK {
@@ -87,6 +110,7 @@ func New(cfg Config) SDK {
 		client: &http.Client{
 			Timeout: defaultTimeout,
 		},
+		actionIDs: make(map[string]string),
 	}
 }
 
@@ -199,6 +223,47 @@ func (s *sdk) Login(ctx context.Context, identifier, secret string) (string, err
 	return lr.Token, nil
 }
 
+func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) (map[string]string, error) {
+	missing := make([]string, 0, len(names))
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			missing = append(missing, n)
+		}
+	}
+	if len(missing) == 0 {
+		return s.actionIDs, nil
+	}
+
+	data, err := s.gql(ctx, actionsQuery, nil, token)
+	if err != nil {
+		return nil, fmt.Errorf("query actions: %w", err)
+	}
+
+	var actions struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(data["actions"], &actions); err != nil {
+		return nil, fmt.Errorf("unmarshal actions response: %w", err)
+	}
+
+	for _, a := range actions.Items {
+		if a.ID != "" && a.Name != "" {
+			s.actionIDs[a.Name] = a.ID
+		}
+	}
+
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			return nil, fmt.Errorf("action %q not found on server", n)
+		}
+	}
+
+	return s.actionIDs, nil
+}
+
 func (s *sdk) CreateTenant(ctx context.Context, name, token string) (string, error) {
 	data, err := s.gql(ctx, createTenantMutation, map[string]any{
 		"name": name,
@@ -243,7 +308,7 @@ func (s *sdk) EnsureTenant(ctx context.Context, name, token string) (string, err
 }
 
 func (s *sdk) CreateServiceEntity(ctx context.Context, name, tenantID, token string) (string, error) {
-	data, err := s.gql(ctx, createServiceEntityMutation, map[string]any{
+	data, err := s.gql(ctx, createEntityMutation, map[string]any{
 		"tid":  tenantID,
 		"name": name,
 	}, token)
@@ -266,26 +331,26 @@ func (s *sdk) CreateServiceEntity(ctx context.Context, name, tenantID, token str
 }
 
 func (s *sdk) CreateAPIKey(ctx context.Context, entityID, description, token string) (string, error) {
-	data, err := s.gql(ctx, createSharedKeyMutation, map[string]any{
+	data, err := s.gql(ctx, createAccessTokenMutation, map[string]any{
 		"eid":  entityID,
 		"desc": description,
+		"name": description,
 	}, token)
 	if err != nil {
 		return "", err
 	}
 
 	var key struct {
-		Key string `json:"key"`
+		CredentialID string `json:"credentialId"`
+		Token        string `json:"token"`
 	}
-	if err := json.Unmarshal(data["createSharedKey"], &key); err != nil {
-		return "", fmt.Errorf("unmarshal createSharedKey response: %w", err)
+	if err := json.Unmarshal(data["createAccessToken"], &key); err != nil {
+		return "", fmt.Errorf("unmarshal createAccessToken response: %w", err)
 	}
-
-	if key.Key == "" {
-		return "", fmt.Errorf("createSharedKey returned empty key")
+	if key.Token == "" {
+		return "", fmt.Errorf("createAccessToken returned empty token")
 	}
-
-	return key.Key, nil
+	return key.Token, nil
 }
 
 func (s *sdk) CreateResource(ctx context.Context, name, tenantID, token string) (string, error) {
@@ -312,39 +377,16 @@ func (s *sdk) CreateResource(ctx context.Context, name, tenantID, token string) 
 }
 
 func (s *sdk) Connect(ctx context.Context, entityID, resourceID, tenantID, token string) error {
-	data, err := s.gql(ctx, actionsQuery, nil, token)
+	actionIDs, err := s.findActionIDs(ctx, token, "publish", "subscribe")
 	if err != nil {
-		return fmt.Errorf("query actions: %w", err)
-	}
-
-	var actions struct {
-		Items []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(data["actions"], &actions); err != nil {
-		return fmt.Errorf("unmarshal actions response: %w", err)
-	}
-
-	actionIDs := make(map[string]string)
-	for _, a := range actions.Items {
-		actionIDs[a.Name] = a.ID
-	}
-	pubID, ok := actionIDs["publish"]
-	if !ok {
-		return fmt.Errorf("action %q not found", "publish")
-	}
-	subID, ok := actionIDs["subscribe"]
-	if !ok {
-		return fmt.Errorf("action %q not found", "subscribe")
+		return fmt.Errorf("lookup action ids: %w", err)
 	}
 
 	pbData, err := s.gql(ctx, createPermissionBlockMutation, map[string]any{
 		"tid":  tenantID,
 		"cid":  resourceID,
-		"aid1": pubID,
-		"aid2": subID,
+		"aid1": actionIDs["publish"],
+		"aid2": actionIDs["subscribe"],
 	}, token)
 	if err != nil {
 		return fmt.Errorf("create permission block: %w", err)
@@ -367,4 +409,18 @@ func (s *sdk) Connect(ctx context.Context, entityID, resourceID, tenantID, token
 	}
 
 	return nil
+}
+
+func (s *sdk) DeleteEntity(ctx context.Context, id, token string) error {
+	_, err := s.gql(ctx, deleteEntityMutation, map[string]any{
+		"id": id,
+	}, token)
+	return err
+}
+
+func (s *sdk) DeleteResource(ctx context.Context, id, token string) error {
+	_, err := s.gql(ctx, deleteResourceMutation, map[string]any{
+		"id": id,
+	}, token)
+	return err
 }

@@ -103,7 +103,7 @@ func main() {
 	}
 	mqttClientID := os.Getenv("MQTT_ENTITY_ID")
 	if mqttClientID == "" {
-		log.Fatal("MQTT_ENTITY_ID environment variable is required and must be a Magistrala client ID")
+		log.Fatal("MQTT_ENTITY_ID environment variable is required and must be a Propeller entity ID")
 	}
 	mqttUsername := os.Getenv("MQTT_USERNAME")
 	mqttPassword := os.Getenv("MQTT_PASSWORD")

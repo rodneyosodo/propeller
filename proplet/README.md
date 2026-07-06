@@ -27,7 +27,7 @@ cargo build --release
 | `PROPLET_MQTT_TIMEOUT`          | MQTT operation timeout (seconds)                          | `30`                   |
 | `PROPLET_MQTT_QOS`              | MQTT Quality of Service level                             | `2`                    |
 | `PROPLET_LIVELINESS_INTERVAL`   | Heartbeat interval in seconds                             | `10`                   |
-| `PROPLET_TENANT_ID`             | Magistrala tenant ID                                      |                        |
+| `PROPLET_TENANT_ID`             | Propeller tenant ID                                       |                        |
 | `PROPLET_CHANNEL_ID`            | Magistrala channel ID                                     |                        |
 | `PROPLET_ENTITY_ID`             | MQTT entity ID                                            |                        |
 | `PROPLET_API_KEY`               | MQTT entity key                                           |                        |

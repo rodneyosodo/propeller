@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 
-	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/absmach/propeller/pkg/api"
 	"github.com/absmach/propeller/pkg/cron"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
@@ -24,11 +23,11 @@ type taskReq struct {
 
 func (t *taskReq) validate() error {
 	if t.Name == "" {
-		return apiutil.ErrMissingName
+		return api.ErrMissingName
 	}
 
 	if t.RunIf != "" && t.RunIf != task.RunIfSuccess && t.RunIf != task.RunIfFailure {
-		return apiutil.ErrValidation
+		return api.ErrValidation
 	}
 
 	if t.Schedule != "" {
@@ -64,16 +63,16 @@ type workflowReq struct {
 
 func (w *workflowReq) validate() error {
 	if len(w.Tasks) == 0 {
-		return apiutil.ErrValidation
+		return api.ErrValidation
 	}
 
 	for i := range w.Tasks {
 		if w.Tasks[i].Name == "" {
-			return apiutil.ErrMissingName
+			return api.ErrMissingName
 		}
 
 		if w.Tasks[i].RunIf != "" && w.Tasks[i].RunIf != task.RunIfSuccess && w.Tasks[i].RunIf != task.RunIfFailure {
-			return apiutil.ErrValidation
+			return api.ErrValidation
 		}
 	}
 
@@ -88,16 +87,16 @@ type jobReq struct {
 
 func (j *jobReq) validate() error {
 	if len(j.Tasks) == 0 {
-		return apiutil.ErrValidation
+		return api.ErrValidation
 	}
 
 	for i := range j.Tasks {
 		if j.Tasks[i].Name == "" {
-			return apiutil.ErrMissingName
+			return api.ErrMissingName
 		}
 
 		if j.Tasks[i].RunIf != "" && j.Tasks[i].RunIf != task.RunIfSuccess && j.Tasks[i].RunIf != task.RunIfFailure {
-			return apiutil.ErrValidation
+			return api.ErrValidation
 		}
 	}
 
@@ -110,11 +109,11 @@ type entityReq struct {
 
 func (e *entityReq) validate() error {
 	if e.id == "" {
-		return apiutil.ErrMissingID
+		return api.ErrMissingID
 	}
 
 	if _, err := uuid.Parse(e.id); err != nil {
-		return apiutil.ErrInvalidQueryParams
+		return api.ErrInvalidQueryParams
 	}
 
 	return nil
@@ -163,7 +162,7 @@ type listTasksReq struct {
 
 func (r listTasksReq) validate() error {
 	if r.limit > api.MaxLimitSize || r.limit < 1 {
-		return apiutil.ErrLimitSize
+		return api.ErrLimitSize
 	}
 
 	return nil
@@ -176,7 +175,7 @@ type metricsReq struct {
 
 func (m *metricsReq) validate() error {
 	if m.id == "" {
-		return apiutil.ErrMissingID
+		return api.ErrMissingID
 	}
 
 	return nil

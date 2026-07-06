@@ -322,7 +322,7 @@ int mqtt_client_connect(const char *tenant_id, const char *proplet_id,
   struct sockaddr_in *broker = (struct sockaddr_in *)&broker_addr;
 
   if (proplet_id == NULL || proplet_id[0] == '\0') {
-    LOG_ERR("proplet_id must be non-empty and match the Magistrala Entity ID");
+    LOG_ERR("proplet_id must be non-empty and match the Propeller Entity ID");
     return -EINVAL;
   }
 

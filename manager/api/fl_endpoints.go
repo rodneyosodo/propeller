@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"strings"
 
-	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/pkg/api"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
@@ -55,7 +54,7 @@ func configureExperimentEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(experimentConfigReq)
 		if !ok {
-			return experimentConfigResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return experimentConfigResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 
 		if err := svc.ConfigureExperiment(ctx, req.Config); err != nil {
@@ -74,7 +73,7 @@ func getFLTaskEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(flTaskReq)
 		if !ok {
-			return flTaskResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return flTaskResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 
 		task, err := svc.GetFLTask(ctx, req.roundID, req.propletID)
@@ -90,7 +89,7 @@ func postFLUpdateEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(flUpdateReq)
 		if !ok {
-			return flUpdateResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return flUpdateResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 
 		if err := svc.PostFLUpdate(ctx, req.Update); err != nil {
@@ -105,7 +104,7 @@ func postFLUpdateCBOREndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.([]byte)
 		if !ok {
-			return flUpdateResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return flUpdateResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 
 		if err := svc.PostFLUpdateCBOR(ctx, req); err != nil {
@@ -120,7 +119,7 @@ func getRoundStatusEndpoint(svc manager.Service) endpoint.Endpoint {
 	return func(ctx context.Context, request any) (any, error) {
 		req, ok := request.(roundStatusReq)
 		if !ok {
-			return roundStatusResponse{}, errors.Join(apiutil.ErrValidation, pkgerrors.ErrInvalidData)
+			return roundStatusResponse{}, errors.Join(api.ErrValidation, pkgerrors.ErrInvalidData)
 		}
 
 		status, err := svc.GetRoundStatus(ctx, req.roundID)
@@ -137,7 +136,7 @@ func decodeFLTaskReq(_ context.Context, r *http.Request) (any, error) {
 	propletID := r.URL.Query().Get("proplet_id")
 
 	if roundID == "" {
-		return nil, errors.Join(apiutil.ErrValidation, errors.New("round_id is required"))
+		return nil, errors.Join(api.ErrValidation, errors.New("round_id is required"))
 	}
 
 	return flTaskReq{
@@ -148,12 +147,12 @@ func decodeFLTaskReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeFLUpdateReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 
 	var update manager.FLUpdate
 	if err := json.NewDecoder(r.Body).Decode(&update); err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 
 	return flUpdateReq{Update: update}, nil
@@ -162,12 +161,12 @@ func decodeFLUpdateReq(_ context.Context, r *http.Request) (any, error) {
 func decodeFLUpdateCBORReq(_ context.Context, r *http.Request) (any, error) {
 	contentType := r.Header.Get("Content-Type")
 	if contentType != "application/cbor" && contentType != "application/cbor-seq" {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 
 	return data, nil
@@ -176,7 +175,7 @@ func decodeFLUpdateCBORReq(_ context.Context, r *http.Request) (any, error) {
 func decodeRoundStatusReq(_ context.Context, r *http.Request) (any, error) {
 	roundID := chi.URLParam(r, "round_id")
 	if roundID == "" {
-		return nil, errors.Join(apiutil.ErrValidation, errors.New("round_id is required"))
+		return nil, errors.Join(api.ErrValidation, errors.New("round_id is required"))
 	}
 
 	return roundStatusReq{roundID: roundID}, nil
@@ -184,12 +183,12 @@ func decodeRoundStatusReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeExperimentConfigReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 
 	var config manager.ExperimentConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 
 	return experimentConfigReq{Config: config}, nil

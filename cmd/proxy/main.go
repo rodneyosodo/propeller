@@ -13,12 +13,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/absmach/magistrala/pkg/jaeger"
 	"github.com/absmach/propeller"
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/proxy"
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
 	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
 )
@@ -45,13 +49,12 @@ type config struct {
 	HTTPPort        int           `env:"PROXY_HTTP_PORT"              envDefault:"9191"`
 	OTELURL         url.URL       `env:"PROXY_OTEL_URL"`
 	TraceRatio      float64       `env:"PROXY_TRACE_RATIO"            envDefault:"0"`
-	// HTTP Registry configuration
-	ChunkSize    int    `env:"PROXY_CHUNK_SIZE"            envDefault:"512000"`
-	Authenticate bool   `env:"PROXY_AUTHENTICATE"          envDefault:"false"`
-	Token        string `env:"PROXY_REGISTRY_TOKEN"        envDefault:""`
-	Username     string `env:"PROXY_REGISTRY_USERNAME"     envDefault:""`
-	Password     string `env:"PROXY_REGISTRY_PASSWORD"     envDefault:""`
-	RegistryURL  string `env:"PROXY_REGISTRY_URL,notEmpty"`
+	ChunkSize       int           `env:"PROXY_CHUNK_SIZE"             envDefault:"512000"`
+	Authenticate    bool          `env:"PROXY_AUTHENTICATE"           envDefault:"false"`
+	Token           string        `env:"PROXY_REGISTRY_TOKEN"         envDefault:""`
+	Username        string        `env:"PROXY_REGISTRY_USERNAME"      envDefault:""`
+	Password        string        `env:"PROXY_REGISTRY_PASSWORD"      envDefault:""`
+	RegistryURL     string        `env:"PROXY_REGISTRY_URL,notEmpty"`
 }
 
 func main() {
@@ -185,7 +188,7 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (f
 
 		return func(context.Context) {}, nil
 	default:
-		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		sdktp, err := newJaegerProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
 		if err != nil {
 			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
 
@@ -199,6 +202,48 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (f
 			}
 		}, nil
 	}
+}
+
+func newJaegerProvider(ctx context.Context, svcName string, jaegerURL url.URL, instanceID string, fraction float64) (*sdktrace.TracerProvider, error) {
+	if jaegerURL == (url.URL{}) {
+		return nil, errors.New("URL is empty")
+	}
+	if svcName == "" {
+		return nil, errors.New("service Name is empty")
+	}
+
+	var client otlptrace.Client
+	switch jaegerURL.Scheme {
+	case "http":
+		client = otlptracehttp.NewClient(otlptracehttp.WithEndpoint(jaegerURL.Host), otlptracehttp.WithURLPath(jaegerURL.Path), otlptracehttp.WithInsecure())
+	case "https":
+		client = otlptracehttp.NewClient(otlptracehttp.WithEndpoint(jaegerURL.Host), otlptracehttp.WithURLPath(jaegerURL.Path))
+	default:
+		return nil, fmt.Errorf("unsupported tracing url scheme: %s", jaegerURL.Scheme)
+	}
+
+	exporter, err := otlptrace.New(ctx, client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create trace exporter: %w", err)
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceName(svcName),
+			semconv.ServiceInstanceID(instanceID),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create resource: %w", err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(fraction)),
+	)
+
+	return tp, nil
 }
 
 func serveHealth(ctx context.Context, cfg config, logger *slog.Logger) error {

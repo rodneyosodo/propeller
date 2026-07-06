@@ -9,7 +9,6 @@ import (
 	"log/slog"
 	"testing"
 
-	smqerrors "github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/propeller/manager"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	mqttmocks "github.com/absmach/propeller/pkg/mqtt/mocks"
@@ -109,7 +108,7 @@ func TestCreateWorkflow(t *testing.T) {
 			t.Parallel()
 			svc := newService(t)
 			created, err := svc.CreateWorkflow(context.Background(), tc.tasks)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
 			if tc.err == nil {
 				assert.Len(t, created, tc.taskLen)
 				assert.NotEmpty(t, created[0].WorkflowID)
@@ -155,7 +154,7 @@ func TestCreateTask(t *testing.T) {
 			svc := newService(t)
 			taskInput := tc.setup(t, svc)
 			created, err := svc.CreateTask(context.Background(), taskInput)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
 			if tc.err == nil {
 				assert.NotEmpty(t, created.ID)
 			}
@@ -197,7 +196,7 @@ func TestGetTaskResults(t *testing.T) {
 			svc := newService(t)
 			taskID := tc.setup(t, svc)
 			_, err := svc.GetTaskResults(context.Background(), taskID)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }
@@ -246,7 +245,7 @@ func TestGetParentResults(t *testing.T) {
 			svc := newService(t)
 			taskID := tc.setup(t, svc)
 			_, err := svc.GetParentResults(context.Background(), taskID)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }
