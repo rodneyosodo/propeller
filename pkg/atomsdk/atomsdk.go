@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -134,52 +135,6 @@ type loginResponse struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
-func (s *sdk) gql(ctx context.Context, query string, vars map[string]any, token string) (map[string]json.RawMessage, error) {
-	body, err := json.Marshal(graphQLRequest{Query: query, Variables: vars})
-	if err != nil {
-		return nil, fmt.Errorf("marshal graphql request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.AtomURL+"/graphql", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create graphql request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if token != "" {
-		req.Header.Set("Authorization", "Bearer "+token)
-	}
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("graphql request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read graphql response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("graphql request failed with status %d: %s", resp.StatusCode, string(raw))
-	}
-
-	var gqlResp graphQLResponse
-	if err := json.Unmarshal(raw, &gqlResp); err != nil {
-		return nil, fmt.Errorf("unmarshal graphql response: %w", err)
-	}
-
-	if len(gqlResp.Errors) > 0 {
-		msgs := make([]string, 0, len(gqlResp.Errors))
-		for _, e := range gqlResp.Errors {
-			msgs = append(msgs, e.Message)
-		}
-		return nil, fmt.Errorf("graphql error: %v", msgs)
-	}
-
-	return gqlResp.Data, nil
-}
-
 func (s *sdk) Login(ctx context.Context, identifier, secret string) (string, error) {
 	payload, err := json.Marshal(map[string]string{
 		"identifier": identifier,
@@ -217,51 +172,10 @@ func (s *sdk) Login(ctx context.Context, identifier, secret string) (string, err
 	}
 
 	if lr.Token == "" {
-		return "", fmt.Errorf("login returned empty token")
+		return "", errors.New("login returned empty token")
 	}
 
 	return lr.Token, nil
-}
-
-func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) (map[string]string, error) {
-	missing := make([]string, 0, len(names))
-	for _, n := range names {
-		if _, ok := s.actionIDs[n]; !ok {
-			missing = append(missing, n)
-		}
-	}
-	if len(missing) == 0 {
-		return s.actionIDs, nil
-	}
-
-	data, err := s.gql(ctx, actionsQuery, nil, token)
-	if err != nil {
-		return nil, fmt.Errorf("query actions: %w", err)
-	}
-
-	var actions struct {
-		Items []struct {
-			ID   string `json:"id"`
-			Name string `json:"name"`
-		} `json:"items"`
-	}
-	if err := json.Unmarshal(data["actions"], &actions); err != nil {
-		return nil, fmt.Errorf("unmarshal actions response: %w", err)
-	}
-
-	for _, a := range actions.Items {
-		if a.ID != "" && a.Name != "" {
-			s.actionIDs[a.Name] = a.ID
-		}
-	}
-
-	for _, n := range names {
-		if _, ok := s.actionIDs[n]; !ok {
-			return nil, fmt.Errorf("action %q not found on server", n)
-		}
-	}
-
-	return s.actionIDs, nil
 }
 
 func (s *sdk) CreateTenant(ctx context.Context, name, token string) (string, error) {
@@ -324,7 +238,7 @@ func (s *sdk) CreateServiceEntity(ctx context.Context, name, tenantID, token str
 	}
 
 	if entity.ID == "" {
-		return "", fmt.Errorf("createEntity returned empty id")
+		return "", errors.New("createEntity returned empty id")
 	}
 
 	return entity.ID, nil
@@ -348,8 +262,9 @@ func (s *sdk) CreateAPIKey(ctx context.Context, entityID, description, token str
 		return "", fmt.Errorf("unmarshal createAccessToken response: %w", err)
 	}
 	if key.Token == "" {
-		return "", fmt.Errorf("createAccessToken returned empty token")
+		return "", errors.New("createAccessToken returned empty token")
 	}
+
 	return key.Token, nil
 }
 
@@ -370,7 +285,7 @@ func (s *sdk) CreateResource(ctx context.Context, name, tenantID, token string) 
 	}
 
 	if resource.ID == "" {
-		return "", fmt.Errorf("createResource returned empty id")
+		return "", errors.New("createResource returned empty id")
 	}
 
 	return resource.ID, nil
@@ -415,6 +330,7 @@ func (s *sdk) DeleteEntity(ctx context.Context, id, token string) error {
 	_, err := s.gql(ctx, deleteEntityMutation, map[string]any{
 		"id": id,
 	}, token)
+
 	return err
 }
 
@@ -422,5 +338,94 @@ func (s *sdk) DeleteResource(ctx context.Context, id, token string) error {
 	_, err := s.gql(ctx, deleteResourceMutation, map[string]any{
 		"id": id,
 	}, token)
+
 	return err
+}
+
+func (s *sdk) gql(ctx context.Context, query string, vars map[string]any, token string) (map[string]json.RawMessage, error) {
+	body, err := json.Marshal(graphQLRequest{Query: query, Variables: vars})
+	if err != nil {
+		return nil, fmt.Errorf("marshal graphql request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.cfg.AtomURL+"/graphql", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create graphql request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("graphql request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read graphql response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("graphql request failed with status %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var gqlResp graphQLResponse
+	if err := json.Unmarshal(raw, &gqlResp); err != nil {
+		return nil, fmt.Errorf("unmarshal graphql response: %w", err)
+	}
+
+	if len(gqlResp.Errors) > 0 {
+		msgs := make([]string, 0, len(gqlResp.Errors))
+		for _, e := range gqlResp.Errors {
+			msgs = append(msgs, e.Message)
+		}
+
+		return nil, fmt.Errorf("graphql error: %v", msgs)
+	}
+
+	return gqlResp.Data, nil
+}
+
+func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) (map[string]string, error) {
+	missing := make([]string, 0, len(names))
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			missing = append(missing, n)
+		}
+	}
+	if len(missing) == 0 {
+		return s.actionIDs, nil
+	}
+
+	data, err := s.gql(ctx, actionsQuery, nil, token)
+	if err != nil {
+		return nil, fmt.Errorf("query actions: %w", err)
+	}
+
+	var actions struct {
+		Items []struct {
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(data["actions"], &actions); err != nil {
+		return nil, fmt.Errorf("unmarshal actions response: %w", err)
+	}
+
+	for _, a := range actions.Items {
+		if a.ID != "" && a.Name != "" {
+			s.actionIDs[a.Name] = a.ID
+		}
+	}
+
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			return nil, fmt.Errorf("action %q not found on server", n)
+		}
+	}
+
+	return s.actionIDs, nil
 }

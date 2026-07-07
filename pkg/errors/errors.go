@@ -40,10 +40,11 @@ var (
 
 func Contains(e1, e2 error) bool {
 	if e1 == nil || e2 == nil {
-		return e1 == e2
+		return e1 == e2 //nolint:errorlint
 	}
 	if errors.Is(e1, e2) {
 		return true
 	}
+
 	return e1.Error() == e2.Error()
 }

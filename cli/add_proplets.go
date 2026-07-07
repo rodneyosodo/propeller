@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -47,7 +48,7 @@ Example:
 					Value(&identifier).
 					Validate(func(str string) error {
 						if str == "" {
-							return fmt.Errorf("username is required")
+							return errors.New("username is required")
 						}
 
 						return nil
@@ -58,7 +59,7 @@ Example:
 					Value(&secret).
 					Validate(func(str string) error {
 						if str == "" {
-							return fmt.Errorf("password is required")
+							return errors.New("password is required")
 						}
 
 						var err error
@@ -82,7 +83,7 @@ Example:
 							var err error
 							numNew, err = strconv.Atoi(str)
 							if err != nil || numNew < 1 {
-								return fmt.Errorf("number of proplets must be a positive integer")
+								return errors.New("number of proplets must be a positive integer")
 							}
 						}
 
@@ -165,12 +166,12 @@ func readExistingConfig(path string) (tenantID, channelID string, numExisting in
 
 	manager, ok := tree.Get("manager").(*toml.Tree)
 	if !ok {
-		return "", "", 0, fmt.Errorf("missing [manager] section in config file")
+		return "", "", 0, errors.New("missing [manager] section in config file")
 	}
 	tenantID, _ = manager.Get("tenant_id").(string)
 	channelID, _ = manager.Get("channel_id").(string)
 	if tenantID == "" || channelID == "" {
-		return "", "", 0, fmt.Errorf("tenant_id and channel_id are required in [manager] section")
+		return "", "", 0, errors.New("tenant_id and channel_id are required in [manager] section")
 	}
 
 	numExisting = countExistingProplets(tree)

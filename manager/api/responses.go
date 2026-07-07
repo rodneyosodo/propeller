@@ -11,6 +11,8 @@ import (
 	"github.com/absmach/propeller/pkg/task"
 )
 
+const locationHeader = "Location"
+
 var (
 	_ api.Response = (*propletResponse)(nil)
 	_ api.Response = (*propletSDFResponse)(nil)
@@ -48,7 +50,7 @@ func (w propletResponse) Code() int {
 func (w propletResponse) Headers() map[string]string {
 	if w.created {
 		return map[string]string{
-			"Location": "/proplets/" + w.ID,
+			locationHeader: "/proplets/" + w.ID,
 		}
 	}
 
@@ -128,7 +130,7 @@ func (t taskResponse) Code() int {
 func (t taskResponse) Headers() map[string]string {
 	if t.created {
 		return map[string]string{
-			"Location": "/tasks/" + t.ID,
+			locationHeader: "/tasks/" + t.ID,
 		}
 	}
 
@@ -268,7 +270,7 @@ func (j jobResponse) Code() int {
 
 func (j jobResponse) Headers() map[string]string {
 	return map[string]string{
-		"Location": "/jobs/" + j.JobID,
+		locationHeader: "/jobs/" + j.JobID,
 	}
 }
 

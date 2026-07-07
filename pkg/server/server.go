@@ -36,12 +36,13 @@ type HTTPServer struct {
 	name   string
 	logger *slog.Logger
 	cfg    Config
-	ctx    context.Context
+	ctx    context.Context //nolint:containedctx
 	cancel context.CancelFunc
 }
 
 func NewServer(ctx context.Context, cancel context.CancelFunc, name string, cfg Config, handler http.Handler, logger *slog.Logger) Server {
 	addr := fmt.Sprintf("%s:%s", cfg.Host, cfg.Port)
+
 	return &HTTPServer{
 		server: &http.Server{
 			Addr:              addr,
@@ -93,9 +94,11 @@ func (s *HTTPServer) Stop() error {
 	defer cancel()
 	if err := s.server.Shutdown(ctx); err != nil {
 		s.logger.Error(fmt.Sprintf("%s service server shutdown error at %s: %s", s.name, s.server.Addr, err))
+
 		return fmt.Errorf("%s service server shutdown error at %s: %w", s.name, s.server.Addr, err)
 	}
 	s.logger.Info(fmt.Sprintf("%s service server stopped at %s", s.name, s.server.Addr))
+
 	return nil
 }
 
@@ -115,6 +118,7 @@ func StopSignalHandler(ctx context.Context, cancel context.CancelFunc, logger *s
 		if len(errs) > 0 {
 			return fmt.Errorf("shutdown errors: %v", errs)
 		}
+
 		return nil
 	case <-ctx.Done():
 		return nil

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -44,7 +45,7 @@ Example:
 					Value(&identifier).
 					Validate(func(str string) error {
 						if str == "" {
-							return fmt.Errorf("username is required")
+							return errors.New("username is required")
 						}
 
 						return nil
@@ -55,7 +56,7 @@ Example:
 					Value(&secret).
 					Validate(func(str string) error {
 						if str == "" {
-							return fmt.Errorf("password is required")
+							return errors.New("password is required")
 						}
 
 						var err error

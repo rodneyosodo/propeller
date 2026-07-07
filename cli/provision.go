@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -13,11 +14,11 @@ import (
 )
 
 var (
-	errFailedToCreateToken      = fmt.Errorf("failed to create access token")
-	errFailedToCreateTenant     = fmt.Errorf("failed to create tenant")
-	errFailedChannelCreation    = fmt.Errorf("failed to create channel")
-	errFailedEntityCreation     = fmt.Errorf("failed to create entity")
-	errFailedConnectionCreation = fmt.Errorf("failed to create connection")
+	errFailedToCreateToken      = errors.New("failed to create access token")
+	errFailedToCreateTenant     = errors.New("failed to create tenant")
+	errFailedChannelCreation    = errors.New("failed to create channel")
+	errFailedEntityCreation     = errors.New("failed to create entity")
+	errFailedConnectionCreation = errors.New("failed to create connection")
 
 	atomSDK  atomsdk.SDK
 	namegen  = namegenerator.NewGenerator()
@@ -61,7 +62,7 @@ var provisionCmd = &cobra.Command{
 					Value(&identifier).
 					Validate(func(str string) error {
 						if str == "" {
-							return fmt.Errorf("username is required")
+							return errors.New("username is required")
 						}
 
 						return nil
@@ -72,7 +73,7 @@ var provisionCmd = &cobra.Command{
 					Value(&secret).
 					Validate(func(str string) error {
 						if str == "" {
-							return fmt.Errorf("password is required")
+							return errors.New("password is required")
 						}
 
 						var err error
@@ -136,7 +137,7 @@ var provisionCmd = &cobra.Command{
 							var err error
 							numProplets, err = strconv.Atoi(str)
 							if err != nil || numProplets < 1 {
-								return fmt.Errorf("number of proplets must be a positive integer")
+								return errors.New("number of proplets must be a positive integer")
 							}
 						}
 

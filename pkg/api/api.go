@@ -9,9 +9,9 @@ import (
 	"net/http"
 	"strconv"
 
-	kithttp "github.com/go-kit/kit/transport/http"
 	"github.com/absmach/propeller"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
+	kithttp "github.com/go-kit/kit/transport/http"
 )
 
 var (
@@ -33,11 +33,11 @@ const (
 )
 
 var (
-	ErrValidation            = errors.New("something went wrong with the request")
-	ErrMissingName           = errors.New("missing identity name")
-	ErrMissingID             = errors.New("missing entity id")
-	ErrInvalidQueryParams    = errors.New("invalid query parameters")
-	ErrLimitSize             = errors.New("invalid limit size")
+	ErrValidation             = errors.New("something went wrong with the request")
+	ErrMissingName            = errors.New("missing identity name")
+	ErrMissingID              = errors.New("missing entity id")
+	ErrInvalidQueryParams     = errors.New("invalid query parameters")
+	ErrLimitSize              = errors.New("invalid limit size")
 	ErrUnsupportedContentType = errors.New("unsupported content type")
 )
 
@@ -97,6 +97,7 @@ func ReadStringQuery(r *http.Request, key, def string) (string, error) {
 	if len(vals) == 0 {
 		return def, nil
 	}
+
 	return vals[0], nil
 }
 
@@ -112,6 +113,7 @@ func ReadMetadataQuery(r *http.Request, key string, def map[string]any) (map[str
 	if err := json.Unmarshal([]byte(vals[0]), &meta); err != nil {
 		return nil, fmt.Errorf("invalid metadata: %w", err)
 	}
+
 	return meta, nil
 }
 
@@ -120,10 +122,11 @@ func HealthHandler(service, instanceID string) http.HandlerFunc {
 		w.Header().Add("Content-Type", ContentType)
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			w.WriteHeader(http.StatusMethodNotAllowed)
+
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(propeller.HealthInfo{
+		err := json.NewEncoder(w).Encode(propeller.HealthInfo{
 			Status:      "pass",
 			Version:     propeller.Version,
 			Commit:      propeller.Commit,
@@ -131,6 +134,11 @@ func HealthHandler(service, instanceID string) http.HandlerFunc {
 			BuildTime:   propeller.BuildTime,
 			InstanceID:  instanceID,
 		})
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+
+			return
+		}
 	})
 }
 
@@ -151,24 +159,28 @@ func ReadNumQuery[N number](r *http.Request, key string, def N) (N, error) {
 		if err != nil {
 			return def, fmt.Errorf("invalid %s: %w", key, err)
 		}
+
 		return N(n), nil
 	case float64:
 		n, err := strconv.ParseFloat(raw, 64)
 		if err != nil {
 			return def, fmt.Errorf("invalid %s: %w", key, err)
 		}
+
 		return N(n), nil
 	case uint16:
 		n, err := strconv.ParseUint(raw, 10, 16)
 		if err != nil {
 			return def, fmt.Errorf("invalid %s: %w", key, err)
 		}
+
 		return N(n), nil
 	case uint64:
 		n, err := strconv.ParseUint(raw, 10, 64)
 		if err != nil {
 			return def, fmt.Errorf("invalid %s: %w", key, err)
 		}
+
 		return N(n), nil
 	default:
 		return def, errors.New("unsupported numeric type")
