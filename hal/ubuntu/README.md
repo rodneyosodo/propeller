@@ -21,10 +21,10 @@ Set these before running the script:
 
 | Variable               | Description                     | Default                |
 | ---------------------- | ------------------------------- | ---------------------- |
-| `PROPLET_TENANT_ID`    | Propeller tenant ID            |                        |
-| `PROPLET_ENTITY_ID`    | Propeller entity ID            |                        |
-| `PROPLET_API_KEY`      | Propeller entity key           |                        |
-| `PROPLET_CHANNEL_ID`   | Propeller channel ID           |                        |
+| `PROPLET_TENANT_ID`    | Propeller tenant ID             |                        |
+| `PROPLET_ENTITY_ID`    | Propeller entity ID             |                        |
+| `PROPLET_API_KEY`      | Propeller entity key            |                        |
+| `PROPLET_CHANNEL_ID`   | Propeller channel ID            |                        |
 | `PROPLET_MQTT_ADDRESS` | MQTT broker address             | `tcp://localhost:1883` |
 | `KBS_URL`              | Key Broker Service URL          | `http://10.0.2.2:8082` |
 | `ENABLE_CVM`           | `auto`, `tdx`, `sev`, or `none` | `auto`                 |

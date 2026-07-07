@@ -32,10 +32,10 @@ cargo build --release
 
 ### Options
 
-| Option                   | Description                                                 | Default        |
-| ------------------------ | ----------------------------------------------------------- | -------------- |
-| `-f, --function <name>`  | Exported function to call                                   | `run-hal-test` |
-| `-e, --env <KEY=VALUE>`  | Pass an environment variable to the component (repeatable)  |                |
+| Option                  | Description                                                | Default        |
+| ----------------------- | ---------------------------------------------------------- | -------------- |
+| `-f, --function <name>` | Exported function to call                                  | `run-hal-test` |
+| `-e, --env <KEY=VALUE>` | Pass an environment variable to the component (repeatable) |                |
 
 The called export must take no arguments and return a single `string`; the
 runner prints it to stdout.
