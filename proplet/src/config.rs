@@ -311,11 +311,6 @@ impl PropletConfig {
                 config.tenant_id = val;
             }
         }
-        if let Ok(val) = env::var("PROPLET_TENANT_ID") {
-            if !val.is_empty() && config.tenant_id.is_empty() {
-                config.tenant_id = val;
-            }
-        }
 
         if let Ok(val) = env::var("PROPLET_CHANNEL_ID") {
             if !val.is_empty() {
@@ -328,19 +323,9 @@ impl PropletConfig {
                 config.entity_id = val;
             }
         }
-        if let Ok(val) = env::var("PROPLET_ENTITY_ID") {
-            if !val.is_empty() && config.entity_id.is_empty() {
-                config.entity_id = val;
-            }
-        }
 
         if let Ok(val) = env::var("PROPLET_API_KEY") {
             if !val.is_empty() {
-                config.api_key = val;
-            }
-        }
-        if let Ok(val) = env::var("PROPLET_API_KEY") {
-            if !val.is_empty() && config.api_key.is_empty() {
                 config.api_key = val;
             }
         }
