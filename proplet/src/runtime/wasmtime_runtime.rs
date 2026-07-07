@@ -767,10 +767,12 @@ impl WasmtimeRuntime {
             );
             Ok(Vec::new())
         } else {
-            match result_rx.await {
+            let result = match result_rx.await {
                 Ok(result) => result,
                 Err(_) => Err(anyhow::anyhow!("Task was cancelled or panicked")),
-            }
+            };
+            self.tasks.lock().await.remove(&config.id);
+            result
         }
     }
 
@@ -928,10 +930,12 @@ impl WasmtimeRuntime {
             );
             Ok(Vec::new())
         } else {
-            match result_rx.await {
+            let result = match result_rx.await {
                 Ok(result) => result,
                 Err(_) => Err(anyhow::anyhow!("Task was cancelled or panicked")),
-            }
+            };
+            self.tasks.lock().await.remove(&config.id);
+            result
         }
     }
 
@@ -1314,10 +1318,12 @@ impl WasmtimeRuntime {
                 "Running in synchronous mode, waiting for task: {}",
                 config.id
             );
-            match result_rx.await {
+            let result = match result_rx.await {
                 Ok(result) => result,
                 Err(_) => Err(anyhow::anyhow!("Task was cancelled or panicked")),
-            }
+            };
+            self.tasks.lock().await.remove(&config.id);
+            result
         }
     }
 }
