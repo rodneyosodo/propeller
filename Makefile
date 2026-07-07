@@ -134,7 +134,7 @@ install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
 .PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-propeller stop-propeller start-otel stop-otel start-all stop-all
-all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat http-client http-client-raw-wit http-server filesystem hal-test attestation-test hal-runner
+all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat greet-component http-client http-client-raw-wit http-greet-component http-server filesystem hal-test attestation-test hal-runner
 
 clean:
 	rm -rf build
@@ -203,6 +203,11 @@ http-client:
 	mkdir -p $(BUILD_DIR)
 	cd examples/http-client && cargo build --release
 	cp examples/http-client/target/wasm32-wasip2/release/http-client.wasm $(BUILD_DIR)/http-client.wasm
+
+greet-component:
+	mkdir -p $(BUILD_DIR)
+	cd examples/greet-component && cargo build --target wasm32-wasip2 --release
+	cp examples/greet-component/target/wasm32-wasip2/release/greet_component.wasm $(BUILD_DIR)/greet-component.wasm
 
 http-greet-component:
 	mkdir -p $(BUILD_DIR)
