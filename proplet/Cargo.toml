@@ -19,6 +19,7 @@ wasmtime-wasi-http = "46.0.1"
 hyper = { version = "1.10", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 uuid = { version = "1.23", features = ["v4", "serde"] }
+which = "7.0"
 thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"

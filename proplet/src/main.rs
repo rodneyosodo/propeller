@@ -119,7 +119,12 @@ async fn main() -> Result<()> {
     });
 
     let runtime: Arc<dyn Runtime> = if let Some(external_runtime) = &config.external_wasm_runtime {
-        if !std::path::Path::new(external_runtime).exists() {
+        let found = if external_runtime.contains('/') || external_runtime.contains('\\') {
+            std::path::Path::new(external_runtime).exists()
+        } else {
+            which::which(external_runtime).is_ok()
+        };
+        if !found {
             warn!(
                 "External wasm runtime '{}' not found, falling back to in-process Wasmtime runtime. \
                  Install wasmtime or set PROPLET_EXTERNAL_WASM_RUNTIME to a valid path",
