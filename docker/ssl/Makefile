@@ -74,8 +74,11 @@ etc, etc.
 endef
 all: clean_certs ca server_cert auth_grpc_certs domains_grpc_certs groups_grpc_certs clients_grpc_certs channels_grpc_certs coap_dtls_certs
 
+$(CRT_LOCATION):
+	mkdir -p $@
+
 # CA name and key is "ca".
-ca:
+ca: | $(CRT_LOCATION)
 	openssl req -newkey rsa:2048 -x509 -nodes -sha512 -days 1095 \
 				-keyout $(CRT_LOCATION)/ca.key -out $(CRT_LOCATION)/ca.crt -subj "/CN=$(CN_CA)/O=$(O)/OU=$(OU_CA)/emailAddress=$(EA)"
 
