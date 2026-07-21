@@ -62,7 +62,7 @@ Example:
 						var err error
 						token, err = atomSDK.Login(cmd.Context(), identifier, secret)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedToCreateToken, err)
+							return fmt.Errorf("%w: %s", errFailedToCreateToken, err.Error())
 						}
 
 						return nil
@@ -80,15 +80,15 @@ Example:
 						var err error
 						proxyEntityID, err = atomSDK.CreateServiceEntity(cmd.Context(), proxyName, tenantID, token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+							return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 						}
 						proxyAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
+							return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
 						}
 
 						if err := atomSDK.Connect(cmd.Context(), proxyEntityID, channelID, tenantID, token); err != nil {
-							return fmt.Errorf("%w: %w", errFailedConnectionCreation, err)
+							return fmt.Errorf("%w: %s", errFailedConnectionCreation, err.Error())
 						}
 
 						return nil

@@ -65,7 +65,7 @@ Example:
 						var err error
 						token, err = atomSDK.Login(cmd.Context(), identifier, secret)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedToCreateToken, err)
+							return fmt.Errorf("%w: %s", errFailedToCreateToken, err.Error())
 						}
 
 						return nil
@@ -92,16 +92,16 @@ Example:
 							pn := namegen.Generate()
 							eid, err := atomSDK.CreateServiceEntity(cmd.Context(), pn, tenantID, token)
 							if err != nil {
-								return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+								return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 							}
 							key, err := atomSDK.CreateAPIKey(cmd.Context(), eid, "proplet-mqtt", token)
 							if err != nil {
-								return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
+								return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
 							}
 							newProplets[i] = propletCreds{EntityID: eid, APIKey: key}
 
 							if err := atomSDK.Connect(cmd.Context(), eid, channelID, tenantID, token); err != nil {
-								return fmt.Errorf("%w: %w", errFailedConnectionCreation, err)
+								return fmt.Errorf("%w: %s", errFailedConnectionCreation, err.Error())
 							}
 						}
 

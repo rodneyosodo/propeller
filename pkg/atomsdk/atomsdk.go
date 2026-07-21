@@ -105,7 +105,7 @@ type sdk struct {
 	cfg       Config
 	client    *http.Client
 	actionIDs map[string]string
-	mu        sync.Mutex
+	mu        sync.RWMutex
 }
 
 func New(cfg Config) SDK {
@@ -393,21 +393,39 @@ func (s *sdk) gql(ctx context.Context, query string, vars map[string]any, token 
 }
 
 func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) (map[string]string, error) {
-	s.mu.Lock()
-	missing := make([]string, 0, len(names))
+	s.mu.RLock()
+	allCached := true
 	for _, n := range names {
 		if _, ok := s.actionIDs[n]; !ok {
-			missing = append(missing, n)
+			allCached = false
+			break
 		}
 	}
-	if len(missing) == 0 {
+	if allCached {
 		result := make(map[string]string, len(s.actionIDs))
 		maps.Copy(result, s.actionIDs)
-		s.mu.Unlock()
+		s.mu.RUnlock()
 
 		return result, nil
 	}
-	s.mu.Unlock()
+	s.mu.RUnlock()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	allCached = true
+	for _, n := range names {
+		if _, ok := s.actionIDs[n]; !ok {
+			allCached = false
+			break
+		}
+	}
+	if allCached {
+		result := make(map[string]string, len(s.actionIDs))
+		maps.Copy(result, s.actionIDs)
+
+		return result, nil
+	}
 
 	data, err := s.gql(ctx, actionsQuery, nil, token)
 	if err != nil {
@@ -424,7 +442,6 @@ func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) 
 		return nil, fmt.Errorf("unmarshal actions response: %w", err)
 	}
 
-	s.mu.Lock()
 	for _, a := range actions.Items {
 		if a.ID != "" && a.Name != "" {
 			s.actionIDs[a.Name] = a.ID
@@ -433,15 +450,12 @@ func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) 
 
 	for _, n := range names {
 		if _, ok := s.actionIDs[n]; !ok {
-			s.mu.Unlock()
-
 			return nil, fmt.Errorf("action %q not found on server", n)
 		}
 	}
 
 	result := make(map[string]string, len(s.actionIDs))
 	maps.Copy(result, s.actionIDs)
-	s.mu.Unlock()
 
 	return result, nil
 }

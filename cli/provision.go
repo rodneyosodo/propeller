@@ -80,7 +80,7 @@ var provisionCmd = &cobra.Command{
 						var err error
 						token, err = atomSDK.Login(cmd.Context(), identifier, secret)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedToCreateToken, err)
+							return fmt.Errorf("%w: %s", errFailedToCreateToken, err.Error())
 						}
 
 						return nil
@@ -98,7 +98,7 @@ var provisionCmd = &cobra.Command{
 						var err error
 						tenantID, err = atomSDK.EnsureTenant(cmd.Context(), tenantName, token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedToCreateTenant, err)
+							return fmt.Errorf("%w: %s", errFailedToCreateTenant, err.Error())
 						}
 
 						return nil
@@ -116,11 +116,11 @@ var provisionCmd = &cobra.Command{
 						var err error
 						managerEntityID, err = atomSDK.CreateServiceEntity(cmd.Context(), managerName, tenantID, token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+							return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 						}
 						managerAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), managerEntityID, "manager-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
+							return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
 						}
 
 						return nil
@@ -147,11 +147,11 @@ var provisionCmd = &cobra.Command{
 							pn := namegen.Generate()
 							eid, err := atomSDK.CreateServiceEntity(cmd.Context(), pn, tenantID, token)
 							if err != nil {
-								return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+								return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 							}
 							key, err := atomSDK.CreateAPIKey(cmd.Context(), eid, "proplet-mqtt", token)
 							if err != nil {
-								return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
+								return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
 							}
 							propletEntities[i] = propletCreds{EntityID: eid, APIKey: key}
 						}
@@ -170,11 +170,11 @@ var provisionCmd = &cobra.Command{
 						var err error
 						proxyEntityID, err = atomSDK.CreateServiceEntity(cmd.Context(), proxyName, tenantID, token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+							return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 						}
 						proxyAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
+							return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
 						}
 
 						return nil
@@ -191,7 +191,7 @@ var provisionCmd = &cobra.Command{
 						var err error
 						channelID, err = atomSDK.CreateResource(cmd.Context(), channelName, tenantID, token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedChannelCreation, err)
+							return fmt.Errorf("%w: %s", errFailedChannelCreation, err.Error())
 						}
 
 						for _, pc := range append([]propletCreds{
@@ -199,7 +199,7 @@ var provisionCmd = &cobra.Command{
 							{EntityID: proxyEntityID},
 						}, propletEntities...) {
 							if err := atomSDK.Connect(cmd.Context(), pc.EntityID, channelID, tenantID, token); err != nil {
-								return fmt.Errorf("%w: %w", errFailedConnectionCreation, err)
+								return fmt.Errorf("%w: %s", errFailedConnectionCreation, err.Error())
 							}
 						}
 

@@ -63,6 +63,10 @@ func EncodeResponse(_ context.Context, w http.ResponseWriter, response any) erro
 	return json.NewEncoder(w).Encode(response)
 }
 
+type errorResponse struct {
+	Error string `json:"error"`
+}
+
 func EncodeError(_ context.Context, err error, w http.ResponseWriter) {
 	w.Header().Set("Content-Type", ContentType)
 	switch {
@@ -78,7 +82,7 @@ func EncodeError(_ context.Context, err error, w http.ResponseWriter) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 
-	if err := json.NewEncoder(w).Encode(err); err != nil {
+	if err := json.NewEncoder(w).Encode(errorResponse{Error: err.Error()}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 }
