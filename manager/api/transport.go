@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/absmach/magistrala"
-	apiutil "github.com/absmach/magistrala/api/http/util"
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/pkg/api"
 	"github.com/absmach/propeller/pkg/plugin"
@@ -37,7 +35,7 @@ func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) ht
 	mux.Use(authContextMiddleware)
 
 	opts := []kithttp.ServerOption{
-		kithttp.ServerErrorEncoder(apiutil.LoggingErrorEncoder(logger, api.EncodeError)),
+		kithttp.ServerErrorEncoder(api.LoggingErrorEncoder(logger, api.EncodeError)),
 	}
 
 	mux.Route("/proplets", func(r chi.Router) {
@@ -252,7 +250,7 @@ func MakeHandler(svc manager.Service, logger *slog.Logger, instanceID string) ht
 		})
 	})
 
-	mux.Get("/health", magistrala.Health("manager", instanceID))
+	mux.Get("/health", api.HealthHandler("manager", instanceID))
 	mux.Handle("/metrics", promhttp.Handler())
 
 	return mux
@@ -268,12 +266,12 @@ func decodeEntityReq(key string) kithttp.DecodeRequestFunc {
 
 func decodeTaskReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 
 	var req taskReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 
 	return req, nil
@@ -291,14 +289,14 @@ func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
 	defer file.Close()
 
 	if !strings.HasSuffix(header.Filename, ".wasm") {
-		return nil, errors.Join(apiutil.ErrValidation, errors.New("invalid file extension"))
+		return nil, errors.Join(api.ErrValidation, errors.New("invalid file extension"))
 	}
 	data, err := io.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}
 	if len(data) < 4 || string(data[:4]) != wasmMagic {
-		return nil, errors.Join(apiutil.ErrValidation, errors.New("invalid WASM file: missing magic bytes"))
+		return nil, errors.Join(api.ErrValidation, errors.New("invalid WASM file: missing magic bytes"))
 	}
 	req.File = data
 	req.ID = chi.URLParam(r, "taskID")
@@ -308,11 +306,11 @@ func decodeUploadTaskFileReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeUpdateTaskReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 	var req taskReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 	req.ID = chi.URLParam(r, "taskID")
 
@@ -321,19 +319,19 @@ func decodeUpdateTaskReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeListEntityReq(statusFilter listEntityStatus) kithttp.DecodeRequestFunc {
 	return func(_ context.Context, r *http.Request) (any, error) {
-		o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+		o, err := api.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
 		if err != nil {
-			return nil, errors.Join(apiutil.ErrValidation, err)
+			return nil, errors.Join(api.ErrValidation, err)
 		}
 
-		l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+		l, err := api.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
 		if err != nil {
-			return nil, errors.Join(apiutil.ErrValidation, err)
+			return nil, errors.Join(api.ErrValidation, err)
 		}
 
-		s, err := apiutil.ReadStringQuery(r, "status", "")
+		s, err := api.ReadStringQuery(r, "status", "")
 		if err != nil {
-			return nil, errors.Join(apiutil.ErrValidation, err)
+			return nil, errors.Join(api.ErrValidation, err)
 		}
 
 		return listEntityReq{
@@ -346,19 +344,19 @@ func decodeListEntityReq(statusFilter listEntityStatus) kithttp.DecodeRequestFun
 }
 
 func decodeListTasksReq(_ context.Context, r *http.Request) (any, error) {
-	o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+	o, err := api.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
 	if err != nil {
-		return nil, errors.Join(apiutil.ErrValidation, err)
+		return nil, errors.Join(api.ErrValidation, err)
 	}
 
-	l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+	l, err := api.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
 	if err != nil {
-		return nil, errors.Join(apiutil.ErrValidation, err)
+		return nil, errors.Join(api.ErrValidation, err)
 	}
 
-	meta, err := apiutil.ReadMetadataQuery(r, api.MetadataKey, nil)
+	meta, err := api.ReadMetadataQuery(r, api.MetadataKey, nil)
 	if err != nil {
-		return nil, errors.Join(apiutil.ErrValidation, err)
+		return nil, errors.Join(api.ErrValidation, err)
 	}
 
 	return listTasksReq{
@@ -370,14 +368,14 @@ func decodeListTasksReq(_ context.Context, r *http.Request) (any, error) {
 
 func decodeMetricsReq(key string) kithttp.DecodeRequestFunc {
 	return func(_ context.Context, r *http.Request) (any, error) {
-		o, err := apiutil.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
+		o, err := api.ReadNumQuery[uint64](r, api.OffsetKey, api.DefOffset)
 		if err != nil {
-			return nil, errors.Join(apiutil.ErrValidation, err)
+			return nil, errors.Join(api.ErrValidation, err)
 		}
 
-		l, err := apiutil.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
+		l, err := api.ReadNumQuery[uint64](r, api.LimitKey, api.DefLimit)
 		if err != nil {
-			return nil, errors.Join(apiutil.ErrValidation, err)
+			return nil, errors.Join(api.ErrValidation, err)
 		}
 
 		return metricsReq{
@@ -390,12 +388,12 @@ func decodeMetricsReq(key string) kithttp.DecodeRequestFunc {
 
 func decodeWorkflowReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 
 	var req workflowReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 
 	return req, nil
@@ -426,12 +424,12 @@ func authContextMiddleware(next http.Handler) http.Handler {
 
 func decodeJobReq(_ context.Context, r *http.Request) (any, error) {
 	if !strings.Contains(r.Header.Get("Content-Type"), api.ContentType) {
-		return nil, errors.Join(apiutil.ErrValidation, apiutil.ErrUnsupportedContentType)
+		return nil, errors.Join(api.ErrValidation, api.ErrUnsupportedContentType)
 	}
 
 	var req jobReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return nil, errors.Join(err, apiutil.ErrValidation)
+		return nil, errors.Join(err, api.ErrValidation)
 	}
 
 	return req, nil

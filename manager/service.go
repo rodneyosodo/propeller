@@ -46,6 +46,10 @@ var (
 	baseTopicFmt    = "m/%s/c/%s"
 	namegen         = namegenerator.NewGenerator()
 	errShuttingDown = errors.New("service is shutting down")
+
+	ErrEmptyWorkflow    = errors.New("workflow must contain at least one task")
+	ErrWorkflowRequired = errors.New("workflow_id is required when depends_on is specified")
+	ErrInvalidRunIf     = errors.New("invalid run_if value")
 )
 
 type service struct {
@@ -70,7 +74,7 @@ type service struct {
 func NewService(
 	repos *storage.Repositories,
 	s scheduler.Scheduler, pubsub mqtt.PubSub,
-	domainID, channelID, coordinatorURL string, logger *slog.Logger, plugins plugin.Registry,
+	tenantID, channelID, coordinatorURL string, logger *slog.Logger, plugins plugin.Registry,
 ) (Service, CronScheduler, *WorkflowCoordinator) {
 	var httpClient *http.Client
 	if coordinatorURL != "" {
@@ -89,7 +93,7 @@ func NewService(
 		jobRepo:          repos.Jobs,
 		metricsRepo:      repos.Metrics,
 		scheduler:        s,
-		baseTopic:        fmt.Sprintf(baseTopicFmt, domainID, channelID),
+		baseTopic:        fmt.Sprintf(baseTopicFmt, tenantID, channelID),
 		pubsub:           pubsub,
 		logger:           logger,
 		flCoordinatorURL: coordinatorURL,
@@ -197,7 +201,7 @@ func (svc *service) CreateTask(ctx context.Context, t task.Task) (task.Task, err
 	}
 
 	if len(t.DependsOn) > 0 && t.WorkflowID == "" {
-		return task.Task{}, errors.New("workflow_id is required when depends_on is specified")
+		return task.Task{}, ErrWorkflowRequired
 	}
 
 	if len(t.DependsOn) > 0 && t.WorkflowID != "" {
@@ -261,7 +265,7 @@ func (svc *service) CreateTask(ctx context.Context, t task.Task) (task.Task, err
 
 func (svc *service) CreateWorkflow(ctx context.Context, tasks []task.Task) ([]task.Task, error) {
 	if len(tasks) == 0 {
-		return nil, errors.New("workflow must contain at least one task")
+		return nil, ErrEmptyWorkflow
 	}
 
 	workflowID := uuid.NewString()
@@ -291,7 +295,7 @@ func (svc *service) CreateWorkflow(ctx context.Context, tasks []task.Task) ([]ta
 
 	for i := range tasks {
 		if tasks[i].RunIf != "" && tasks[i].RunIf != task.RunIfSuccess && tasks[i].RunIf != task.RunIfFailure {
-			return nil, fmt.Errorf("invalid run_if value for task %s: must be 'success' or 'failure'", tasks[i].ID)
+			return nil, fmt.Errorf("%w for task %s: must be 'success' or 'failure'", ErrInvalidRunIf, tasks[i].ID)
 		}
 	}
 

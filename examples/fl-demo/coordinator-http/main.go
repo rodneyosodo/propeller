@@ -99,11 +99,11 @@ func main() {
 
 	mqttBroker := os.Getenv("MQTT_BROKER")
 	if mqttBroker == "" {
-		mqttBroker = "tcp://mqtt:1883"
+		mqttBroker = "tcp://fluxmq-node1:1883"
 	}
-	mqttClientID := os.Getenv("MQTT_CLIENT_ID")
+	mqttClientID := os.Getenv("MQTT_ENTITY_ID")
 	if mqttClientID == "" {
-		log.Fatal("MQTT_CLIENT_ID environment variable is required and must be a Magistrala client ID")
+		log.Fatal("MQTT_ENTITY_ID environment variable is required and must be a Propeller entity ID")
 	}
 	mqttUsername := os.Getenv("MQTT_USERNAME")
 	mqttPassword := os.Getenv("MQTT_PASSWORD")

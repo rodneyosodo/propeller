@@ -19,6 +19,7 @@ wasmtime-wasi-http = "46.0.1"
 hyper = { version = "1.10", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 uuid = { version = "1.23", features = ["v4", "serde"] }
+which = "7.0"
 thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
@@ -28,7 +29,7 @@ opentelemetry = "0.32"
 opentelemetry_sdk = { version = "0.32", features = ["rt-tokio", "trace"] }
 opentelemetry-otlp = { version = "0.32", features = [
   "http-proto",
-  "reqwest-client",
+  "reqwest-blocking-client",
   "reqwest-rustls",
 ] }
 prometheus = "0.14"

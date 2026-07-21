@@ -12,10 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/absmach/magistrala/pkg/jaeger"
-	"github.com/absmach/magistrala/pkg/prometheus"
-	"github.com/absmach/magistrala/pkg/server"
-	httpserver "github.com/absmach/magistrala/pkg/server/http"
 	"github.com/absmach/propeller"
 	"github.com/absmach/propeller/manager"
 	"github.com/absmach/propeller/manager/api"
@@ -23,8 +19,12 @@ import (
 	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/scheduler"
+	pkgserver "github.com/absmach/propeller/pkg/server"
 	"github.com/absmach/propeller/pkg/storage"
+	"github.com/absmach/propeller/pkg/telemetry"
 	"github.com/caarlos0/env/v11"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 	"golang.org/x/sync/errgroup"
@@ -47,12 +47,12 @@ type config struct {
 	MQTTTLSCertPath string        `env:"MANAGER_MQTT_TLS_CLIENT_CERT"`
 	MQTTTLSKeyPath  string        `env:"MANAGER_MQTT_TLS_CLIENT_KEY"`
 	MQTTTLSInsecure bool          `env:"MANAGER_MQTT_TLS_INSECURE_SKIP_VERIFY"`
-	DomainID        string        `env:"MANAGER_DOMAIN_ID"`
+	TenantID        string        `env:"MANAGER_TENANT_ID"`
 	ChannelID       string        `env:"MANAGER_CHANNEL_ID"`
-	ClientID        string        `env:"MANAGER_CLIENT_ID"`
-	ClientKey       string        `env:"MANAGER_CLIENT_KEY"`
+	EntityID        string        `env:"MANAGER_ENTITY_ID"`
+	APIKey          string        `env:"MANAGER_API_KEY"`
 	CoordinatorURL  string        `env:"MANAGER_COORDINATOR_URL"`
-	Server          server.Config
+	Server          pkgserver.Config
 	OTELURL         url.URL `env:"MANAGER_OTEL_URL"`
 	TraceRatio      float64 `env:"MANAGER_TRACE_RATIO" envDefault:"0"`
 	PluginDir       string  `env:"MANAGER_PLUGIN_DIR"`
@@ -121,7 +121,7 @@ func main() {
 		}
 	}
 
-	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.ClientID, cfg.ClientID, cfg.ClientKey, cfg.DomainID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
+	mqttPubSub, err := mqtt.NewPubSub(cfg.MQTTAddress, cfg.MQTTQoS, cfg.EntityID, cfg.EntityID, cfg.APIKey, cfg.TenantID, cfg.ChannelID, cfg.MQTTTimeout, logger, mqttTLS)
 	if err != nil {
 		logger.Error("failed to initialize mqtt pubsub", slog.String("error", err.Error()))
 		exitCode = 1
@@ -169,7 +169,7 @@ func main() {
 		repos,
 		scheduler.NewRoundRobin(),
 		mqttPubSub,
-		cfg.DomainID,
+		cfg.TenantID,
 		cfg.ChannelID,
 		cfg.CoordinatorURL,
 		logger,
@@ -178,11 +178,8 @@ func main() {
 	svc = middleware.Plugin(pluginRegistry, logger, svc)
 	svc = middleware.Logging(logger, svc)
 	svc = middleware.Tracing(tracer, svc)
-	counter, latency := prometheus.MakeMetrics(svcName, "api")
+	counter, latency := telemetry.MakeMetrics(svcName, "api")
 	svc = middleware.Metrics(counter, latency, svc)
-	// Wire the fully-wrapped service back into cron and workflow coordinator so
-	// that cron- and workflow-triggered StartTask calls flow through the full
-	// middleware chain (plugin authorize, logging, tracing, metrics).
 	cronScheduler.SetService(svc)
 	workflowCoordinator.SetService(svc)
 
@@ -201,7 +198,7 @@ func main() {
 		return cronScheduler.Start(ctx)
 	})
 
-	httpServerConfig := server.Config{Port: defHTTPPort}
+	httpServerConfig := pkgserver.Config{Port: defHTTPPort}
 	if err := env.ParseWithOptions(&httpServerConfig, env.Options{Prefix: envPrefixHTTP}); err != nil {
 		logger.Error(fmt.Sprintf("failed to load %s HTTP server configuration : %s", svcName, err.Error()))
 		exitCode = 1
@@ -209,14 +206,14 @@ func main() {
 		return
 	}
 
-	hs := httpserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.ClientID), logger)
+	hs := pkgserver.NewServer(ctx, stop, svcName, httpServerConfig, api.MakeHandler(svc, logger, cfg.EntityID), logger)
 
 	g.Go(func() error {
 		return hs.Start()
 	})
 
 	g.Go(func() error {
-		return server.StopSignalHandler(ctx, stop, logger, svcName, hs)
+		return pkgserver.StopSignalHandler(ctx, stop, logger, svcName, hs)
 	})
 
 	if err := g.Wait(); err != nil {
@@ -224,9 +221,6 @@ func main() {
 		exitCode = 1
 	}
 
-	// Coordinated shutdown: use a fresh background context because the parent ctx
-	// is already cancelled (that's what triggered the shutdown). The timeout
-	// ensures we don't wait indefinitely for in-flight operations.
 	logger.Info("initiating graceful shutdown")
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer shutdownCancel()
@@ -243,7 +237,7 @@ func main() {
 }
 
 func ensureManagerCredentials(cfg *config) error {
-	if cfg.DomainID == "" || cfg.ClientID == "" || cfg.ClientKey == "" || cfg.ChannelID == "" {
+	if cfg.TenantID == "" || cfg.EntityID == "" || cfg.APIKey == "" || cfg.ChannelID == "" {
 		_, err := os.Stat(configPath)
 		switch err {
 		case nil:
@@ -251,17 +245,17 @@ func ensureManagerCredentials(cfg *config) error {
 			if err != nil {
 				return fmt.Errorf("failed to load TOML configuration: %w", err)
 			}
-			cfg.DomainID = conf.Manager.DomainID
-			cfg.ClientID = conf.Manager.ClientID
-			cfg.ClientKey = conf.Manager.ClientKey
+			cfg.TenantID = conf.Manager.TenantID
+			cfg.EntityID = conf.Manager.EntityID
+			cfg.APIKey = conf.Manager.APIKey
 			cfg.ChannelID = conf.Manager.ChannelID
 		default:
 			return fmt.Errorf("failed to load TOML configuration: %w", err)
 		}
 	}
 
-	if cfg.DomainID == "" || cfg.ChannelID == "" || cfg.ClientID == "" || cfg.ClientKey == "" {
-		return errors.New("MANAGER_DOMAIN_ID, MANAGER_CHANNEL_ID, MANAGER_CLIENT_ID, and MANAGER_CLIENT_KEY must be set")
+	if cfg.TenantID == "" || cfg.ChannelID == "" || cfg.EntityID == "" || cfg.APIKey == "" {
+		return errors.New("MANAGER_TENANT_ID, MANAGER_CHANNEL_ID, MANAGER_ENTITY_ID, and MANAGER_API_KEY must be set")
 	}
 
 	return nil
@@ -272,12 +266,14 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (t
 	case url.URL{}:
 		return noop.NewTracerProvider(), func(context.Context) {}, nil
 	default:
-		sdktp, err := jaeger.NewProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
+		sdktp, err := telemetry.NewTracerProvider(ctx, svcName, cfg.OTELURL, "", cfg.TraceRatio)
 		if err != nil {
 			logger.Error("failed to initialize opentelemetry", slog.String("error", err.Error()))
 
 			return nil, nil, err
 		}
+		otel.SetTracerProvider(sdktp)
+		otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 
 		return sdktp, func(ctx context.Context) {
 			if err := sdktp.Shutdown(ctx); err != nil {

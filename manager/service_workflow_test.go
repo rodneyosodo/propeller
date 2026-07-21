@@ -5,12 +5,11 @@ package manager_test
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"testing"
 
-	smqerrors "github.com/absmach/magistrala/pkg/errors"
 	"github.com/absmach/propeller/manager"
+	"github.com/absmach/propeller/pkg/dag"
 	pkgerrors "github.com/absmach/propeller/pkg/errors"
 	mqttmocks "github.com/absmach/propeller/pkg/mqtt/mocks"
 	"github.com/absmach/propeller/pkg/scheduler"
@@ -22,15 +21,6 @@ import (
 )
 
 const testWorkflowID = "test-workflow"
-
-var (
-	errEmptyWorkflow    = errors.New("workflow must contain at least one task")
-	errCircularDep      = errors.New("DAG validation failed: circular dependency detected: cycle detected involving tasks task2 and task1")
-	errMissingDep       = errors.New("dependency validation failed: dependency task not found: task task1 depends on nonexistent which does not exist")
-	errInvalidRunIf     = errors.New("invalid run_if value for task task1: must be 'success' or 'failure'")
-	errWorkflowRequired = errors.New("workflow_id is required when depends_on is specified")
-	errSelfDep          = errors.New("DAG validation failed: circular dependency detected: task task1 depends on itself")
-)
 
 func newService(t *testing.T) manager.Service {
 	t.Helper()
@@ -44,7 +34,7 @@ func newService(t *testing.T) manager.Service {
 	pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
 	logger := slog.Default()
 
-	svc, _, _ := manager.NewService(repos, sched, pubsub, "test-domain", "test-channel", "", logger, nil)
+	svc, _, _ := manager.NewService(repos, sched, pubsub, "test-tenant", "test-channel", "", logger, nil)
 
 	return svc
 }
@@ -74,33 +64,33 @@ func TestCreateWorkflow(t *testing.T) {
 				{ID: "task1", Name: "Task 1", DependsOn: []string{"task2"}},
 				{ID: "task2", Name: "Task 2", DependsOn: []string{"task1"}},
 			},
-			err: errCircularDep,
+			err: dag.ErrCircularDependency,
 		},
 		{
 			desc: "create workflow with missing dependency",
 			tasks: []task.Task{
 				{ID: "task1", Name: "Task 1", DependsOn: []string{"nonexistent"}},
 			},
-			err: errMissingDep,
+			err: dag.ErrMissingDependency,
 		},
 		{
 			desc: "create workflow with invalid run_if",
 			tasks: []task.Task{
 				{ID: "task1", Name: "Task 1", DependsOn: []string{}, RunIf: "invalid"},
 			},
-			err: errInvalidRunIf,
+			err: manager.ErrInvalidRunIf,
 		},
 		{
 			desc: "create workflow with self dependency",
 			tasks: []task.Task{
 				{ID: "task1", Name: "Task 1", DependsOn: []string{"task1"}},
 			},
-			err: errSelfDep,
+			err: dag.ErrCircularDependency,
 		},
 		{
 			desc:  "create workflow with empty tasks",
 			tasks: []task.Task{},
-			err:   errEmptyWorkflow,
+			err:   manager.ErrEmptyWorkflow,
 		},
 	}
 
@@ -109,12 +99,12 @@ func TestCreateWorkflow(t *testing.T) {
 			t.Parallel()
 			svc := newService(t)
 			created, err := svc.CreateWorkflow(context.Background(), tc.tasks)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			require.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 			if tc.err == nil {
-				assert.Len(t, created, tc.taskLen)
-				assert.NotEmpty(t, created[0].WorkflowID)
+				require.Len(t, created, tc.taskLen)
+				require.NotEmpty(t, created[0].WorkflowID)
 				for i := 1; i < len(created); i++ {
-					assert.Equal(t, created[0].WorkflowID, created[i].WorkflowID)
+					require.Equal(t, created[0].WorkflowID, created[i].WorkflowID)
 				}
 			}
 		})
@@ -145,7 +135,7 @@ func TestCreateTask(t *testing.T) {
 			setup: func(_ *testing.T, _ manager.Service) task.Task {
 				return task.Task{Name: "Task 1", DependsOn: []string{"some-task"}}
 			},
-			err: errWorkflowRequired,
+			err: manager.ErrWorkflowRequired,
 		},
 	}
 
@@ -155,9 +145,9 @@ func TestCreateTask(t *testing.T) {
 			svc := newService(t)
 			taskInput := tc.setup(t, svc)
 			created, err := svc.CreateTask(context.Background(), taskInput)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			require.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 			if tc.err == nil {
-				assert.NotEmpty(t, created.ID)
+				require.NotEmpty(t, created.ID)
 			}
 		})
 	}
@@ -197,7 +187,7 @@ func TestGetTaskResults(t *testing.T) {
 			svc := newService(t)
 			taskID := tc.setup(t, svc)
 			_, err := svc.GetTaskResults(context.Background(), taskID)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }
@@ -246,7 +236,7 @@ func TestGetParentResults(t *testing.T) {
 			svc := newService(t)
 			taskID := tc.setup(t, svc)
 			_, err := svc.GetParentResults(context.Background(), taskID)
-			assert.True(t, smqerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }

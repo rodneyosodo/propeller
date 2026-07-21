@@ -30,8 +30,8 @@
 #include <zephyr/net/hostname.h>
 #endif
 #ifdef CONFIG_MQTT_LIB_TLS
-#include <zephyr/net/tls_credentials.h>
 #include <zephyr/net/socket_tls.h>
+#include <zephyr/net/tls_credentials.h>
 #endif
 
 LOG_MODULE_REGISTER(mqtt_client);
@@ -79,11 +79,11 @@ LOG_MODULE_REGISTER(mqtt_client);
 struct task g_current_task;
 
 static char g_proplet_id[MAX_ID_LEN];
-static char g_client_key[MAX_ID_LEN];
+static char g_api_key[MAX_ID_LEN];
 static char g_channel_id[MAX_ID_LEN];
-static char g_domain_id[MAX_ID_LEN];
+static char g_tenant_id[MAX_ID_LEN];
 const char *channel_id = g_channel_id;
-const char *domain_id = g_domain_id;
+const char *tenant_id = g_tenant_id;
 static const char *g_namespace = DEFAULT_NAMESPACE;
 
 static uint8_t rx_buffer[RX_BUFFER_SIZE];
@@ -164,18 +164,18 @@ static void mqtt_event_handler(struct mqtt_client *client,
     int ret;
 
     extern const char *channel_id;
-    extern const char *domain_id;
+    extern const char *tenant_id;
 
     char start_topic[128];
     char stop_topic[128];
     char registry_response_topic[128];
 
-    snprintf(start_topic, sizeof(start_topic), START_TOPIC_TEMPLATE, domain_id,
+    snprintf(start_topic, sizeof(start_topic), START_TOPIC_TEMPLATE, tenant_id,
              channel_id);
-    snprintf(stop_topic, sizeof(stop_topic), STOP_TOPIC_TEMPLATE, domain_id,
+    snprintf(stop_topic, sizeof(stop_topic), STOP_TOPIC_TEMPLATE, tenant_id,
              channel_id);
     snprintf(registry_response_topic, sizeof(registry_response_topic),
-             REGISTRY_RESPONSE_TOPIC, domain_id, channel_id);
+             REGISTRY_RESPONSE_TOPIC, tenant_id, channel_id);
 
     LOG_INF("Message received on topic: %.*s", pub->message.topic.topic.size,
             pub->message.topic.topic.utf8);
@@ -293,7 +293,7 @@ static int publish_direct(const char *topic, const char *payload) {
   return 0;
 }
 
-int publish(const char *domain_id, const char *channel_id,
+int publish(const char *tenant_id, const char *channel_id,
             const char *topic_template, const char *payload) {
   if (!mqtt_connected) {
     LOG_ERR("MQTT client is not connected. Cannot publish.");
@@ -301,7 +301,7 @@ int publish(const char *domain_id, const char *channel_id,
   }
 
   char topic[128];
-  snprintf(topic, sizeof(topic), topic_template, domain_id, channel_id);
+  snprintf(topic, sizeof(topic), topic_template, tenant_id, channel_id);
 
   struct mqtt_publish_param param;
   prepare_publish_param(&param, topic, payload);
@@ -316,13 +316,13 @@ int publish(const char *domain_id, const char *channel_id,
   return 0;
 }
 
-int mqtt_client_connect(const char *domain_id, const char *proplet_id,
-                        const char *client_key, const char *channel_id) {
+int mqtt_client_connect(const char *tenant_id, const char *proplet_id,
+                        const char *api_key, const char *channel_id) {
   int ret;
   struct sockaddr_in *broker = (struct sockaddr_in *)&broker_addr;
 
   if (proplet_id == NULL || proplet_id[0] == '\0') {
-    LOG_ERR("proplet_id must be non-empty and match the Magistrala client ID");
+    LOG_ERR("proplet_id must be non-empty and match the Propeller Entity ID");
     return -EINVAL;
   }
 
@@ -365,17 +365,17 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
   strncpy(g_proplet_id, proplet_id, sizeof(g_proplet_id) - 1);
   g_proplet_id[sizeof(g_proplet_id) - 1] = '\0';
-  strncpy(g_client_key, client_key ? client_key : "", sizeof(g_client_key) - 1);
-  g_client_key[sizeof(g_client_key) - 1] = '\0';
+  strncpy(g_api_key, api_key ? api_key : "", sizeof(g_api_key) - 1);
+  g_api_key[sizeof(g_api_key) - 1] = '\0';
 
-  strncpy(g_domain_id, domain_id ? domain_id : "", sizeof(g_domain_id) - 1);
-  g_domain_id[sizeof(g_domain_id) - 1] = '\0';
+  strncpy(g_tenant_id, tenant_id ? tenant_id : "", sizeof(g_tenant_id) - 1);
+  g_tenant_id[sizeof(g_tenant_id) - 1] = '\0';
 
   strncpy(g_channel_id, channel_id ? channel_id : "", sizeof(g_channel_id) - 1);
   g_channel_id[sizeof(g_channel_id) - 1] = '\0';
 
   snprintf(g_will_topic_str, sizeof(g_will_topic_str), ALIVE_TOPIC_TEMPLATE,
-           domain_id, channel_id);
+           tenant_id, channel_id);
 
   snprintf(g_will_message_str, sizeof(g_will_message_str),
            WILL_MESSAGE_TEMPLATE, proplet_id, g_namespace);
@@ -393,10 +393,10 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
   client_ctx.broker = &broker_addr;
   client_ctx.evt_cb = mqtt_event_handler;
-  static struct mqtt_utf8 client_id;
-  client_id.utf8 = (const uint8_t *)g_proplet_id;
-  client_id.size = strlen(g_proplet_id);
-  client_ctx.client_id = client_id;
+  static struct mqtt_utf8 entity_id;
+  entity_id.utf8 = (const uint8_t *)g_proplet_id;
+  entity_id.size = strlen(g_proplet_id);
+  client_ctx.entity_id = entity_id;
 
   static struct mqtt_utf8 username;
   username.utf8 = (const uint8_t *)g_proplet_id;
@@ -404,9 +404,9 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   client_ctx.user_name = &username;
 
   static struct mqtt_utf8 password;
-  password.utf8 = (const uint8_t *)g_client_key;
-  password.size = strlen(g_client_key);
-  client_ctx.password = (g_client_key[0] != '\0') ? &password : NULL;
+  password.utf8 = (const uint8_t *)g_api_key;
+  password.size = strlen(g_api_key);
+  client_ctx.password = (g_api_key[0] != '\0') ? &password : NULL;
   client_ctx.protocol_version = MQTT_VERSION_3_1_1;
 
   client_ctx.rx_buf = rx_buffer;
@@ -420,10 +420,9 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
     /* Register CA certificate if provided */
     if (strlen(CONFIG_MQTT_TLS_CA_CERT) > 0) {
-      ret = tls_credential_add(TLS_CREDENTIAL_TAG,
-                               TLS_CREDENTIAL_CA_CERTIFICATE,
-                               CONFIG_MQTT_TLS_CA_CERT,
-                               strlen(CONFIG_MQTT_TLS_CA_CERT));
+      ret = tls_credential_add(
+          TLS_CREDENTIAL_TAG, TLS_CREDENTIAL_CA_CERTIFICATE,
+          CONFIG_MQTT_TLS_CA_CERT, strlen(CONFIG_MQTT_TLS_CA_CERT));
       if (ret < 0) {
         LOG_ERR("Failed to register CA certificate [%d]", ret);
         return ret;
@@ -432,11 +431,10 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
 
     /* Register client certificate and key for mTLS if provided */
     bool client_cert_registered = false;
-    bool client_key_registered  = false;
+    bool client_key_registered = false;
 
     if (creds != NULL && strlen(creds->tls_client_cert) > 0) {
-      ret = tls_credential_add(TLS_CREDENTIAL_TAG + 1,
-                               TLS_CREDENTIAL_OWN_CERT,
+      ret = tls_credential_add(TLS_CREDENTIAL_TAG + 1, TLS_CREDENTIAL_OWN_CERT,
                                creds->tls_client_cert,
                                strlen(creds->tls_client_cert));
       if (ret < 0) {
@@ -448,10 +446,9 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
     }
 
     if (creds != NULL && strlen(creds->tls_client_key) > 0) {
-      ret = tls_credential_add(TLS_CREDENTIAL_TAG + 2,
-                               TLS_CREDENTIAL_PRIVATE_KEY,
-                               creds->tls_client_key,
-                               strlen(creds->tls_client_key));
+      ret = tls_credential_add(
+          TLS_CREDENTIAL_TAG + 2, TLS_CREDENTIAL_PRIVATE_KEY,
+          creds->tls_client_key, strlen(creds->tls_client_key));
       if (ret < 0) {
         LOG_ERR("Failed to register client private key [%d]", ret);
       } else {
@@ -479,8 +476,8 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
     if (client_key_registered) {
       sec_tag_opt[sec_tag_count++] = TLS_CREDENTIAL_TAG + 2;
     }
-    ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_SEC_TAG_LIST,
-                           sec_tag_opt, sec_tag_count * sizeof(sec_tag_t));
+    ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_SEC_TAG_LIST, sec_tag_opt,
+                           sec_tag_count * sizeof(sec_tag_t));
     if (ret < 0) {
       LOG_ERR("Failed to set TLS security tag list [%d]", errno);
       zsock_close(tls_sock);
@@ -488,8 +485,8 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
     }
 
     /* Set TLS hostname for SNI and certificate verification */
-    ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_HOSTNAME,
-                           broker_host, strlen(broker_host));
+    ret = zsock_setsockopt(tls_sock, SOL_TLS, TLS_HOSTNAME, broker_host,
+                           strlen(broker_host));
     if (ret < 0) {
       LOG_ERR("Failed to set TLS hostname [%d]", errno);
       zsock_close(tls_sock);
@@ -548,17 +545,17 @@ int mqtt_client_connect(const char *domain_id, const char *proplet_id,
   return 0;
 }
 
-int subscribe(const char *domain_id, const char *channel_id) {
+int subscribe(const char *tenant_id, const char *channel_id) {
   static char start_topic[128];
   static char stop_topic[128];
   static char registry_response_topic[128];
 
-  snprintf(start_topic, sizeof(start_topic), START_TOPIC_TEMPLATE, domain_id,
+  snprintf(start_topic, sizeof(start_topic), START_TOPIC_TEMPLATE, tenant_id,
            channel_id);
-  snprintf(stop_topic, sizeof(stop_topic), STOP_TOPIC_TEMPLATE, domain_id,
+  snprintf(stop_topic, sizeof(stop_topic), STOP_TOPIC_TEMPLATE, tenant_id,
            channel_id);
   snprintf(registry_response_topic, sizeof(registry_response_topic),
-           REGISTRY_RESPONSE_TOPIC, domain_id, channel_id);
+           REGISTRY_RESPONSE_TOPIC, tenant_id, channel_id);
 
   struct mqtt_topic topics[] = {
       {
@@ -877,8 +874,8 @@ void handle_start_command(const char *payload) {
   } else if (strlen(t.image_url) > 0) {
     LOG_INF("Requesting WASM from registry: %s", t.image_url);
     extern const char *channel_id;
-    extern const char *domain_id;
-    publish_registry_request(domain_id, channel_id, t.image_url);
+    extern const char *tenant_id;
+    publish_registry_request(tenant_id, channel_id, t.image_url);
   } else {
     LOG_WRN("No file or image_url specified; cannot start WASM task!");
   }
@@ -1224,7 +1221,7 @@ int handle_registry_response(const char *payload) {
   return 0;
 }
 
-void publish_alive_message(const char *domain_id, const char *channel_id) {
+void publish_alive_message(const char *tenant_id, const char *channel_id) {
   char payload[192];
 
   const char *pid = g_proplet_id;
@@ -1234,10 +1231,10 @@ void publish_alive_message(const char *domain_id, const char *channel_id) {
            "{\"status\":\"alive\",\"proplet_id\":\"%s\",\"namespace\":\"%s\"}",
            pid, ns);
 
-  (void)publish(domain_id, channel_id, ALIVE_TOPIC_TEMPLATE, payload);
+  (void)publish(tenant_id, channel_id, ALIVE_TOPIC_TEMPLATE, payload);
 }
 
-void publish_metrics_message(const char *domain_id, const char *channel_id,
+void publish_metrics_message(const char *tenant_id, const char *channel_id,
                              const char *proplet_id, const char *namespace) {
   double cpu_percent = 0.0;
 
@@ -1289,7 +1286,7 @@ void publish_metrics_message(const char *domain_id, const char *channel_id,
 
   char *payload = cJSON_PrintUnformatted(root);
   if (payload != NULL) {
-    (void)publish(domain_id, channel_id, METRICS_TOPIC_TEMPLATE, payload);
+    (void)publish(tenant_id, channel_id, METRICS_TOPIC_TEMPLATE, payload);
     cJSON_free(payload);
   }
 
@@ -1315,7 +1312,7 @@ static cJSON *parse_tags(const char *tags_str) {
   return arr;
 }
 
-int publish_discovery(const char *domain_id, const char *proplet_id,
+int publish_discovery(const char *tenant_id, const char *proplet_id,
                       const char *channel_id, const char *description,
                       const char *tags, const char *location,
                       const char *version) {
@@ -1401,7 +1398,7 @@ int publish_discovery(const char *domain_id, const char *proplet_id,
   }
 
   char topic[128];
-  snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, domain_id,
+  snprintf(topic, sizeof(topic), DISCOVERY_TOPIC_TEMPLATE, tenant_id,
            channel_id);
 
   struct mqtt_publish_param param;
@@ -1419,12 +1416,12 @@ int publish_discovery(const char *domain_id, const char *proplet_id,
   return 0;
 }
 
-void publish_registry_request(const char *domain_id, const char *channel_id,
+void publish_registry_request(const char *tenant_id, const char *channel_id,
                               const char *app_name) {
   char payload[128];
   snprintf(payload, sizeof(payload), "{\"app_name\":\"%s\"}", app_name);
 
-  if (publish(domain_id, channel_id, FETCH_REQUEST_TOPIC_TEMPLATE, payload) !=
+  if (publish(tenant_id, channel_id, FETCH_REQUEST_TOPIC_TEMPLATE, payload) !=
       0) {
     LOG_ERR("Failed to request registry file");
   } else {
@@ -1432,9 +1429,9 @@ void publish_registry_request(const char *domain_id, const char *channel_id,
   }
 }
 
-void publish_results(const char *domain_id, const char *channel_id,
+void publish_results(const char *tenant_id, const char *channel_id,
                      const char *task_id, const char *results) {
-  publish_results_with_error(domain_id, channel_id, task_id, results, NULL);
+  publish_results_with_error(tenant_id, channel_id, task_id, results, NULL);
 }
 
 static void json_escape_string(char *dest, size_t dest_size, const char *src) {
@@ -1500,7 +1497,7 @@ static void json_escape_string(char *dest, size_t dest_size, const char *src) {
   dest[j] = '\0';
 }
 
-void publish_results_with_error(const char *domain_id, const char *channel_id,
+void publish_results_with_error(const char *tenant_id, const char *channel_id,
                                 const char *task_id, const char *results,
                                 const char *error_msg) {
   char results_payload[2048];
@@ -1708,7 +1705,7 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
     }
   }
 
-  if (publish(domain_id, channel_id, RESULTS_TOPIC_TEMPLATE, results_payload) !=
+  if (publish(tenant_id, channel_id, RESULTS_TOPIC_TEMPLATE, results_payload) !=
       0) {
     LOG_ERR("Failed to publish results");
   } else {
@@ -1716,7 +1713,7 @@ void publish_results_with_error(const char *domain_id, const char *channel_id,
   }
 }
 
-void publish_task_metrics(const char *domain_id, const char *channel_id,
+void publish_task_metrics(const char *tenant_id, const char *channel_id,
                           const char *task_id, const char *proplet_id) {
   task_metrics_t metrics;
 
@@ -1770,7 +1767,7 @@ void publish_task_metrics(const char *domain_id, const char *channel_id,
 
   char *payload = cJSON_PrintUnformatted(root);
   if (payload != NULL) {
-    if (publish(domain_id, channel_id, TASK_METRICS_TOPIC_TEMPLATE, payload) ==
+    if (publish(tenant_id, channel_id, TASK_METRICS_TOPIC_TEMPLATE, payload) ==
         0) {
       LOG_DBG("Published task metrics for: %s", task_id);
     }
@@ -1780,13 +1777,13 @@ void publish_task_metrics(const char *domain_id, const char *channel_id,
   cJSON_Delete(root);
 }
 
-void publish_active_task_metrics(const char *domain_id, const char *channel_id,
+void publish_active_task_metrics(const char *tenant_id, const char *channel_id,
                                  const char *proplet_id) {
   char task_id[MAX_TASK_ID_LEN];
 
   for (int i = 0; task_monitor_get_active_task_id_at(i, task_id) == 0; i++) {
     task_monitor_sample(task_id);
-    publish_task_metrics(domain_id, channel_id, task_id, proplet_id);
+    publish_task_metrics(tenant_id, channel_id, task_id, proplet_id);
   }
 }
 

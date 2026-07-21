@@ -25,9 +25,7 @@ mod bindings {
 }
 
 use bindings::wasi::http::outgoing_handler;
-use bindings::wasi::http::types::{
-    ErrorCode, Fields, OutgoingBody, OutgoingRequest, Scheme,
-};
+use bindings::wasi::http::types::{ErrorCode, Fields, OutgoingBody, OutgoingRequest, Scheme};
 
 fn main() {
     eprintln!("=== Test 1: plain HTTP GET (http://httpbin.org/get) ===");
@@ -66,11 +64,7 @@ impl bindings::exports::wasi::cli::run::Guest for Main {
     }
 }
 
-fn fetch(
-    authority: &str,
-    path: &str,
-    use_tls: bool,
-) -> Result<(u16, Vec<u8>), String> {
+fn fetch(authority: &str, path: &str, use_tls: bool) -> Result<(u16, Vec<u8>), String> {
     let headers = Fields::new();
     let request = OutgoingRequest::new(headers);
     request
@@ -87,23 +81,18 @@ fn fetch(
         .set_path_with_query(Some(path))
         .map_err(|()| "set_path_with_query failed")?;
 
-    let outgoing_body = request
-        .body()
-        .map_err(|()| "failed to get request body")?;
-    OutgoingBody::finish(outgoing_body, None).map_err(|e| format!("failed to finish body: {e:?}"))?;
+    let outgoing_body = request.body().map_err(|()| "failed to get request body")?;
+    OutgoingBody::finish(outgoing_body, None)
+        .map_err(|e| format!("failed to finish body: {e:?}"))?;
 
     let response = outgoing_handler::handle(request, None)
         .map_err(|e| format!("outgoing-handler error: {e:?}"))?;
 
-    let incoming = block_on_future_incoming_response(response)
-        .map_err(|e| format!("request error: {e:?}"))?;
+    let incoming =
+        block_on_future_incoming_response(response).map_err(|e| format!("request error: {e:?}"))?;
 
     let status = incoming.status();
-    let body = consume_body(
-        incoming
-            .consume()
-            .map_err(|()| "body already consumed")?,
-    );
+    let body = consume_body(incoming.consume().map_err(|()| "body already consumed")?);
 
     Ok((status, body))
 }

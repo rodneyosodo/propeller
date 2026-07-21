@@ -116,15 +116,13 @@ dependencies = [
 [[package]]
 name = "propeller-proplet-plugin-sdk"
 version = "0.1.0"
-dependencies = [
- "wit-bindgen",
-]
 
 [[package]]
 name = "proplet-plugin-example"
 version = "0.1.0"
 dependencies = [
  "propeller-proplet-plugin-sdk",
+ "wit-bindgen",
 ]
 
 [[package]]

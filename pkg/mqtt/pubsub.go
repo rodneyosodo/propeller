@@ -61,12 +61,12 @@ type PubSub interface {
 	Disconnect(ctx context.Context) error
 }
 
-func NewPubSub(url string, qos byte, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (PubSub, error) {
+func NewPubSub(url string, qos byte, id, username, password, tenantID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (PubSub, error) {
 	if id == "" {
 		return nil, errEmptyID
 	}
 
-	client, err := newClient(url, id, username, password, domainID, channelID, timeout, logger, tlsCfg)
+	client, err := newClient(url, id, username, password, tenantID, channelID, timeout, logger, tlsCfg)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +211,7 @@ func tlsConfigFrom(cfg *TLSConfig) (*tls.Config, error) {
 	return tlsCfg, nil
 }
 
-func newClient(address, id, username, password, domainID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (mqtt.Client, error) {
+func newClient(address, id, username, password, tenantID, channelID string, timeout time.Duration, logger *slog.Logger, tlsCfg *TLSConfig) (mqtt.Client, error) {
 	opts := mqtt.NewClientOptions().
 		AddBroker(address).
 		SetClientID(id).
@@ -245,7 +245,7 @@ func newClient(address, id, username, password, domainID, channelID string, time
 	}
 
 	if channelID != "" {
-		topic := fmt.Sprintf(aliveTopicTemplate, domainID, channelID)
+		topic := fmt.Sprintf(aliveTopicTemplate, tenantID, channelID)
 		lwtPayload, err := json.Marshal(lwtMessage{Status: "offline", PropletID: id})
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal LWT payload: %w", err)
@@ -270,7 +270,7 @@ func newClient(address, id, username, password, domainID, channelID string, time
 		args := []any{}
 		if options != nil {
 			args = append(args,
-				slog.String("client_id", options.ClientID),
+				slog.String("entity_id", options.ClientID),
 				slog.String("username", options.Username),
 			)
 		}

@@ -89,19 +89,19 @@ async fn main() -> Result<()> {
         .try_init()
         .map_err(|e| anyhow::anyhow!("Failed to set tracing subscriber: {e}"))?;
 
-    info!("Starting Proplet (Rust) - Client ID: {}", config.client_id);
+    info!("Starting Proplet (Rust) - Client ID: {}", config.entity_id);
 
     let mqtt_config = MqttConfig {
         address: config.mqtt_address.clone(),
-        client_id: config.client_id.clone(),
+        entity_id: config.entity_id.clone(),
         timeout: config.mqtt_timeout(),
         qos: config.qos(),
         keep_alive: config.mqtt_keep_alive(),
         max_packet_size: config.mqtt_max_packet_size,
         inflight: config.mqtt_inflight,
         request_channel_capacity: config.mqtt_request_channel_capacity,
-        username: config.client_id.clone(),
-        password: config.client_key.clone(),
+        username: config.entity_id.clone(),
+        password: config.api_key.clone(),
         tls_ca_cert: config.mqtt_tls_ca_cert.clone(),
         tls_client_cert: config.mqtt_tls_client_cert.clone(),
         tls_client_key: config.mqtt_tls_client_key.clone(),
@@ -119,11 +119,33 @@ async fn main() -> Result<()> {
     });
 
     let runtime: Arc<dyn Runtime> = if let Some(external_runtime) = &config.external_wasm_runtime {
-        info!("Using external Wasm runtime: {}", external_runtime);
-        Arc::new(HostRuntime::new(
-            external_runtime.clone(),
-            config.http_proxy_port,
-        ))
+        let found = if external_runtime.contains('/') || external_runtime.contains('\\') {
+            std::path::Path::new(external_runtime).exists()
+        } else {
+            which::which(external_runtime).is_ok()
+        };
+        if !found {
+            warn!(
+                "External wasm runtime '{}' not found, falling back to in-process Wasmtime runtime. \
+                 Install wasmtime or set PROPLET_EXTERNAL_WASM_RUNTIME to a valid path",
+                external_runtime
+            );
+            Arc::new(WasmtimeRuntime::new_with_options(
+                config.hal_enabled,
+                config.http_enabled,
+                config.usb_enabled,
+                config.preopened_dirs.clone(),
+                config.http_proxy_port,
+                config.http_tls_ca_cert.as_deref(),
+                config.http_tls_insecure_skip_verify,
+            )?)
+        } else {
+            info!("Using external Wasm runtime: {}", external_runtime);
+            Arc::new(HostRuntime::new(
+                external_runtime.clone(),
+                config.http_proxy_port,
+            ))
+        }
     } else {
         info!("Using Wasmtime runtime");
         Arc::new(WasmtimeRuntime::new_with_options(

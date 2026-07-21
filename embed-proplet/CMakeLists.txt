@@ -20,7 +20,7 @@ if (NOT DEFINED WAMR_BUILD_LIBC_BUILTIN)
   set(WAMR_BUILD_LIBC_BUILTIN 1)
 endif ()
 
-# Disable libc wasi support by default. In the future, 
+# Disable libc wasi support by default. In the future,
 # it can be enabled if libc wasi file/socket/lock support is ready on Zephyr platform
 if (NOT DEFINED WAMR_BUILD_LIBC_WASI)
   set(WAMR_BUILD_LIBC_WASI 0)

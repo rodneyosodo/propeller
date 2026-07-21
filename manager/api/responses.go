@@ -4,27 +4,29 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/absmach/magistrala"
 	"github.com/absmach/propeller/manager"
+	"github.com/absmach/propeller/pkg/api"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/sdf"
 	"github.com/absmach/propeller/pkg/task"
 )
 
+const locationHeader = "Location"
+
 var (
-	_ magistrala.Response = (*propletResponse)(nil)
-	_ magistrala.Response = (*propletSDFResponse)(nil)
-	_ magistrala.Response = (*listpropletResponse)(nil)
-	_ magistrala.Response = (*propletAliveHistoryResponse)(nil)
-	_ magistrala.Response = (*taskResponse)(nil)
-	_ magistrala.Response = (*listTaskResponse)(nil)
-	_ magistrala.Response = (*messageResponse)(nil)
-	_ magistrala.Response = (*taskMetricsResponse)(nil)
-	_ magistrala.Response = (*propletMetricsResponse)(nil)
-	_ magistrala.Response = (*workflowResponse)(nil)
-	_ magistrala.Response = (*taskResultsResponse)(nil)
-	_ magistrala.Response = (*jobResponse)(nil)
-	_ magistrala.Response = (*listJobResponse)(nil)
+	_ api.Response = (*propletResponse)(nil)
+	_ api.Response = (*propletSDFResponse)(nil)
+	_ api.Response = (*listpropletResponse)(nil)
+	_ api.Response = (*propletAliveHistoryResponse)(nil)
+	_ api.Response = (*taskResponse)(nil)
+	_ api.Response = (*listTaskResponse)(nil)
+	_ api.Response = (*messageResponse)(nil)
+	_ api.Response = (*taskMetricsResponse)(nil)
+	_ api.Response = (*propletMetricsResponse)(nil)
+	_ api.Response = (*workflowResponse)(nil)
+	_ api.Response = (*taskResultsResponse)(nil)
+	_ api.Response = (*jobResponse)(nil)
+	_ api.Response = (*listJobResponse)(nil)
 )
 
 type propletResponse struct {
@@ -48,7 +50,7 @@ func (w propletResponse) Code() int {
 func (w propletResponse) Headers() map[string]string {
 	if w.created {
 		return map[string]string{
-			"Location": "/proplets/" + w.ID,
+			locationHeader: "/proplets/" + w.ID,
 		}
 	}
 
@@ -128,7 +130,7 @@ func (t taskResponse) Code() int {
 func (t taskResponse) Headers() map[string]string {
 	if t.created {
 		return map[string]string{
-			"Location": "/tasks/" + t.ID,
+			locationHeader: "/tasks/" + t.ID,
 		}
 	}
 
@@ -268,7 +270,7 @@ func (j jobResponse) Code() int {
 
 func (j jobResponse) Headers() map[string]string {
 	return map[string]string{
-		"Location": "/jobs/" + j.JobID,
+		locationHeader: "/jobs/" + j.JobID,
 	}
 }
 

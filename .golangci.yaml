@@ -31,6 +31,17 @@ linters:
       disabled-checks:
         - hugeParam
         - whyNoLint
+    goconst:
+      ignore-tests: true
+      ignore-string-values:
+        - "string"
+        - "integer"
+        - "name"
+        - "object"
+        - "boolean"
+        - "array"
+        - "tid"
+        - "proplet_id"
   exclusions:
     generated: lax
     presets:

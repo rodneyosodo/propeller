@@ -15,6 +15,6 @@ datasources:
   - name: Jaeger
     type: jaeger
     uid: propeller-jaeger
-    url: http://magistrala-jaeger:16686
+    url: http://propeller-jaeger:16686
     access: proxy
     editable: true

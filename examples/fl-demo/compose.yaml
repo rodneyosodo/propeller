@@ -1,5 +1,5 @@
 # FL Demo Extension for docker/compose.yaml
-# This file extends the base Magistrala + Propeller setup with FL-specific services
+# This file extends the base Propeller (Atom + FluxMQ) setup with FL-specific services
 #
 # Usage (from repository root):
 #     docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d
@@ -7,7 +7,7 @@
 # To build and start:
 #     docker compose -f docker/compose.yaml -f examples/fl-demo/compose.yaml --env-file docker/.env up -d --build
 #
-# Note: Requires docker/.env file with Magistrala configuration variables.
+# Note: Requires docker/.env file with Propeller configuration variables.
 # IMPORTANT: When using multiple -f files, Docker Compose resolves build contexts relative
 # to the FIRST file's directory (docker/). So we use '..' to go from docker/ to project root.
 # Commands must be run from the repository root.
@@ -29,7 +29,7 @@ services:
     volumes:
       - local-registry-data:/var/lib/registry
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     restart: on-failure
 
   model-registry:
@@ -45,7 +45,7 @@ services:
       MODELS_DIR: /tmp/fl-models
       REGISTRY_PORT: "8081"
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     restart: on-failure
 
   local-data-store:
@@ -61,13 +61,13 @@ services:
       DATA_DIR: /data/datasets
       DATA_STORE_PORT: "8083"
       # Pass participant UUIDs for auto-seeding
-      PROPLET_CLIENT_ID: ${PROPLET_CLIENT_ID}
-      PROPLET_2_CLIENT_ID: ${PROPLET_2_CLIENT_ID}
-      PROPLET_3_CLIENT_ID: ${PROPLET_3_CLIENT_ID}
+      PROPLET_ENTITY_ID: ${PROPLET_ENTITY_ID}
+      PROPLET_2_ENTITY_ID: ${PROPLET_2_ENTITY_ID}
+      PROPLET_3_ENTITY_ID: ${PROPLET_3_ENTITY_ID}
       # Alternative: use FL_DATASET_PARTICIPANTS="uuid1,uuid2,uuid3" if preferred
       FL_DATASET_PARTICIPANTS: ${FL_DATASET_PARTICIPANTS:-}
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     restart: on-failure
 
   aggregator:
@@ -80,7 +80,7 @@ services:
     environment:
       AGGREGATOR_PORT: "8082"
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     restart: on-failure
 
   coordinator-http:
@@ -91,21 +91,20 @@ services:
     depends_on:
       - model-registry
       - aggregator
-      - mqtt-adapter
     ports:
       - "8086:8080"
     environment:
       COORDINATOR_PORT: "8080"
       MODEL_REGISTRY_URL: http://model-registry:8081
       AGGREGATOR_URL: http://aggregator:8082
-      MQTT_BROKER: tcp://mqtt-adapter:1883
-      MQTT_CLIENT_ID: ${COORDINATOR_CLIENT_ID}
-      MQTT_USERNAME: ${COORDINATOR_CLIENT_ID}
-      MQTT_PASSWORD: ${COORDINATOR_CLIENT_KEY}
+      MQTT_BROKER: tcp://fluxmq-node1:1883
+      MQTT_ENTITY_ID: ${COORDINATOR_ENTITY_ID}
+      MQTT_USERNAME: ${COORDINATOR_ENTITY_ID}
+      MQTT_PASSWORD: ${COORDINATOR_API_KEY}
     volumes:
       - fl-models:/tmp/fl-models
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     restart: on-failure
 
   # ============================================================================
@@ -125,13 +124,13 @@ services:
     environment:
       MANAGER_LOG_LEVEL: ${MANAGER_LOG_LEVEL:-info}
       MANAGER_INSTANCE_ID: ${MANAGER_INSTANCE_ID:-}
-      MANAGER_MQTT_ADDRESS: ${MANAGER_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      MANAGER_MQTT_ADDRESS: ${MANAGER_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       MANAGER_MQTT_QOS: ${MANAGER_MQTT_QOS:-2}
       MANAGER_MQTT_TIMEOUT: ${MANAGER_MQTT_TIMEOUT:-30s}
-      MANAGER_DOMAIN_ID: ${MANAGER_DOMAIN_ID}
+      MANAGER_TENANT_ID: ${MANAGER_TENANT_ID}
       MANAGER_CHANNEL_ID: ${MANAGER_CHANNEL_ID}
-      MANAGER_CLIENT_ID: ${MANAGER_CLIENT_ID}
-      MANAGER_CLIENT_KEY: ${MANAGER_CLIENT_KEY}
+      MANAGER_ENTITY_ID: ${MANAGER_ENTITY_ID}
+      MANAGER_API_KEY: ${MANAGER_API_KEY}
       MANAGER_HTTP_HOST: ${MANAGER_HTTP_HOST:-0.0.0.0}
       MANAGER_HTTP_PORT: ${MANAGER_HTTP_PORT:-7070}
       MANAGER_HTTP_SERVER_CERT: ${MANAGER_HTTP_SERVER_CERT:-}
@@ -142,7 +141,6 @@ services:
     ports:
       - "${MANAGER_HTTP_PORT:-7070}:${MANAGER_HTTP_PORT:-7070}"
     depends_on:
-      - mqtt-adapter
       - coordinator-http
 
   # ============================================================================
@@ -160,20 +158,19 @@ services:
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL:-info}
       PROPLET_INSTANCE_ID: proplet-1
-      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS:-2}
       PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT:-30s}
       PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL:-10s}
-      PROPLET_DOMAIN_ID: ${PROPLET_DOMAIN_ID}
+      PROPLET_TENANT_ID: ${PROPLET_TENANT_ID}
       PROPLET_CHANNEL_ID: ${PROPLET_CHANNEL_ID}
-      PROPLET_CLIENT_ID: ${PROPLET_CLIENT_ID}
-      PROPLET_CLIENT_KEY: ${PROPLET_CLIENT_KEY}
+      PROPLET_ENTITY_ID: ${PROPLET_ENTITY_ID}
+      PROPLET_API_KEY: ${PROPLET_API_KEY}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME:-/usr/local/bin/wasmtime}
       DATA_STORE_URL: http://local-data-store:8083
       MODEL_REGISTRY_URL: http://model-registry:8081
       MANAGER_COORDINATOR_URL: http://coordinator-http:8080
     depends_on:
-      - mqtt-adapter
       - manager
       - local-data-store
       - model-registry
@@ -195,27 +192,26 @@ services:
     container_name: propeller-proplet-2
     restart: on-failure
     depends_on:
-      - mqtt-adapter
       - manager
       - local-data-store
       - model-registry
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL:-info}
       PROPLET_INSTANCE_ID: proplet-2
-      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS:-2}
       PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT:-30s}
       PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL:-10s}
-      PROPLET_DOMAIN_ID: ${PROPLET_DOMAIN_ID}
+      PROPLET_TENANT_ID: ${PROPLET_TENANT_ID}
       PROPLET_CHANNEL_ID: ${PROPLET_CHANNEL_ID}
-      PROPLET_CLIENT_ID: ${PROPLET_2_CLIENT_ID}
-      PROPLET_CLIENT_KEY: ${PROPLET_2_CLIENT_KEY}
+      PROPLET_ENTITY_ID: ${PROPLET_2_ENTITY_ID}
+      PROPLET_API_KEY: ${PROPLET_2_API_KEY}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME:-/usr/local/bin/wasmtime}
       DATA_STORE_URL: http://local-data-store:8083
       MODEL_REGISTRY_URL: http://model-registry:8081
       MANAGER_COORDINATOR_URL: http://coordinator-http:8080
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     healthcheck:
       disable: true
 
@@ -230,33 +226,32 @@ services:
     container_name: propeller-proplet-3
     restart: on-failure
     depends_on:
-      - mqtt-adapter
       - manager
       - local-data-store
       - model-registry
     environment:
       PROPLET_LOG_LEVEL: ${PROPLET_LOG_LEVEL:-info}
       PROPLET_INSTANCE_ID: proplet-3
-      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://mqtt-adapter:1883}
+      PROPLET_MQTT_ADDRESS: ${PROPLET_MQTT_ADDRESS:-tcp://fluxmq-node1:1883}
       PROPLET_MQTT_QOS: ${PROPLET_MQTT_QOS:-2}
       PROPLET_MQTT_TIMEOUT: ${PROPLET_MQTT_TIMEOUT:-30s}
       PROPLET_LIVELINESS_INTERVAL: ${PROPLET_LIVELINESS_INTERVAL:-10s}
-      PROPLET_DOMAIN_ID: ${PROPLET_DOMAIN_ID}
+      PROPLET_TENANT_ID: ${PROPLET_TENANT_ID}
       PROPLET_CHANNEL_ID: ${PROPLET_CHANNEL_ID}
-      PROPLET_CLIENT_ID: ${PROPLET_3_CLIENT_ID}
-      PROPLET_CLIENT_KEY: ${PROPLET_3_CLIENT_KEY}
+      PROPLET_ENTITY_ID: ${PROPLET_3_ENTITY_ID}
+      PROPLET_API_KEY: ${PROPLET_3_API_KEY}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME:-/usr/local/bin/wasmtime}
       DATA_STORE_URL: http://local-data-store:8083
       MODEL_REGISTRY_URL: http://model-registry:8081
       MANAGER_COORDINATOR_URL: http://coordinator-http:8080
     networks:
-      - magistrala-base-net
+      - propeller-base-net
     healthcheck:
       disable: true
 
   # ============================================================================
   # Note: In production setup, nginx handles MQTT port exposure
-  # mqtt-adapter is accessed internally via nginx, so no need to expose ports here
+  # fluxmq-node1 is accessed internally via the propeller-base-net
   # ============================================================================
 
 # ============================================================================

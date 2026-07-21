@@ -2,7 +2,7 @@
 
 [**Propeller**](https://propeller.absmach.eu) is a WebAssembly (Wasm) workload orchestrator for the Cloud-Edge continuum. It enables seamless deployment of Wasm applications from powerful cloud servers to constrained microcontrollers, combining flexibility, security, and performance.
 
-Propeller builds on top of [Magistrala](https://github.com/absmach/magistrala), an open-source IoT platform that provides identity, access control, device provisioning, data processing, and observability. Together, they form a complete solution for deploying and orchestrating Wasm workloads across distributed edge environments.
+Propeller builds on top of [Atom](https://github.com/absmach/atom) and [FluxMQ](https://github.com/absmach/fluxmq) — providing identity, access control, messaging, and authorization. Together, they form a complete solution for deploying and orchestrating Wasm workloads across distributed edge environments.
 
 ## Features
 
@@ -11,7 +11,7 @@ Propeller builds on top of [Magistrala](https://github.com/absmach/magistrala), 
 - **FaaS Deployment**: Enable Function-as-a-Service (FaaS) capabilities for scalable and event-driven applications.
 - **OCI Registry Support**: Push and pull Wasm workloads from OCI-compliant registries for streamlined workflow integration.
 - **WAMR on Zephyr RTOS**: Deploy lightweight Wasm workloads on constrained devices running Zephyr RTOS via the WebAssembly Micro Runtime (WAMR).
-- **Powerful Service Mesh**: Integrates with [Magistrala](https://github.com/absmach/magistrala) for secure, efficient IoT device communication.
+- **Powerful Service Mesh**: Integrates with [Atom](https://github.com/absmach/atom) and [FluxMQ](https://github.com/absmach/fluxmq) for secure, efficient IoT device communication and authorization.
 - **Security at the Core**: Propeller ensures secure workload execution and communication for IoT environments.
 - **Federated Learning**: Built-in support for federated machine learning workflows with FedAvg aggregation, enabling privacy-preserving distributed training across edge devices.
 - **Job Orchestration**: Group multiple tasks into jobs with configurable execution modes (parallel, sequential, or dependency-based), enabling complex multi-step workflows with fail-fast semantics.
@@ -32,7 +32,7 @@ Propeller consists of several key components:
 - **Proplet**: Worker nodes that execute WebAssembly workloads (implemented in Rust)
 - **Proxy**: Service for downloading and distributing Wasm modules from OCI registries
 
-![Propeller Orchestration Diagram](https://propeller.absmach.eu/architecture.svg)
+![Propeller Orchestration Diagram](https://raw.githubusercontent.com/absmach/propeller-docs/refs/heads/main/content/docs/images/architecture.svg)
 
 ## Documentation
 

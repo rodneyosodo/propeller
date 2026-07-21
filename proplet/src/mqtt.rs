@@ -8,7 +8,7 @@ use url::Url;
 
 pub struct MqttConfig {
     pub address: String,
-    pub client_id: String,
+    pub entity_id: String,
     #[allow(dead_code)]
     pub timeout: Duration,
     #[allow(dead_code)]
@@ -34,13 +34,13 @@ impl PubSub {
     pub async fn new(config: MqttConfig) -> Result<(Self, EventLoop)> {
         let (host, port, use_tls) = parse_mqtt_address(&config.address)?;
 
-        let mut mqtt_options = MqttOptions::new(config.client_id, host, port);
+        let mut mqtt_options = MqttOptions::new(config.entity_id, host, port);
 
         mqtt_options.set_keep_alive(config.keep_alive);
         mqtt_options.set_credentials(config.username, config.password);
         mqtt_options.set_max_packet_size(config.max_packet_size, config.max_packet_size);
         mqtt_options.set_inflight(config.inflight);
-        mqtt_options.set_clean_session(false);
+        mqtt_options.set_clean_session(true);
 
         if use_tls {
             let transport = if let Some(ca_pem) = &config.tls_ca_cert {
@@ -199,8 +199,8 @@ pub async fn process_mqtt_events(mut eventloop: EventLoop, tx: mpsc::Sender<Mqtt
     }
 }
 
-pub fn build_topic(domain_id: &str, channel_id: &str, path: &str) -> String {
-    format!("m/{domain_id}/c/{channel_id}/{path}")
+pub fn build_topic(tenant_id: &str, channel_id: &str, path: &str) -> String {
+    format!("m/{tenant_id}/c/{channel_id}/{path}")
 }
 
 fn parse_mqtt_address(address: &str) -> Result<(String, u16, bool)> {
@@ -350,20 +350,20 @@ mod tests {
 
     #[test]
     fn test_build_topic() {
-        let topic = build_topic("domain-1", "channel-1", "control/manager/start");
-        assert_eq!(topic, "m/domain-1/c/channel-1/control/manager/start");
+        let topic = build_topic("tenant-1", "channel-1", "control/manager/start");
+        assert_eq!(topic, "m/tenant-1/c/channel-1/control/manager/start");
     }
 
     #[test]
     fn test_build_topic_with_empty_path() {
-        let topic = build_topic("domain-1", "channel-1", "");
-        assert_eq!(topic, "m/domain-1/c/channel-1/");
+        let topic = build_topic("tenant-1", "channel-1", "");
+        assert_eq!(topic, "m/tenant-1/c/channel-1/");
     }
 
     #[test]
     fn test_build_topic_with_slashes() {
-        let topic = build_topic("domain/1", "channel/1", "path/to/topic");
-        assert_eq!(topic, "m/domain/1/c/channel/1/path/to/topic");
+        let topic = build_topic("tenant/1", "channel/1", "path/to/topic");
+        assert_eq!(topic, "m/tenant/1/c/channel/1/path/to/topic");
     }
 
     #[test]
@@ -590,7 +590,7 @@ mod tests {
     fn test_mqtt_config_creation() {
         let config = MqttConfig {
             address: "tcp://localhost:1883".to_string(),
-            client_id: "test-client".to_string(),
+            entity_id: "test-client".to_string(),
             timeout: Duration::from_secs(30),
             qos: QoS::ExactlyOnce,
             username: "user".to_string(),
@@ -606,7 +606,7 @@ mod tests {
         };
 
         assert_eq!(config.address, "tcp://localhost:1883");
-        assert_eq!(config.client_id, "test-client");
+        assert_eq!(config.entity_id, "test-client");
         assert_eq!(config.timeout, Duration::from_secs(30));
         assert_eq!(config.username, "user");
         assert_eq!(config.password, "pass");
@@ -618,7 +618,7 @@ mod tests {
     fn test_mqtt_config_tls_configuration() {
         let config = MqttConfig {
             address: "mqtts://broker:8883".to_string(),
-            client_id: "tls-client".to_string(),
+            entity_id: "tls-client".to_string(),
             timeout: Duration::from_secs(30),
             qos: QoS::AtLeastOnce,
             username: "user".to_string(),

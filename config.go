@@ -14,23 +14,23 @@ type Config struct {
 }
 
 type ManagerConfig struct {
-	DomainID  string `toml:"domain_id"`
-	ClientID  string `toml:"client_id"`
-	ClientKey string `toml:"client_key"`
+	TenantID  string `toml:"tenant_id"`
+	EntityID  string `toml:"entity_id"`
+	APIKey    string `toml:"api_key"`
 	ChannelID string `toml:"channel_id"`
 }
 
 type PropletConfig struct {
-	DomainID  string `toml:"domain_id"`
-	ClientID  string `toml:"client_id"`
-	ClientKey string `toml:"client_key"`
+	TenantID  string `toml:"tenant_id"`
+	EntityID  string `toml:"entity_id"`
+	APIKey    string `toml:"api_key"`
 	ChannelID string `toml:"channel_id"`
 }
 
 type ProxyConfig struct {
-	DomainID  string `toml:"domain_id"`
-	ClientID  string `toml:"client_id"`
-	ClientKey string `toml:"client_key"`
+	TenantID  string `toml:"tenant_id"`
+	EntityID  string `toml:"entity_id"`
+	APIKey    string `toml:"api_key"`
 	ChannelID string `toml:"channel_id"`
 }
 
