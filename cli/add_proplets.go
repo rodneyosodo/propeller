@@ -96,7 +96,7 @@ Example:
 							}
 							key, err := atomSDK.CreateAPIKey(cmd.Context(), eid, "proplet-mqtt", token)
 							if err != nil {
-								return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+								return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
 							}
 							newProplets[i] = propletCreds{EntityID: eid, APIKey: key}
 

@@ -84,7 +84,7 @@ Example:
 						}
 						proxyAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %w", errFailedEntityCreation, err)
+							return fmt.Errorf("%w: %w", errFailedAPIKeyCreation, err)
 						}
 
 						if err := atomSDK.Connect(cmd.Context(), proxyEntityID, channelID, tenantID, token); err != nil {
