@@ -17,11 +17,11 @@ import (
 	"github.com/absmach/propeller/manager/api"
 	"github.com/absmach/propeller/manager/middleware"
 	"github.com/absmach/propeller/pkg/mqtt"
-	"github.com/absmach/propeller/pkg/telemetry"
 	"github.com/absmach/propeller/pkg/plugin"
 	"github.com/absmach/propeller/pkg/scheduler"
 	pkgserver "github.com/absmach/propeller/pkg/server"
 	"github.com/absmach/propeller/pkg/storage"
+	"github.com/absmach/propeller/pkg/telemetry"
 	"github.com/caarlos0/env/v11"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -282,5 +282,3 @@ func initTracerProvider(ctx context.Context, cfg config, logger *slog.Logger) (t
 		}, nil
 	}
 }
-
-

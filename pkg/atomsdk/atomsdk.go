@@ -398,6 +398,7 @@ func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) 
 	for _, n := range names {
 		if _, ok := s.actionIDs[n]; !ok {
 			allCached = false
+
 			break
 		}
 	}
@@ -417,6 +418,7 @@ func (s *sdk) findActionIDs(ctx context.Context, token string, names ...string) 
 	for _, n := range names {
 		if _, ok := s.actionIDs[n]; !ok {
 			allCached = false
+
 			break
 		}
 	}

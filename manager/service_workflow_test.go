@@ -99,12 +99,12 @@ func TestCreateWorkflow(t *testing.T) {
 			t.Parallel()
 			svc := newService(t)
 			created, err := svc.CreateWorkflow(context.Background(), tc.tasks)
-			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			require.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 			if tc.err == nil {
-				assert.Len(t, created, tc.taskLen)
-				assert.NotEmpty(t, created[0].WorkflowID)
+				require.Len(t, created, tc.taskLen)
+				require.NotEmpty(t, created[0].WorkflowID)
 				for i := 1; i < len(created); i++ {
-					assert.Equal(t, created[0].WorkflowID, created[i].WorkflowID)
+					require.Equal(t, created[0].WorkflowID, created[i].WorkflowID)
 				}
 			}
 		})
@@ -145,9 +145,9 @@ func TestCreateTask(t *testing.T) {
 			svc := newService(t)
 			taskInput := tc.setup(t, svc)
 			created, err := svc.CreateTask(context.Background(), taskInput)
-			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			require.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 			if tc.err == nil {
-				assert.NotEmpty(t, created.ID)
+				require.NotEmpty(t, created.ID)
 			}
 		})
 	}
@@ -187,7 +187,7 @@ func TestGetTaskResults(t *testing.T) {
 			svc := newService(t)
 			taskID := tc.setup(t, svc)
 			_, err := svc.GetTaskResults(context.Background(), taskID)
-			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }
@@ -236,7 +236,7 @@ func TestGetParentResults(t *testing.T) {
 			svc := newService(t)
 			taskID := tc.setup(t, svc)
 			_, err := svc.GetParentResults(context.Background(), taskID)
-			assert.True(t, pkgerrors.Contains(err, tc.err), "%s: expected %v got %v", tc.desc, tc.err, err)
+			assert.ErrorIs(t, err, tc.err, "%s: expected %v got %v", tc.desc, tc.err, err)
 		})
 	}
 }
