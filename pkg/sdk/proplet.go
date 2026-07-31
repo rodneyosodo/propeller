@@ -35,6 +35,22 @@ type PropletPage struct {
 	Proplets []Proplet `json:"proplets"`
 }
 
+func (sdk *propSDK) GetProplet(id string) (Proplet, error) {
+	reqURL := sdk.managerURL + propletsEndpoint + "/" + id
+
+	body, err := sdk.processRequest(http.MethodGet, reqURL, nil, http.StatusOK)
+	if err != nil {
+		return Proplet{}, err
+	}
+
+	var p Proplet
+	if err := json.Unmarshal(body, &p); err != nil {
+		return Proplet{}, err
+	}
+
+	return p, nil
+}
+
 func (sdk *propSDK) GetPropletAliveHistory(id string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error) {
 	reqURL := fmt.Sprintf("%s%s/%s/alive-history?offset=%d&limit=%d", sdk.managerURL, propletsEndpoint, id, offset, limit)
 
