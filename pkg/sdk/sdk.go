@@ -55,6 +55,27 @@ type SDK interface {
 	//  fmt.Println(task)
 	UpdateTask(task Task) (Task, error)
 
+	// UploadTaskFile uploads a Wasm binary for a task via multipart form.
+	//
+	// example:
+	//  task, _ := sdk.UploadTaskFile("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040", "/path/to/app.wasm")
+	//  fmt.Println(task)
+	UploadTaskFile(id string, filePath string) (Task, error)
+
+	// GetTaskResults returns the stored execution results of a task.
+	//
+	// example:
+	//  results, _ := sdk.GetTaskResults("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(results)
+	GetTaskResults(id string) (any, error)
+
+	// GetTaskMetrics returns the paginated metrics for a task.
+	//
+	// example:
+	//  page, _ := sdk.GetTaskMetrics("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040", 0, 10)
+	//  fmt.Println(page)
+	GetTaskMetrics(id string, offset, limit uint64) (TaskMetricsPage, error)
+
 	// DeleteTask deletes a task.
 	//
 	// example:
@@ -113,12 +134,26 @@ type SDK interface {
 	//  _ := sdk.StopJob("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
 	StopJob(jobID string) error
 
+	// GetProplet returns a single proplet by id.
+	//
+	// example:
+	//  p, _ := sdk.GetProplet("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
+	//  fmt.Println(p)
+	GetProplet(id string) (Proplet, error)
+
 	// GetPropletAliveHistory returns the paginated heartbeat history for a proplet.
 	//
 	// example:
 	//  page, _ := sdk.GetPropletAliveHistory("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040", 0, 10)
 	//  fmt.Println(page)
 	GetPropletAliveHistory(id string, offset, limit uint64) (proplet.PropletAliveHistoryPage, error)
+
+	// GetPropletMetrics returns the paginated metrics for a proplet.
+	//
+	// example:
+	//  page, _ := sdk.GetPropletMetrics("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040", 0, 10)
+	//  fmt.Println(page)
+	GetPropletMetrics(id string, offset, limit uint64) (PropletMetricsPage, error)
 
 	// ListProplets returns a paginated list of proplets, optionally filtered by status.
 	//
@@ -140,6 +175,59 @@ type SDK interface {
 	//  err := sdk.DeleteProplet("b1d10738-c5d7-4ff1-8f4d-b9328ce6f040")
 	//  fmt.Println(err)
 	DeleteProplet(id string) error
+
+	// CreateWorkflow creates a multi-task workflow (DAG).
+	//
+	// example:
+	//  tasks, _ := sdk.CreateWorkflow([]sdk.Task{
+	//    {Name: "step-1"},
+	//    {Name: "step-2", DependsOn: []string{"<step-1-id>"}},
+	//  })
+	//  fmt.Println(tasks)
+	CreateWorkflow(tasks []Task) ([]Task, error)
+
+	// ConfigureExperiment configures a federated learning experiment.
+	//
+	// example:
+	//  result, _ := sdk.ConfigureExperiment(sdk.ExperimentConfig{
+	//    ExperimentID: "exp-001",
+	//    RoundID: "round-1",
+	//  })
+	//  fmt.Println(result)
+	ConfigureExperiment(config ExperimentConfig) (ExperimentResult, error)
+
+	// GetFLTask returns the federated learning task for the current round.
+	//
+	// example:
+	//  task, _ := sdk.GetFLTask("round-1", "proplet-1")
+	//  fmt.Println(task)
+	GetFLTask(roundID, propletID string) (FLTask, error)
+
+	// PostFLUpdate submits a model update in JSON format.
+	//
+	// example:
+	//  err := sdk.PostFLUpdate(sdk.FLUpdate{RoundID: "round-1"})
+	PostFLUpdate(update FLUpdate) error
+
+	// PostFLUpdateCBOR submits a model update in CBOR format.
+	//
+	// example:
+	//  err := sdk.PostFLUpdateCBOR(data)
+	PostFLUpdateCBOR(data []byte) error
+
+	// GetRoundStatus returns the completion status of a federated learning round.
+	//
+	// example:
+	//  status, _ := sdk.GetRoundStatus("round-1")
+	//  fmt.Println(status)
+	GetRoundStatus(roundID string) (RoundStatus, error)
+
+	// GetHealth returns the manager health status.
+	//
+	// example:
+	//  info, _ := sdk.GetHealth()
+	//  fmt.Println(info)
+	GetHealth() (HealthInfo, error)
 }
 
 type propSDK struct {
