@@ -18,7 +18,6 @@ updates:
       - "examples/fl-demo/local-data-store"
       - "examples/fl-demo/model-registry"
       - "examples/fl-demo"
-
     schedule:
       interval: "monthly"
       day: "monday"
@@ -49,5 +48,17 @@ updates:
       day: "monday"
     groups:
       rs-dependencies:
+        patterns:
+          - "*"
+
+  - package-ecosystem: "gitsubmodule"
+    directories:
+      - "./embed-proplet/modules/wamr/wasm-micro-runtime"
+      - "./examples/sample-wasi-http-rust"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+    groups:
+      gs-dependency:
         patterns:
           - "*"
