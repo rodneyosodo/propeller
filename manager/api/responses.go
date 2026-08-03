@@ -275,7 +275,7 @@ func (j jobResponse) Headers() map[string]string {
 }
 
 func (j jobResponse) Empty() bool {
-	return len(j.Tasks) == 0
+	return false
 }
 
 func (j jobResponse) MarshalJSON() ([]byte, error) {
@@ -298,7 +298,7 @@ func (l listJobResponse) Headers() map[string]string {
 }
 
 func (l listJobResponse) Empty() bool {
-	return len(l.Jobs) == 0
+	return false
 }
 
 func (l listJobResponse) MarshalJSON() ([]byte, error) {

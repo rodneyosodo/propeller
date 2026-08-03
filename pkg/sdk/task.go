@@ -12,20 +12,39 @@ import (
 const tasksEndpoint = "/tasks"
 
 type Task struct {
-	ID         string            `json:"id,omitempty"`
-	Name       string            `json:"name"`
-	Kind       string            `json:"kind,omitempty"`
-	State      uint8             `json:"state,omitempty"`
-	Mode       string            `json:"mode,omitempty"`
-	ImageURL   string            `json:"image_url,omitempty"`
-	JobID      string            `json:"job_id,omitempty"`
-	CLIArgs    []string          `json:"cli_args,omitempty"`
-	Env        map[string]string `json:"env,omitempty"`
-	StartTime  time.Time         `json:"start_time"`
-	FinishTime time.Time         `json:"finish_time"`
-	CreatedAt  time.Time         `json:"created_at"`
-	UpdatedAt  time.Time         `json:"updated_at"`
-	Results    any               `json:"results,omitempty"`
+	ID       string            `json:"id,omitempty"`
+	Name     string            `json:"name"`
+	Kind     string            `json:"kind,omitempty"`
+	State    uint8             `json:"state,omitempty"`
+	Mode     string            `json:"mode,omitempty"`
+	ImageURL string            `json:"image_url,omitempty"`
+	JobID    string            `json:"job_id,omitempty"`
+	CLIArgs  []string          `json:"cli_args,omitempty"`
+	Env      map[string]string `json:"env,omitempty"`
+	// File is the Wasm binary. When sending, set it to the base64-encoded
+	// binary (format: byte). When reading task responses the manager redacts
+	// the payload (e.g. "AGFzbQEAAA<REDACTED>RpdmFsdWU="), so a plain string is
+	// used instead of []byte to avoid a base64 decoding failure.
+	File            string         `json:"file,omitempty"`
+	Inputs          []string       `json:"inputs,omitempty"`
+	Daemon          bool           `json:"daemon,omitempty"`
+	Encrypted       bool           `json:"encrypted,omitempty"`
+	KBSResourcePath string         `json:"kbs_resource_path,omitempty"`
+	PropletID       string         `json:"proplet_id,omitempty"`
+	DependsOn       []string       `json:"depends_on,omitempty"`
+	RunIf           string         `json:"run_if,omitempty"`
+	WorkflowID      string         `json:"workflow_id,omitempty"`
+	Broadcast       bool           `json:"broadcast,omitempty"`
+	Priority        int            `json:"priority,omitempty"`
+	Schedule        string         `json:"schedule,omitempty"`
+	Timezone        string         `json:"timezone,omitempty"`
+	IsRecurring     bool           `json:"is_recurring,omitempty"`
+	Metadata        map[string]any `json:"metadata,omitempty"`
+	StartTime       time.Time      `json:"start_time"`
+	FinishTime      time.Time      `json:"finish_time"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+	Results         any            `json:"results,omitempty"`
 }
 
 type TaskPage struct {
@@ -146,6 +165,24 @@ func (sdk *propSDK) StartTask(id string) error {
 	return nil
 }
 
+func (sdk *propSDK) GetTaskResults(id string) (any, error) {
+	reqURL := sdk.managerURL + tasksEndpoint + "/" + id + "/results"
+
+	body, err := sdk.processRequest(http.MethodGet, reqURL, nil, http.StatusOK)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Results any `json:"results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+
+	return resp.Results, nil
+}
+
 func (sdk *propSDK) StopTask(id string) error {
 	reqURL := fmt.Sprintf("%s/tasks/%s/stop", sdk.managerURL, id)
 
@@ -214,6 +251,9 @@ func (sdk *propSDK) GetJob(jobID string) (JobResponse, error) {
 	if err != nil {
 		return JobResponse{}, err
 	}
+	if len(body) == 0 {
+		return JobResponse{JobID: jobID}, nil
+	}
 
 	var jr JobResponse
 	if err := json.Unmarshal(body, &jr); err != nil {
@@ -243,6 +283,13 @@ func (sdk *propSDK) ListJobs(offset, limit uint64, status string) (JobPage, erro
 	body, err := sdk.processRequest(http.MethodGet, reqURL, nil, http.StatusOK)
 	if err != nil {
 		return JobPage{}, err
+	}
+	if len(body) == 0 {
+		return JobPage{
+			Offset: offset,
+			Limit:  limit,
+			Jobs:   []JobSummary{},
+		}, nil
 	}
 
 	var jp JobPage
