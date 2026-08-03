@@ -290,7 +290,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 [[package]]
 name = "attestation-agent"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -318,7 +318,7 @@ dependencies = [
 [[package]]
 name = "attester"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1290,7 +1290,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "aes-gcm 0.11.0",
  "aes-kw",
@@ -2727,7 +2727,7 @@ dependencies = [
 [[package]]
 name = "image-rs"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "anyhow",
  "astral-tokio-tar",
@@ -3103,7 +3103,7 @@ dependencies = [
 [[package]]
 name = "kbc"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3137,7 +3137,7 @@ dependencies = [
 [[package]]
 name = "kbs_protocol"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3787,7 +3787,7 @@ dependencies = [
 [[package]]
 name = "ocicrypt-rs"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "aes 0.9.1",
  "anyhow",
@@ -4574,7 +4574,7 @@ dependencies = [
 [[package]]
 name = "protos"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "prost",
  "tonic",
@@ -4971,7 +4971,7 @@ dependencies = [
 [[package]]
 name = "resource_uri"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/guest-components?branch=enable-wasm-workloads#0e819e7fb74069f58a53081efd1bc09bc6e8386d"
+source = "git+https://github.com/rodneyosodo/guest-components?branch=feat%2Fcoco-keyprovider-tls#64195f2243819e9ab00cc2b7fbf1ba8d2eec11b8"
 dependencies = [
  "anyhow",
  "serde",

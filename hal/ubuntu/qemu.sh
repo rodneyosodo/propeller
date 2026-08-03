@@ -49,6 +49,8 @@ PROPLET_API_KEY="${PROPLET_API_KEY:-}"
 PROPLET_CHANNEL_ID="${PROPLET_CHANNEL_ID:-}"
 PROPLET_MQTT_ADDRESS="${PROPLET_MQTT_ADDRESS:-tcp://localhost:1883}"
 KBS_URL="${KBS_URL:-http://10.0.2.2:8082}"
+KBS_CERT_PATH="${KBS_CERT_PATH:-}"
+KBS_CERT_FILE="/etc/kbs/cert.pem"
 
 # Check prerequisites
 check_prerequisites() {
@@ -161,6 +163,7 @@ write_files:
 
       [token_configs.kbs]
       url = "KBS_URI_PLACEHOLDER"
+      cert = "KBS_CERT_PLACEHOLDER"
 
       [eventlog_config]
       init_pcr = 17
@@ -168,6 +171,11 @@ write_files:
 
       [log]
       level = "info"
+    permissions: '0644'
+
+  - path: /etc/kbs/cert.pem
+    content: KBS_CERT_B64_PLACEHOLDER
+    encoding: base64
     permissions: '0644'
 
   - path: /etc/default/attestation-agent
@@ -183,6 +191,7 @@ write_files:
       # CoCo Keyprovider Environment Variables
       COCO_KP_SOCKET=127.0.0.1:50011
       COCO_KP_KBS_URL=KBS_URI_PLACEHOLDER
+      COCO_KP_KBS_CERT=/etc/kbs/cert.pem
       RUST_LOG=info
     permissions: '0644'
 
@@ -238,7 +247,7 @@ write_files:
       [Service]
       Type=simple
       EnvironmentFile=/etc/default/coco-keyprovider
-      ExecStart=/usr/local/bin/coco_keyprovider --socket ${COCO_KP_SOCKET} --kbs ${COCO_KP_KBS_URL}
+      ExecStart=/usr/local/bin/coco_keyprovider --socket ${COCO_KP_SOCKET} --kbs ${COCO_KP_KBS_URL}KBS_CERT_ARGS_PLACEHOLDER
       Restart=on-failure
       RestartSec=5s
       StandardOutput=journal
@@ -388,7 +397,7 @@ runcmd:
     cd /tmp
     git clone https://github.com/rodneyosodo/guest-components.git
     cd guest-components
-    git checkout upstream-proplet
+    git checkout feat/coco-keyprovider-tls
     cd attestation-agent/coco_keyprovider
     echo "Building CoCo Keyprovider (this may take several minutes)..."
     cargo build --release --target x86_64-unknown-linux-gnu
@@ -512,6 +521,20 @@ EOF
     sed -i "s|CHANNEL_ID_PLACEHOLDER|${PROPLET_CHANNEL_ID}|g" $USER_DATA
     sed -i "s|MQTT_ADDRESS_PLACEHOLDER|${PROPLET_MQTT_ADDRESS}|g" $USER_DATA
     sed -i "s|KBS_URI_PLACEHOLDER|${KBS_URL}|g" $USER_DATA
+
+    # Substitute KBS TLS certificate into user-data (base64 for the file, escaped for TOML)
+    if [[ -n "$KBS_CERT_PATH" ]]; then
+        KBS_CERT_B64=$(base64 -w0 "$KBS_CERT_PATH")
+        sed -i "s|KBS_CERT_B64_PLACEHOLDER|${KBS_CERT_B64}|g" $USER_DATA
+        KBS_CERT_ESCAPED=$(awk '{gsub(/&/, "\\\\&"); printf "%s\\\\n", $0}' "$KBS_CERT_PATH")
+        KBS_CERT_ESCAPED=${KBS_CERT_ESCAPED%\\\\n}
+        sed -i "s|KBS_CERT_PLACEHOLDER|${KBS_CERT_ESCAPED}|g" $USER_DATA
+        sed -i "s|KBS_CERT_ARGS_PLACEHOLDER| --cert-file ${KBS_CERT_FILE}|g" $USER_DATA
+    else
+        sed -i "s|KBS_CERT_ARGS_PLACEHOLDER||g" $USER_DATA
+        sed -i "s|KBS_CERT_B64_PLACEHOLDER||g" $USER_DATA
+        sed -i "/KBS_CERT_PLACEHOLDER/d" $USER_DATA
+    fi
 
     # Create meta-data
     cat <<EOF >$META_DATA

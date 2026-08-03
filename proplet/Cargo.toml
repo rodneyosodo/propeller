@@ -45,24 +45,24 @@ socket2 = { version = "0.6", features = ["all"] }
 reqwest = { version = "0.13", features = ["json", "rustls"] }
 
 # TEE & Encryption Support (default feature)
-attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
+attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "feat/coco-keyprovider-tls", default-features = false, features = [
   "rust-crypto",
   "kbs",
 ] }
-image-rs = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
+image-rs = { git = "https://github.com/rodneyosodo/guest-components", branch = "feat/coco-keyprovider-tls", default-features = false, features = [
   "encryption-ring",
   "keywrap-grpc",
   "oci-client-rustls",
   "signature-cosign-rustls",
   "futures",
 ] }
-kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", features = [
+kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "feat/coco-keyprovider-tls", features = [
   "background_check",
   "rust-crypto",
 ], default-features = false }
 oci-client = { version = "0.17.0", default-features = false, features = ["rustls-tls"] }
 oci-spec = { version = "0.10.0" }
-resource_uri = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads" }
+resource_uri = { git = "https://github.com/rodneyosodo/guest-components", branch = "feat/coco-keyprovider-tls" }
 hex = { version = "0.4" }
 futures-util = { version = "0.3" }
 

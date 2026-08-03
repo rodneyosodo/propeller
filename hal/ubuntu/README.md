@@ -27,6 +27,7 @@ Set these before running the script:
 | `PROPLET_CHANNEL_ID`   | Propeller channel ID            |                        |
 | `PROPLET_MQTT_ADDRESS` | MQTT broker address             | `tcp://localhost:1883` |
 | `KBS_URL`              | Key Broker Service URL          | `http://10.0.2.2:8082` |
+| `KBS_CERT_PATH`        | Path to KBS CA/PEM cert (TLS)   | (empty, no TLS)        |
 | `ENABLE_CVM`           | `auto`, `tdx`, `sev`, or `none` | `auto`                 |
 | `RAM`                  | VM memory                       | `16384M`               |
 | `CPU`                  | vCPU count                      | `4`                    |
@@ -43,6 +44,11 @@ export PROPLET_API_KEY="your-api-key"
 export PROPLET_CHANNEL_ID="your-channel-id"
 export PROPLET_MQTT_ADDRESS="tcp://mqtt.example.com:1883"
 export KBS_URL="http://10.0.2.2:8082"
+
+# Enable TLS between the CVM and the KBS (optional)
+# Point KBS_URL at the HTTPS endpoint and provide the KBS CA/PEM cert.
+export KBS_URL="https://10.0.2.2:8082"
+export KBS_CERT_PATH="/path/to/kbs-ca.pem"
 
 # Build and run (default)
 ./qemu.sh
