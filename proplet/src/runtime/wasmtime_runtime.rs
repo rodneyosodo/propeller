@@ -352,6 +352,8 @@ async fn custom_tls_send_request_handler(
         (sender, worker)
     };
 
+    preserve_host_header(&mut request);
+
     *request.uri_mut() = hyper::Uri::builder()
         .path_and_query(
             request
@@ -374,6 +376,18 @@ async fn custom_tls_send_request_handler(
         worker: Some(worker),
         between_bytes_timeout,
     })
+}
+
+fn preserve_host_header(request: &mut hyper::Request<HyperOutgoingBody>) {
+    if !request.headers().contains_key(hyper::http::header::HOST) {
+        if let Some(authority) = request.uri().authority().cloned() {
+            if let Ok(host_value) = hyper::http::HeaderValue::from_str(authority.as_str()) {
+                request
+                    .headers_mut()
+                    .insert(hyper::http::header::HOST, host_value);
+            }
+        }
+    }
 }
 
 fn dns_error(
@@ -1453,6 +1467,78 @@ mod tests {
         let empty_wasm = vec![];
         let result = Module::from_binary(&runtime.engine, &empty_wasm);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_preserve_host_header_adds_host_from_authority() {
+        let request = hyper::Request::builder()
+            .uri("https://example.local/path")
+            .body(HyperOutgoingBody::default())
+            .unwrap();
+        let mut request = request;
+        assert!(!request.headers().contains_key(hyper::http::header::HOST));
+
+        preserve_host_header(&mut request);
+
+        assert_eq!(
+            request
+                .headers()
+                .get(hyper::http::header::HOST)
+                .and_then(|v| v.to_str().ok()),
+            Some("example.local")
+        );
+    }
+
+    #[test]
+    fn test_preserve_host_header_does_not_override_existing() {
+        let request = hyper::Request::builder()
+            .uri("https://example.local/path")
+            .header(hyper::http::header::HOST, "custom-host")
+            .body(HyperOutgoingBody::default())
+            .unwrap();
+        let mut request = request;
+
+        preserve_host_header(&mut request);
+
+        assert_eq!(
+            request
+                .headers()
+                .get(hyper::http::header::HOST)
+                .and_then(|v| v.to_str().ok()),
+            Some("custom-host")
+        );
+    }
+
+    #[test]
+    fn test_preserve_host_header_keeps_port_in_authority() {
+        let request = hyper::Request::builder()
+            .uri("https://example.local:8443/path")
+            .body(HyperOutgoingBody::default())
+            .unwrap();
+        let mut request = request;
+
+        preserve_host_header(&mut request);
+
+        assert_eq!(
+            request
+                .headers()
+                .get(hyper::http::header::HOST)
+                .and_then(|v| v.to_str().ok()),
+            Some("example.local:8443")
+        );
+    }
+
+    #[test]
+    fn test_preserve_host_header_skips_request_without_authority() {
+        let request = hyper::Request::builder()
+            .uri("/path")
+            .body(HyperOutgoingBody::default())
+            .unwrap();
+        let mut request = request;
+
+        preserve_host_header(&mut request);
+
+        assert!(!request.headers().contains_key(hyper::http::header::HOST));
     }
 
     #[tokio::test]
