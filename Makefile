@@ -13,7 +13,7 @@ DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 DOCKERS_RUST = $(addprefix docker_,$(RUST_SERVICES))
 DOCKERS_RUST_DEV = $(addprefix docker_dev_,$(RUST_SERVICES))
 DOCKER_IMAGE_NAME_PREFIX ?= ghcr.io/absmach/propeller
-WASMTIME_VERSION ?= 44.0.0
+WASMTIME_VERSION ?= 47.0.2
 
 define compile_service
 	CGO_ENABLED=$(CGO_ENABLED) GOOS=$(GOOS) GOARCH=$(GOARCH) \

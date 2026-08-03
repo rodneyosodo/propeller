@@ -4,7 +4,7 @@ go 1.26.3
 
 require (
 	github.com/0x6flab/namegenerator v1.4.0
-	github.com/bytecodealliance/wasmtime-go/v44 v44.0.0
+	github.com/bytecodealliance/wasmtime-go/v47 v47.0.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/charmbracelet/huh v1.0.0
 	github.com/dgraph-io/badger/v4 v4.9.5
