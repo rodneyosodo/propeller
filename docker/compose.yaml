@@ -36,6 +36,7 @@ services:
 
   atom:
     image: ghcr.io/absmach/atom:${ATOM_IMAGE_TAG}
+    pull_policy: always
     container_name: propeller-atom
     restart: on-failure
     depends_on:
@@ -69,6 +70,7 @@ services:
 
   atom-ui:
     image: ghcr.io/absmach/atom-ui:${ATOM_UI_IMAGE_TAG:-latest}
+    pull_policy: always
     container_name: propeller-atom-ui
     restart: on-failure
     depends_on:
@@ -82,6 +84,7 @@ services:
 
   fluxmq-node1:
     image: ghcr.io/absmach/fluxmq:${FLUXMQ_IMAGE_TAG}
+    pull_policy: always
     container_name: propeller-fluxmq-node1
     user: "0:0"
     command: ["-config", "/etc/fluxmq/config.yaml"]
@@ -100,6 +103,7 @@ services:
 
   fluxmq-auth:
     image: ghcr.io/absmach/magistrala/fluxmq:${MG_RELEASE_TAG}
+    pull_policy: always
     container_name: propeller-fluxmq-auth
     restart: on-failure
     depends_on:

@@ -11,6 +11,7 @@ networks:
 services:
   manager:
     image: ghcr.io/absmach/propeller/manager:${PROP_RELEASE_TAG}
+    pull_policy: always
     container_name: propeller-manager
     restart: on-failure
     healthcheck:
@@ -89,6 +90,7 @@ services:
   #   3. PROPLET_EXTERNAL_WASM_RUNTIME=wasmtime
   proplet:
     image: ${PROPLET_IMAGE}:${PROPLET_IMAGE_TAG}
+    pull_policy: always
     container_name: propeller-proplet
     restart: on-failure
     healthcheck:
@@ -174,6 +176,7 @@ services:
 
   proxy:
     image: ghcr.io/absmach/propeller/proxy:${PROP_RELEASE_TAG}
+    pull_policy: always
     container_name: propeller-proxy
     restart: on-failure
     healthcheck:
