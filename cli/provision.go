@@ -3,7 +3,6 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -267,8 +266,8 @@ channel_id = "%s"`,
 		)
 		configContent.WriteString("\n")
 
-		if err := os.WriteFile(fileName, []byte(configContent.String()), filePermission); err != nil {
-			logErrorCmd(*cmd, fmt.Errorf("failed to create %s file: %w", fileName, err))
+		if err := writeConfigFile(fileName, []byte(configContent.String())); err != nil {
+			logErrorCmd(*cmd, fmt.Errorf("%w: %s", errFailedToWriteConfig, err.Error()))
 
 			return
 		}
