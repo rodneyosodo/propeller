@@ -135,8 +135,8 @@ channel_id = "%s"
 		}
 		content += newSection.String()
 
-		if err := os.WriteFile(fileName, []byte(content), filePermission); err != nil {
-			logErrorCmd(*cmd, fmt.Errorf("failed to write %s: %w", fileName, err))
+		if err := writeConfigFile(fileName, []byte(content)); err != nil {
+			logErrorCmd(*cmd, fmt.Errorf("%w: %s", errFailedToWriteConfig, err.Error()))
 
 			return
 		}
