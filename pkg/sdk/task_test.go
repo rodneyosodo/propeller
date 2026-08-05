@@ -1,6 +1,7 @@
 package sdk_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 
@@ -90,5 +91,30 @@ func TestTaskJSONFieldNames(t *testing.T) {
 	}
 	if task.Env["KEY"] != "VAL" {
 		t.Errorf("unexpected env: %v", task.Env)
+	}
+}
+
+func TestTaskLatentJSONRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	data, err := json.Marshal(sdk.Task{Name: "greet", Latent: true})
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var latent sdk.Task
+	if err := json.Unmarshal(data, &latent); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if !latent.Latent {
+		t.Errorf("expected latent to survive the round trip, got %s", data)
+	}
+
+	data, err = json.Marshal(sdk.Task{Name: "greet"})
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+	if bytes.Contains(data, []byte("latent")) {
+		t.Errorf("latent should be omitted when false, got %s", data)
 	}
 }

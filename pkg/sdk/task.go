@@ -28,6 +28,7 @@ type Task struct {
 	File            string         `json:"file,omitempty"`
 	Inputs          []string       `json:"inputs,omitempty"`
 	Daemon          bool           `json:"daemon,omitempty"`
+	Latent          bool           `json:"latent,omitempty"`
 	Encrypted       bool           `json:"encrypted,omitempty"`
 	KBSResourcePath string         `json:"kbs_resource_path,omitempty"`
 	PropletID       string         `json:"proplet_id,omitempty"`
