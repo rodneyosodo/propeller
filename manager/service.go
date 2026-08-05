@@ -40,6 +40,7 @@ const (
 	ExecutionModeConfigurable = "configurable"
 	EnvJobExecutionMode       = "JOB_EXECUTION_MODE"
 	shutdownTaskStopWait      = 200 * time.Millisecond
+	keyBroadcast              = "broadcast"
 )
 
 var (
@@ -801,8 +802,8 @@ func (svc *service) StopTask(ctx context.Context, taskID string) error {
 	}
 
 	stopPayload := map[string]any{
-		"id":        t.ID,
-		"broadcast": t.Broadcast,
+		"id":         t.ID,
+		keyBroadcast: t.Broadcast,
 	}
 
 	if t.Broadcast {
@@ -1987,7 +1988,7 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 func (svc *service) publishStop(ctx context.Context, t task.Task, propletID string) error {
 	stopPayload := map[string]any{
 		"id":         t.ID,
-		"broadcast":  t.Broadcast,
+		keyBroadcast: t.Broadcast,
 		"proplet_id": propletID,
 	}
 	topic := svc.baseTopic + "/control/manager/stop"
@@ -2011,7 +2012,7 @@ func (svc *service) invocationProplet(ctx context.Context, t task.Task) (string,
 func (svc *service) publishInvoke(ctx context.Context, taskID, propletID, invocationID string, inputs []string, env map[string]string) error {
 	payload := map[string]any{
 		"id":            taskID,
-		"broadcast":     false,
+		keyBroadcast:    false,
 		"proplet_id":    propletID,
 		"invocation_id": invocationID,
 		"inputs":        inputs,
