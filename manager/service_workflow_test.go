@@ -6,6 +6,7 @@ package manager_test
 import (
 	"context"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -319,7 +320,7 @@ func TestInvokeTask(t *testing.T) {
 		created, err := svc.CreateTask(context.Background(), task.Task{Name: "standard"})
 		require.NoError(t, err)
 
-		_, err = svc.InvokeTask(context.Background(), created.ID, []string{"1"})
+		_, err = svc.InvokeTask(context.Background(), created.ID, []string{"1"}, nil)
 		require.Error(t, err)
 	})
 
@@ -342,7 +343,7 @@ func TestInvokeTask(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		defer cancel()
 
-		_, err = svc.InvokeTask(ctx, created.ID, []string{"\"world\""})
+		_, err = svc.InvokeTask(ctx, created.ID, []string{"\"world\""}, nil)
 		require.ErrorIs(t, err, context.DeadlineExceeded)
 	})
 
@@ -356,14 +357,113 @@ func TestInvokeTask(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		_, err = svc.InvokeTask(context.Background(), created.ID, []string{"\"world\""})
+		_, err = svc.InvokeTask(context.Background(), created.ID, []string{"\"world\""}, nil)
 		require.Error(t, err)
 	})
 
 	t.Run("invoke unknown task fails", func(t *testing.T) {
 		t.Parallel()
 		svc := newService(t)
-		_, err := svc.InvokeTask(context.Background(), "nonexistent", nil)
+		_, err := svc.InvokeTask(context.Background(), "nonexistent", nil, nil)
 		require.Error(t, err)
+	})
+
+	t.Run("invoke forwards inputs and env to the proplet", func(t *testing.T) {
+		t.Parallel()
+
+		repos, err := storage.NewRepositories(storage.Config{Type: "memory"})
+		require.NoError(t, err)
+		require.NoError(t, repos.Proplets.Create(context.Background(), proplet.Proplet{
+			ID:           uuid.NewString(),
+			Name:         uuid.NewString(),
+			AliveHistory: []time.Time{time.Now()},
+		}))
+
+		var invokePayload map[string]any
+		pubsub := mqttmocks.NewMockPubSub(t)
+		pubsub.On("Publish", mock.Anything, mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				topic, _ := args.Get(1).(string)
+				if !strings.HasSuffix(topic, "/control/manager/invoke") {
+					return
+				}
+				invokePayload, _ = args.Get(2).(map[string]any)
+			}).
+			Return(nil).Maybe()
+		pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+		pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()
+		pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
+
+		svc, _, _ := manager.NewService(
+			repos, scheduler.NewRoundRobin(), pubsub,
+			"test-tenant", "test-channel", "", slog.Default(), nil,
+		)
+
+		created, err := svc.CreateTask(context.Background(), task.Task{
+			Name:      "latent-fn",
+			Latent:    true,
+			Broadcast: true,
+		})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+
+		_, err = svc.InvokeTask(ctx, created.ID, []string{"\"world\""}, map[string]string{"GREETING": "hola"})
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+
+		require.NotNil(t, invokePayload, "no invoke message was published")
+		assert.Equal(t, created.ID, invokePayload["id"])
+		assert.Equal(t, []string{"\"world\""}, invokePayload["inputs"])
+		assert.Equal(t, map[string]string{"GREETING": "hola"}, invokePayload["env"])
+		assert.NotEmpty(t, invokePayload["invocation_id"])
+	})
+
+	t.Run("invoke omits env when none is supplied", func(t *testing.T) {
+		t.Parallel()
+
+		repos, err := storage.NewRepositories(storage.Config{Type: "memory"})
+		require.NoError(t, err)
+		require.NoError(t, repos.Proplets.Create(context.Background(), proplet.Proplet{
+			ID:           uuid.NewString(),
+			Name:         uuid.NewString(),
+			AliveHistory: []time.Time{time.Now()},
+		}))
+
+		var invokePayload map[string]any
+		pubsub := mqttmocks.NewMockPubSub(t)
+		pubsub.On("Publish", mock.Anything, mock.Anything, mock.Anything).
+			Run(func(args mock.Arguments) {
+				topic, _ := args.Get(1).(string)
+				if !strings.HasSuffix(topic, "/control/manager/invoke") {
+					return
+				}
+				invokePayload, _ = args.Get(2).(map[string]any)
+			}).
+			Return(nil).Maybe()
+		pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
+		pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()
+		pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
+
+		svc, _, _ := manager.NewService(
+			repos, scheduler.NewRoundRobin(), pubsub,
+			"test-tenant", "test-channel", "", slog.Default(), nil,
+		)
+
+		created, err := svc.CreateTask(context.Background(), task.Task{
+			Name:      "latent-fn",
+			Latent:    true,
+			Broadcast: true,
+		})
+		require.NoError(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+
+		_, err = svc.InvokeTask(ctx, created.ID, nil, nil)
+		require.ErrorIs(t, err, context.DeadlineExceeded)
+
+		require.NotNil(t, invokePayload, "no invoke message was published")
+		assert.NotContains(t, invokePayload, "env")
 	})
 }

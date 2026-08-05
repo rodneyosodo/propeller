@@ -149,13 +149,13 @@ func (tm *tracing) StopTask(ctx context.Context, id string) (err error) {
 	return tm.svc.StopTask(ctx, id)
 }
 
-func (tm *tracing) InvokeTask(ctx context.Context, id string, inputs []string) (string, error) {
+func (tm *tracing) InvokeTask(ctx context.Context, id string, inputs []string, env map[string]string) (string, error) {
 	ctx, span := tm.tracer.Start(ctx, "invoke-task", trace.WithAttributes(
 		attribute.String("id", id),
 	))
 	defer span.End()
 
-	return tm.svc.InvokeTask(ctx, id, inputs)
+	return tm.svc.InvokeTask(ctx, id, inputs, env)
 }
 
 func (tm *tracing) GetTaskMetrics(ctx context.Context, taskID string, offset, limit uint64) (resp manager.TaskMetricsPage, err error) {

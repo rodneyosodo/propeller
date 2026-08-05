@@ -122,6 +122,7 @@ func (e *entityReq) validate() error {
 type invokeReq struct {
 	id     string
 	inputs []string
+	env    map[string]string
 }
 
 func (r *invokeReq) validate() error {

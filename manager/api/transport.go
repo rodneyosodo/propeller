@@ -323,12 +323,14 @@ func decodeInvokeTaskReq(_ context.Context, r *http.Request) (any, error) {
 	}
 
 	var body struct {
-		Inputs task.FlexStrings `json:"inputs"`
+		Inputs task.FlexStrings  `json:"inputs"`
+		Env    map[string]string `json:"env"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return nil, errors.Join(err, api.ErrValidation)
 	}
 	req.inputs = []string(body.Inputs)
+	req.env = body.Env
 
 	return req, nil
 }

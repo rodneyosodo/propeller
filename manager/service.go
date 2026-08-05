@@ -841,7 +841,7 @@ func (svc *service) StopTask(ctx context.Context, taskID string) error {
 	return nil
 }
 
-func (svc *service) InvokeTask(ctx context.Context, taskID string, inputs []string) (string, error) {
+func (svc *service) InvokeTask(ctx context.Context, taskID string, inputs []string, env map[string]string) (string, error) {
 	if svc.shuttingDown.Load() {
 		return "", errShuttingDown
 	}
@@ -871,7 +871,7 @@ func (svc *service) InvokeTask(ctx context.Context, taskID string, inputs []stri
 		svc.pendingInvokesMu.Unlock()
 	}()
 
-	if err := svc.publishInvoke(ctx, taskID, propletID, invocationID, inputs); err != nil {
+	if err := svc.publishInvoke(ctx, taskID, propletID, invocationID, inputs, env); err != nil {
 		return "", err
 	}
 
@@ -2008,13 +2008,16 @@ func (svc *service) invocationProplet(ctx context.Context, t task.Task) (string,
 	return svc.taskPropletRepo.Get(ctx, t.ID)
 }
 
-func (svc *service) publishInvoke(ctx context.Context, taskID, propletID, invocationID string, inputs []string) error {
+func (svc *service) publishInvoke(ctx context.Context, taskID, propletID, invocationID string, inputs []string, env map[string]string) error {
 	payload := map[string]any{
 		"id":            taskID,
 		"broadcast":     false,
 		"proplet_id":    propletID,
 		"invocation_id": invocationID,
 		"inputs":        inputs,
+	}
+	if len(env) > 0 {
+		payload["env"] = env
 	}
 	topic := svc.baseTopic + "/control/manager/invoke"
 

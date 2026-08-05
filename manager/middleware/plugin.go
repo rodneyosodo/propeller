@@ -84,7 +84,7 @@ func (pm *pluginMiddleware) StartTask(ctx context.Context, taskID string) error 
 	return nil
 }
 
-func (pm *pluginMiddleware) InvokeTask(ctx context.Context, taskID string, inputs []string) (string, error) {
+func (pm *pluginMiddleware) InvokeTask(ctx context.Context, taskID string, inputs []string, env map[string]string) (string, error) {
 	t, err := pm.GetTask(ctx, taskID)
 	if err != nil {
 		return "", err
@@ -94,7 +94,7 @@ func (pm *pluginMiddleware) InvokeTask(ctx context.Context, taskID string, input
 		return "", err
 	}
 
-	return pm.Service.InvokeTask(ctx, taskID, inputs)
+	return pm.Service.InvokeTask(ctx, taskID, inputs, env)
 }
 
 func (pm *pluginMiddleware) StopTask(ctx context.Context, taskID string) error {

@@ -194,12 +194,20 @@ func (sdk *propSDK) StopTask(id string) error {
 	return nil
 }
 
-func (sdk *propSDK) InvokeTask(id string, inputs []string) (string, error) {
+func (sdk *propSDK) InvokeTask(id string, inputs []string, env map[string]string) (string, error) {
 	reqURL := fmt.Sprintf("%s/tasks/%s/invoke", sdk.managerURL, id)
 
 	var data []byte
-	if len(inputs) > 0 {
-		body, err := json.Marshal(map[string]any{"inputs": inputs})
+	if len(inputs) > 0 || len(env) > 0 {
+		payload := make(map[string]any)
+		if len(inputs) > 0 {
+			payload["inputs"] = inputs
+		}
+		if len(env) > 0 {
+			payload["env"] = env
+		}
+
+		body, err := json.Marshal(payload)
 		if err != nil {
 			return "", err
 		}

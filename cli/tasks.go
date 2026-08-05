@@ -336,10 +336,18 @@ func newTaskStopCmd() *cobra.Command {
 }
 
 func newTaskInvokeCmd() *cobra.Command {
-	return &cobra.Command{
+	var env []string
+	cmd := &cobra.Command{
 		Use:   "invoke <id> [inputs...]",
 		Short: "Invoke a latent task",
-		Long:  `Invoke a latent task with optional inputs.`,
+		Long: `Invoke a latent task with optional inputs.
+
+Examples:
+  # Invoke with positional inputs
+  propeller-cli tasks invoke <id> '"world"'
+
+  # Override environment variables for this invocation only
+  propeller-cli tasks invoke <id> '"world"' --env GREETING=hola`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) < 1 {
 				logUsageCmd(*cmd, cmd.Use)
@@ -347,7 +355,7 @@ func newTaskInvokeCmd() *cobra.Command {
 				return
 			}
 
-			results, err := psdk.InvokeTask(args[0], args[1:])
+			results, err := psdk.InvokeTask(args[0], args[1:], toMap(env))
 			if err != nil {
 				logErrorCmd(*cmd, err)
 
@@ -356,6 +364,9 @@ func newTaskInvokeCmd() *cobra.Command {
 			logJSONCmd(*cmd, results)
 		},
 	}
+	cmd.Flags().StringSliceVar(&env, "env", nil, "Environment variables KEY=VALUE applied to this invocation only (comma-separated or repeatable)")
+
+	return cmd
 }
 
 func newTaskMetricsCmd() *cobra.Command {
