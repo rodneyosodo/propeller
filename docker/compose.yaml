@@ -45,6 +45,8 @@ services:
     ports:
       - "${ATOM_HTTP_PORT}:${ATOM_HTTP_PORT}"
       - "${ATOM_GRPC_PORT}:${ATOM_GRPC_PORT}"
+    volumes:
+      - ./atom/atom-bootstrap.yaml:/etc/atom/atom-bootstrap.yaml:ro
     environment:
       DATABASE_URL: "postgres://${ATOM_DB_USER}:${ATOM_DB_PASS}@atom-db:5432/${ATOM_DB_NAME}"
       LISTEN_ADDR: "0.0.0.0:${ATOM_HTTP_PORT}"
@@ -65,6 +67,7 @@ services:
       JWT_EXPIRY_SECS: ${ATOM_JWT_EXPIRY_SECS}
       ATOM_LOGIN_FAILURE_LIMIT: ${ATOM_LOGIN_FAILURE_LIMIT:-1000}
       ATOM_LOGIN_FAILURE_WINDOW_SECS: ${ATOM_LOGIN_FAILURE_WINDOW_SECS:-30}
+      ATOM_BOOTSTRAP_FILE: ${ATOM_BOOTSTRAP_FILE:-/etc/atom/atom-bootstrap.yaml}
     networks:
       - propeller-base-net
 
