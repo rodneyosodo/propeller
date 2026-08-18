@@ -1,13 +1,16 @@
-package manager
+package manager_test
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/absmach/propeller/manager"
+	"github.com/absmach/propeller/pkg/mqtt"
 	"github.com/absmach/propeller/pkg/mqtt/mocks"
 	"github.com/absmach/propeller/pkg/proplet"
 	"github.com/absmach/propeller/pkg/scheduler"
@@ -36,10 +39,11 @@ func TestInvokeBroadcastRetries(t *testing.T) {
 		staleID := uuid.NewString()
 		healthyID := uuid.NewString()
 
-		svc, _, _ := broadcastInvokeService(t, func(propletID string) (string, string) {
+		svc, _ := broadcastInvokeService(t, func(propletID string) (string, string) {
 			if propletID == staleID {
 				return "", notPrecompiled
 			}
+
 			return "hello from " + healthyID, ""
 		}, staleID, healthyID)
 
@@ -64,7 +68,7 @@ func TestInvokeBroadcastRetries(t *testing.T) {
 		staleA := uuid.NewString()
 		staleB := uuid.NewString()
 
-		svc, _, redeploys := broadcastInvokeService(t, func(string) (string, string) {
+		svc, redeploys := broadcastInvokeService(t, func(string) (string, string) {
 			return "", notPrecompiled
 		}, staleA, staleB)
 
@@ -86,8 +90,12 @@ func TestInvokeBroadcastRetries(t *testing.T) {
 		require.Len(t, got, 2)
 		ids := map[string]bool{}
 		for _, r := range got {
-			require.False(t, r["broadcast"].(bool), "re-deploy must be targeted, not broadcast")
-			pid := r["proplet_id"].(string)
+			broadcast, ok := r["broadcast"].(bool)
+			require.True(t, ok)
+			require.False(t, broadcast, "re-deploy must be targeted, not broadcast")
+
+			pid, ok := r["proplet_id"].(string)
+			require.True(t, ok)
 			require.NotEmpty(t, pid)
 			ids[pid] = true
 		}
@@ -100,7 +108,7 @@ func broadcastInvokeService(
 	t *testing.T,
 	respond func(propletID string) (results, errMsg string),
 	propletIDs ...string,
-) (*service, *mocks.MockPubSub, func() []map[string]any) {
+) (service manager.Service, redeploys func() []map[string]any) {
 	t.Helper()
 
 	repos, err := storage.NewRepositories(storage.Config{Type: "memory"})
@@ -115,14 +123,29 @@ func broadcastInvokeService(
 
 	pubsub := mocks.NewMockPubSub(t)
 
-	svc, _, _ := NewService(
+	var mu sync.Mutex
+	var redeployPayloads []map[string]any
+	var invokeHandler mqtt.Handler
+
+	pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).
+		Run(func(args mock.Arguments) {
+			topic, _ := args.Get(1).(string)
+			handler, _ := args.Get(2).(mqtt.Handler)
+			if strings.HasSuffix(topic, "/#") {
+				mu.Lock()
+				invokeHandler = handler
+				mu.Unlock()
+			}
+		}).
+		Return(nil).Maybe()
+	pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()
+	pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
+
+	svc, _, _ := manager.NewService(
 		repos, scheduler.NewRoundRobin(), pubsub,
 		testTenantID, testChannelID, "", slog.Default(), nil,
 	)
-	s := svc.(*service)
-
-	var mu sync.Mutex
-	var redeployPayloads []map[string]any
+	require.NoError(t, svc.Subscribe(context.Background()))
 
 	pubsub.On("Publish", mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
@@ -143,9 +166,23 @@ func broadcastInvokeService(
 				if results != "" {
 					msg["results"] = results
 				}
-				_ = s.handle(context.Background())(testInvokeRes, msg)
+				mu.Lock()
+				handler := invokeHandler
+				mu.Unlock()
+				_ = handler(testInvokeRes, msg)
 			case strings.HasSuffix(topic, "/control/manager/start"):
-				payload, _ := args.Get(2).(startPayload)
+				raw, err := json.Marshal(args.Get(2))
+				if err != nil {
+					return
+				}
+				var payload struct {
+					Broadcast bool   `json:"broadcast"`
+					Latent    bool   `json:"latent"`
+					PropletID string `json:"proplet_id"`
+				}
+				if err := json.Unmarshal(raw, &payload); err != nil {
+					return
+				}
 				if !payload.Latent || payload.Broadcast {
 					return
 				}
@@ -158,15 +195,13 @@ func broadcastInvokeService(
 			}
 		}).
 		Return(nil).Maybe()
-	pubsub.On("Subscribe", mock.Anything, mock.Anything, mock.Anything).Return(nil).Maybe()
-	pubsub.On("Unsubscribe", mock.Anything, mock.Anything).Return(nil).Maybe()
-	pubsub.On("Disconnect", mock.Anything).Return(nil).Maybe()
 
-	return s, pubsub, func() []map[string]any {
+	return svc, func() []map[string]any {
 		mu.Lock()
 		defer mu.Unlock()
 		out := make([]map[string]any, len(redeployPayloads))
 		copy(out, redeployPayloads)
+
 		return out
 	}
 }
