@@ -44,6 +44,11 @@ etc, etc.
 endef
 all: clean_certs ca server_cert client_cert coap_dtls_certs
 
+$(CRT_LOCATION):
+	mkdir -p $@
+
+ca server_cert client_cert: | $(CRT_LOCATION)
+
 # CA name and key is "ca".
 ca:
 	openssl req -newkey rsa:2048 -x509 -nodes -sha512 -days 1095 \
