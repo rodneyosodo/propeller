@@ -272,6 +272,15 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE tasks DROP COLUMN IF EXISTS metadata`,
 				},
 			},
+			{
+				Id: "6_add_latent_column",
+				Up: []string{
+					`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS latent BOOLEAN NOT NULL DEFAULT FALSE`,
+				},
+				Down: []string{
+					`ALTER TABLE tasks DROP COLUMN IF EXISTS latent`,
+				},
+			},
 		},
 	}
 
