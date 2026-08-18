@@ -25,6 +25,7 @@ use wasm_wave;
 use wasmtime::component::ResourceTable;
 use wasmtime::*;
 use wasmtime_wasi::p2::bindings::Command;
+use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
 use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::http::types::Scheme;
@@ -46,6 +47,8 @@ fn is_proxy_component(bytes: &[u8]) -> bool {
         .windows(b"wasi:http/incoming-handler".len())
         .any(|w| w == b"wasi:http/incoming-handler")
 }
+
+const INVOCATION_OUTPUT_CAPACITY: usize = 1024 * 1024;
 
 fn find_available_port(start_port: u16) -> Result<(Socket, u16)> {
     let max_attempts = 100u16;
@@ -603,6 +606,27 @@ impl Runtime for WasmtimeRuntime {
         drop(cancellers);
 
         let mut tasks = self.tasks.lock().await;
+        // Latent tasks may have in-flight invocations running under the
+        // {id}-inv-* task keys. Cancelling the latent task must cancel those
+        // invocations as well, otherwise they keep executing and may still
+        // publish results after the stop.
+        if was_latent {
+            let invocation_prefix = format!("{}-inv-", id);
+            let invocations: Vec<String> = tasks
+                .keys()
+                .filter(|tid| tid.starts_with(&invocation_prefix))
+                .cloned()
+                .collect();
+            for tid in invocations {
+                if let Some(handle) = tasks.remove(&tid) {
+                    handle.abort();
+                    info!(
+                        "In-flight invocation {} aborted and removed from tasks",
+                        tid
+                    );
+                }
+            }
+        }
         if let Some(handle) = tasks.remove(&id) {
             handle.abort();
             info!("Task {} aborted and removed from tasks", id);
@@ -787,8 +811,14 @@ impl WasmtimeRuntime {
         config: StartConfig,
         component: component::Component,
     ) -> Result<Vec<u8>> {
+        let stdout_pipe = Arc::new(MemoryOutputPipe::new(INVOCATION_OUTPUT_CAPACITY));
+        let stderr_pipe = Arc::new(MemoryOutputPipe::new(INVOCATION_OUTPUT_CAPACITY));
+
         let mut wasi_builder = WasiCtxBuilder::new();
-        wasi_builder.inherit_stdio();
+        wasi_builder
+            .stdin(tokio::io::empty())
+            .stdout(stdout_pipe.clone())
+            .stderr(stderr_pipe.clone());
 
         for (key, value) in &config.env {
             wasi_builder.env(key, value);
@@ -836,6 +866,8 @@ impl WasmtimeRuntime {
         let task_id = config.id.clone();
         let task_id_for_cleanup = task_id.clone();
         let tasks = self.tasks.clone();
+        let stdout_for_result = stdout_pipe.clone();
+        let stderr_for_result = stderr_pipe.clone();
 
         let (result_tx, result_rx) = oneshot::channel();
 
@@ -863,7 +895,13 @@ impl WasmtimeRuntime {
                 match program_result {
                     Ok(()) => {
                         info!("Task {} completed successfully", task_id);
-                        Ok::<Vec<u8>, anyhow::Error>(Vec::new())
+                        let mut output = stdout_for_result.contents().to_vec();
+                        let stderr_bytes = stderr_for_result.contents();
+                        if !stderr_bytes.is_empty() {
+                            output.extend_from_slice(b"\n");
+                            output.extend_from_slice(&stderr_bytes);
+                        }
+                        Ok::<Vec<u8>, anyhow::Error>(output)
                     }
                     Err(()) => Err(anyhow::anyhow!(
                         "Component for task {} exited with error",

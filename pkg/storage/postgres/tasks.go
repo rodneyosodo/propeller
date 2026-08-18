@@ -45,16 +45,17 @@ type dbTask struct {
 	Kind              *string       `db:"kind"`
 	Mode              *string       `db:"mode"`
 	Broadcast         bool          `db:"broadcast"`
+	Latent            bool          `db:"latent"`
 	Metadata          []byte        `db:"metadata"`
 }
 
 const taskColumns = `id, name, state, image_url, file, cli_args, inputs, env, daemon, encrypted,
 	kbs_resource_path, proplet_id, results, error, monitoring_profile, start_time, finish_time,
-	created_at, updated_at, workflow_id, job_id, depends_on, run_if, kind, mode, broadcast, metadata`
+	created_at, updated_at, workflow_id, job_id, depends_on, run_if, kind, mode, broadcast, latent, metadata`
 
 func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 	query := `INSERT INTO tasks (` + taskColumns + `)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27)`
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28)`
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
 	if err != nil {
@@ -114,6 +115,7 @@ func (r *taskRepo) Create(ctx context.Context, t task.Task) (task.Task, error) {
 		nullString(string(t.Kind)),
 		nullString(string(t.Mode)),
 		t.Broadcast,
+		t.Latent,
 		metadata,
 	)
 	if err != nil {
@@ -145,7 +147,7 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 		env = $8, daemon = $9, encrypted = $10, kbs_resource_path = $11, proplet_id = $12,
 		results = $13, error = $14, monitoring_profile = $15, start_time = $16,
 		finish_time = $17, updated_at = $18, workflow_id = $19, job_id = $20,
-		depends_on = $21, run_if = $22, kind = $23, mode = $24, broadcast = $25, metadata = $26
+		depends_on = $21, run_if = $22, kind = $23, mode = $24, broadcast = $25, latent = $26, metadata = $27
 		WHERE id = $1`
 
 	cliArgs, err := jsonBytes(t.CLIArgs)
@@ -204,6 +206,7 @@ func (r *taskRepo) Update(ctx context.Context, t task.Task) error {
 		nullString(string(t.Kind)),
 		nullString(string(t.Mode)),
 		t.Broadcast,
+		t.Latent,
 		metadata,
 	)
 	if err != nil {
@@ -295,7 +298,7 @@ func (r *taskRepo) scanTasks(ctx context.Context, query string, args ...any) ([]
 			&dbt.Results, &dbt.Error, &dbt.MonitoringProfile,
 			&dbt.StartTime, &dbt.FinishTime, &dbt.CreatedAt, &dbt.UpdatedAt,
 			&dbt.WorkflowID, &dbt.JobID, &dbt.DependsOn, &dbt.RunIf,
-			&dbt.Kind, &dbt.Mode, &dbt.Broadcast, &dbt.Metadata,
+			&dbt.Kind, &dbt.Mode, &dbt.Broadcast, &dbt.Latent, &dbt.Metadata,
 		); err != nil {
 			return nil, fmt.Errorf("%w: %w", ErrDBScan, err)
 		}
@@ -379,6 +382,7 @@ func (r *taskRepo) toTask(dbt dbTask) (task.Task, error) {
 		t.Mode = task.Mode(*dbt.Mode)
 	}
 	t.Broadcast = dbt.Broadcast
+	t.Latent = dbt.Latent
 	if dbt.Metadata != nil {
 		if err := jsonUnmarshal(dbt.Metadata, &t.Metadata); err != nil {
 			return task.Task{}, err

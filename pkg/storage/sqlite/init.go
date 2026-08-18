@@ -263,6 +263,15 @@ func (db *Database) Migrate() error {
 					`ALTER TABLE tasks DROP COLUMN metadata`,
 				},
 			},
+			{
+				Id: "6_add_latent_column",
+				Up: []string{
+					`ALTER TABLE tasks ADD COLUMN latent INTEGER NOT NULL DEFAULT 0`,
+				},
+				Down: []string{
+					`ALTER TABLE tasks DROP COLUMN latent`,
+				},
+			},
 		},
 	}
 

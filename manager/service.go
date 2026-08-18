@@ -41,6 +41,7 @@ const (
 	EnvJobExecutionMode       = "JOB_EXECUTION_MODE"
 	shutdownTaskStopWait      = 200 * time.Millisecond
 	keyBroadcast              = "broadcast"
+	errNotPrecompiledSubstr   = "has not been precompiled"
 )
 
 var (
@@ -856,41 +857,16 @@ func (svc *service) InvokeTask(ctx context.Context, taskID string, inputs []stri
 		return "", fmt.Errorf("task %s is not a latent task and cannot be invoked", taskID)
 	}
 
-	propletID, err := svc.invocationProplet(ctx, t)
-	if err != nil {
-		return "", err
-	}
-
-	invocationID := uuid.NewString()
-	resultCh := make(chan invokeResult, 1)
-	svc.pendingInvokesMu.Lock()
-	svc.pendingInvokes[invocationID] = resultCh
-	svc.pendingInvokesMu.Unlock()
-	defer func() {
-		svc.pendingInvokesMu.Lock()
-		delete(svc.pendingInvokes, invocationID)
-		svc.pendingInvokesMu.Unlock()
-	}()
-
-	if err := svc.publishInvoke(ctx, taskID, propletID, invocationID, inputs, env); err != nil {
-		return "", err
-	}
-
-	timer := time.NewTimer(invokeTimeout)
-	defer timer.Stop()
-
-	select {
-	case res := <-resultCh:
-		if res.err != "" {
-			return "", errors.New(res.err)
+	if !t.Broadcast {
+		propletID, err := svc.invocationProplet(ctx, t)
+		if err != nil {
+			return "", err
 		}
 
-		return res.results, nil
-	case <-timer.C:
-		return "", fmt.Errorf("invocation of task %s timed out after %s", taskID, invokeTimeout)
-	case <-ctx.Done():
-		return "", ctx.Err()
+		return svc.invokeOnProplet(ctx, t, propletID, inputs, env)
 	}
+
+	return svc.invokeBroadcast(ctx, t, inputs, env)
 }
 
 func (svc *service) StartJob(ctx context.Context, jobID string) error {
@@ -1149,6 +1125,104 @@ func (svc *service) RecoverInterruptedTasks(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (svc *service) invokeBroadcast(ctx context.Context, t task.Task, inputs []string, env map[string]string) (string, error) {
+	proplets, err := svc.listAllActiveProplets(ctx)
+	if err != nil {
+		return "", err
+	}
+
+	first, err := svc.scheduler.SelectProplet(t, proplets)
+	if err != nil {
+		return "", err
+	}
+
+	candidates := orderedProplets(proplets, first.ID)
+
+	var lastErr error
+	for i := range candidates {
+		results, err := svc.invokeOnProplet(ctx, t, candidates[i].ID, inputs, env)
+		if err == nil {
+			return results, nil
+		}
+		if !isNotPrecompiledError(err) {
+			return "", err
+		}
+
+		lastErr = err
+		if i == len(candidates)-1 {
+			svc.recoverLatentDeployment(ctx, t, candidates)
+		}
+	}
+
+	return "", lastErr
+}
+
+func (svc *service) invokeOnProplet(ctx context.Context, t task.Task, propletID string, inputs []string, env map[string]string) (string, error) {
+	invocationID := uuid.NewString()
+	resultCh := make(chan invokeResult, 1)
+	svc.pendingInvokesMu.Lock()
+	svc.pendingInvokes[invocationID] = resultCh
+	svc.pendingInvokesMu.Unlock()
+	defer func() {
+		svc.pendingInvokesMu.Lock()
+		delete(svc.pendingInvokes, invocationID)
+		svc.pendingInvokesMu.Unlock()
+	}()
+
+	if err := svc.publishInvoke(ctx, t.ID, propletID, invocationID, inputs, env); err != nil {
+		return "", err
+	}
+
+	timer := time.NewTimer(invokeTimeout)
+	defer timer.Stop()
+
+	select {
+	case res := <-resultCh:
+		if res.err != "" {
+			return "", errors.New(res.err)
+		}
+
+		return res.results, nil
+	case <-timer.C:
+		return "", fmt.Errorf("invocation of task %s timed out after %s", t.ID, invokeTimeout)
+	case <-ctx.Done():
+		return "", ctx.Err()
+	}
+}
+
+func (svc *service) recoverLatentDeployment(ctx context.Context, t task.Task, proplets []proplet.Proplet) {
+	for i := range proplets {
+		if err := svc.redeployLatent(ctx, t, proplets[i].ID); err != nil {
+			svc.logger.WarnContext(ctx, "failed to re-deploy latent task", "task_id", t.ID, "proplet_id", proplets[i].ID, "error", err)
+		}
+	}
+}
+
+func (svc *service) redeployLatent(ctx context.Context, t task.Task, propletID string) error {
+	payload := startPayload{
+		ID:                t.ID,
+		Name:              t.Name,
+		State:             t.State,
+		ImageURL:          t.ImageURL,
+		File:              t.File,
+		Inputs:            t.Inputs,
+		CLIArgs:           t.CLIArgs,
+		Broadcast:         false,
+		Daemon:            false,
+		Latent:            true,
+		Env:               t.Env,
+		Encrypted:         t.Encrypted,
+		KBSResourcePath:   t.KBSResourcePath,
+		MonitoringProfile: t.MonitoringProfile,
+		PropletID:         propletID,
+		HalStoragePath:    t.HalStoragePath,
+	}
+
+	topic := svc.baseTopic + "/control/manager/start"
+
+	return svc.pubsub.Publish(ctx, topic, payload)
 }
 
 func (svc *service) updateCronTask(ctx context.Context, t task.Task) {
@@ -1469,8 +1543,21 @@ func (svc *service) updateInvokeResultsHandler(_ context.Context, msg map[string
 		return nil
 	}
 
-	results, _ := msg["results"].(string)
-	errMsg, _ := msg["error"].(string)
+	results, ok := msg["results"].(string)
+	if !ok {
+		if _, present := msg["results"]; present {
+			return errors.New("invalid results type in invoke result message")
+		}
+	}
+
+	errMsg := ""
+	if rawErr, present := msg["error"]; present && rawErr != nil {
+		var ok bool
+		errMsg, ok = rawErr.(string)
+		if !ok {
+			return errors.New("invalid error type in invoke result message")
+		}
+	}
 
 	svc.pendingInvokesMu.Lock()
 	ch, waiting := svc.pendingInvokes[invocationID]
@@ -2023,6 +2110,26 @@ func (svc *service) publishInvoke(ctx context.Context, taskID, propletID, invoca
 	topic := svc.baseTopic + "/control/manager/invoke"
 
 	return svc.pubsub.Publish(ctx, topic, payload)
+}
+
+func isNotPrecompiledError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), errNotPrecompiledSubstr)
+}
+
+func orderedProplets(proplets []proplet.Proplet, firstID string) []proplet.Proplet {
+	idx := -1
+	for i := range proplets {
+		if proplets[i].ID == firstID {
+			idx = i
+
+			break
+		}
+	}
+	if idx <= 0 {
+		return proplets
+	}
+
+	return append(slices.Clone(proplets[idx:]), proplets[:idx]...)
 }
 
 func (svc *service) runOnBeforePropletSelect(ctx context.Context, t task.Task) (plugin.PropletSelectResponse, error) {
