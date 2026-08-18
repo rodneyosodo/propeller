@@ -28,6 +28,7 @@ type Task struct {
 	File            string         `json:"file,omitempty"`
 	Inputs          []string       `json:"inputs,omitempty"`
 	Daemon          bool           `json:"daemon,omitempty"`
+	Latent          bool           `json:"latent,omitempty"`
 	Encrypted       bool           `json:"encrypted,omitempty"`
 	KBSResourcePath string         `json:"kbs_resource_path,omitempty"`
 	PropletID       string         `json:"proplet_id,omitempty"`
@@ -191,6 +192,41 @@ func (sdk *propSDK) StopTask(id string) error {
 	}
 
 	return nil
+}
+
+func (sdk *propSDK) InvokeTask(id string, inputs []string, env map[string]string) (string, error) {
+	reqURL := fmt.Sprintf("%s/tasks/%s/invoke", sdk.managerURL, id)
+
+	var data []byte
+	if len(inputs) > 0 || len(env) > 0 {
+		payload := make(map[string]any)
+		if len(inputs) > 0 {
+			payload["inputs"] = inputs
+		}
+		if len(env) > 0 {
+			payload["env"] = env
+		}
+
+		body, err := json.Marshal(payload)
+		if err != nil {
+			return "", err
+		}
+		data = body
+	}
+
+	body, err := sdk.processRequest(http.MethodPost, reqURL, data, http.StatusOK)
+	if err != nil {
+		return "", err
+	}
+
+	var resp struct {
+		Results string `json:"results"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return "", err
+	}
+
+	return resp.Results, nil
 }
 
 const jobsEndpoint = "/jobs"

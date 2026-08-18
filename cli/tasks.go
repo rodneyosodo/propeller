@@ -28,6 +28,7 @@ type taskFlags struct {
 	inputs          []string
 	env             []string
 	daemon          bool
+	latent          bool
 	encrypted       bool
 	kbsResourcePath string
 	propletID       string
@@ -47,6 +48,7 @@ func registerTaskFlags(cmd *cobra.Command, tf *taskFlags) {
 	cmd.Flags().StringSliceVar(&tf.inputs, "inputs", nil, "Input values passed to the Wasm module (comma-separated)")
 	cmd.Flags().StringSliceVar(&tf.env, "env", nil, "Environment variables KEY=VALUE (comma-separated or repeatable)")
 	cmd.Flags().BoolVar(&tf.daemon, "daemon", false, "Run continuously until stopped")
+	cmd.Flags().BoolVar(&tf.latent, "latent", false, "Precompile on start and keep resident for on-demand invocation")
 	cmd.Flags().BoolVar(&tf.encrypted, "encrypted", false, "Wasm binary is encrypted (requires KBS)")
 	cmd.Flags().StringVar(&tf.kbsResourcePath, "kbs-resource-path", "", "KBS resource path for encrypted binaries")
 	cmd.Flags().StringVar(&tf.propletID, "proplet-id", "", "Target proplet ID (mutually exclusive with --broadcast)")
@@ -81,6 +83,9 @@ func taskFromFlags(cmd *cobra.Command, tf *taskFlags, id, name string) sdk.Task 
 	}
 	if f.Changed("daemon") {
 		t.Daemon = tf.daemon
+	}
+	if f.Changed("latent") {
+		t.Latent = tf.latent
 	}
 	if f.Changed("encrypted") {
 		t.Encrypted = tf.encrypted
@@ -158,7 +163,10 @@ Examples:
   propeller-cli tasks create wasi-nn-inference --cli-args="-S,nn,--dir=/home/proplet/fixture::fixture"
 
   # Create a task from an OCI image reference
-  propeller-cli tasks create my-task --image-url docker.io/myorg/app:v1`,
+  propeller-cli tasks create my-task --image-url docker.io/myorg/app:v1
+
+  # Create a latent task that stays resident and is invoked on demand
+  propeller-cli tasks create greet --latent`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) != 1 {
 				logUsageCmd(*cmd, cmd.Use)
@@ -327,6 +335,40 @@ func newTaskStopCmd() *cobra.Command {
 	}
 }
 
+func newTaskInvokeCmd() *cobra.Command {
+	var env []string
+	cmd := &cobra.Command{
+		Use:   "invoke <id> [inputs...]",
+		Short: "Invoke a latent task",
+		Long: `Invoke a latent task with optional inputs.
+
+Examples:
+  # Invoke with positional inputs
+  propeller-cli tasks invoke <id> '"world"'
+
+  # Override environment variables for this invocation only
+  propeller-cli tasks invoke <id> '"world"' --env GREETING=hola`,
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) < 1 {
+				logUsageCmd(*cmd, cmd.Use)
+
+				return
+			}
+
+			results, err := psdk.InvokeTask(args[0], args[1:], toMap(env))
+			if err != nil {
+				logErrorCmd(*cmd, err)
+
+				return
+			}
+			logJSONCmd(*cmd, results)
+		},
+	}
+	cmd.Flags().StringSliceVar(&env, "env", nil, "Environment variables KEY=VALUE applied to this invocation only (comma-separated or repeatable)")
+
+	return cmd
+}
+
 func newTaskMetricsCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "metrics <id>",
@@ -398,9 +440,9 @@ func newTaskUploadCmd() *cobra.Command {
 
 func NewTasksCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "tasks [create|view|list|update|delete|start|stop|metrics|results|upload]",
+		Use:   "tasks [create|view|list|update|delete|start|stop|invoke|metrics|results|upload]",
 		Short: "Tasks manager",
-		Long:  `Create, view, list, update, delete, start, stop, and inspect tasks.`,
+		Long:  `Create, view, list, update, delete, start, stop, invoke, and inspect tasks.`,
 	}
 
 	cmd.AddCommand(newTaskCreateCmd())
@@ -410,6 +452,7 @@ func NewTasksCmd() *cobra.Command {
 	cmd.AddCommand(newTaskDeleteCmd())
 	cmd.AddCommand(newTaskStartCmd())
 	cmd.AddCommand(newTaskStopCmd())
+	cmd.AddCommand(newTaskInvokeCmd())
 	cmd.AddCommand(newTaskMetricsCmd())
 	cmd.AddCommand(newTaskResultsCmd())
 	cmd.AddCommand(newTaskUploadCmd())
