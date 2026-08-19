@@ -1,0 +1,10 @@
+capabilities:
+  - name: publish
+    applicability:
+      - object_kind: resource
+        object_type: resource:channel
+  - name: subscribe
+    applicability:
+      - object_kind: resource
+        object_type: resource:channel
+
