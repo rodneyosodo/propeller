@@ -32,7 +32,7 @@ Propeller consists of several key components:
 - **Proplet**: Worker nodes that execute WebAssembly workloads (implemented in Rust)
 - **Proxy**: Service for downloading and distributing Wasm modules from OCI registries
 
-![Propeller Orchestration Diagram](https://raw.githubusercontent.com/absmach/propeller-docs/refs/heads/main/content/docs/images/architecture.svg)
+![Propeller Orchestration Diagram](https://www.absmach.eu/docs/propeller/img/architecture.svg)
 
 ## Documentation
 
