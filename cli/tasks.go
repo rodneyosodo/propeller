@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 
@@ -129,7 +130,7 @@ func taskFromFlags(cmd *cobra.Command, tf *taskFlags, id, name string) (sdk.Task
 	}
 
 	if f.Changed("wasi-security") || f.Changed("wasi-pep") {
-		elasticCfg, err := elasticConfigFromFlags(cmd, tf)
+		elasticCfg, err := elasticConfigFromFlags(cmd, tf, id)
 		if err != nil {
 			return sdk.Task{}, err
 		}
@@ -144,10 +145,21 @@ func taskFromFlags(cmd *cobra.Command, tf *taskFlags, id, name string) (sdk.Task
 }
 
 // elasticConfigFromFlags builds the reserved metadata sub-map the manager
-// forwards to the proplet. Only flags the user actually set are included.
-func elasticConfigFromFlags(cmd *cobra.Command, tf *taskFlags) (map[string]any, error) {
+// forwards to the proplet. Flags the user actually set take precedence; on
+// update (id != ""), any elastic key the user did not touch this time is
+// preserved from the task's current server-side value, so setting just
+// --wasi-security or just --wasi-pep does not silently drop the other.
+func elasticConfigFromFlags(cmd *cobra.Command, tf *taskFlags, id string) (map[string]any, error) {
 	f := cmd.Flags()
 	cfg := make(map[string]any)
+
+	if id != "" {
+		if existing, err := psdk.GetTask(id); err == nil {
+			if existingCfg, ok := existing.Metadata[task.MetadataElasticKey].(map[string]any); ok {
+				maps.Copy(cfg, existingCfg)
+			}
+		}
+	}
 
 	if f.Changed("wasi-security") {
 		policy, err := os.ReadFile(tf.wasiSecurity)
@@ -300,7 +312,11 @@ func newTaskUpdateCmd() *cobra.Command {
 --metadata replaces the whole metadata map rather than merging into it. Because
 --wasi-security and --wasi-pep are stored under metadata, passing either of them
 without --metadata drops any other labels the task carries; pass both flags
-together to keep them.`,
+together to keep them.
+
+--wasi-security and --wasi-pep are independent of each other: setting only one
+of them fetches the task's current value for the other from the server first,
+so it is preserved rather than dropped.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) != 1 {
 				logUsageCmd(*cmd, cmd.Use)

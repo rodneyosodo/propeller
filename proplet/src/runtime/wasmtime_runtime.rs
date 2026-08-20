@@ -735,6 +735,23 @@ impl Runtime for WasmtimeRuntime {
         let component = component::Component::from_binary(&self.engine, &config.wasm_binary)
             .map_err(|e| anyhow::anyhow!("Failed to precompile WASM component: {e}"))?;
 
+        // A latent task is invoked repeatedly without going through configure_wasi
+        // again at deploy time, so a broken policy (e.g. a storage entry naming a
+        // directory that does not exist) would otherwise only surface on the first
+        // invoke, and again on every invoke after that. Validate it once here so
+        // precompiling fails the task immediately instead.
+        if config.wasi_security.is_some() {
+            let mut probe = WasiCtxBuilder::new();
+            configure_wasi(
+                &mut probe,
+                &config.id,
+                config.env.iter().map(|(k, v)| (k.as_str(), v.as_str())),
+                &self.preopened_dirs,
+                config.wasi_security.as_ref(),
+                true,
+            )?;
+        }
+
         let is_proxy = is_proxy_component(&config.wasm_binary);
         let wasm_binary = Arc::new(std::mem::take(&mut config.wasm_binary));
         let task_id = config.id.clone();
@@ -824,11 +841,13 @@ impl WasmtimeRuntime {
 
         info!("Module compiled successfully for task: {}", config.id);
 
-        let policy = config.wasi_security.clone();
-
         // WASI preview1 has no sockets, so network rules cannot be honoured here.
         // Nothing is granted, which is the safe direction, but the guest will simply have no network at all.
-        if policy.as_ref().is_some_and(|p| p.has_network_rules()) {
+        if config
+            .wasi_security
+            .as_ref()
+            .is_some_and(|p| p.has_network_rules())
+        {
             warn!(
                 "Task {}: WASI security policy declares network rules, but core modules run on WASI preview1 which has no socket support. No network access will be granted",
                 config.id
@@ -841,7 +860,7 @@ impl WasmtimeRuntime {
             &config.id,
             config.env.iter().map(|(k, v)| (k.as_str(), v.as_str())),
             &self.preopened_dirs,
-            policy.as_ref(),
+            config.wasi_security.as_ref(),
             true,
         )?;
 
@@ -908,7 +927,7 @@ impl WasmtimeRuntime {
             &config.id,
             config.env.iter().map(|(k, v)| (k.as_str(), v.as_str())),
             &self.preopened_dirs,
-            config.wasi_security.clone().as_ref(),
+            config.wasi_security.as_ref(),
             false,
         )?;
 
@@ -1052,7 +1071,7 @@ impl WasmtimeRuntime {
             &config.id,
             config.env.iter().map(|(k, v)| (k.as_str(), v.as_str())),
             &self.preopened_dirs,
-            config.wasi_security.clone().as_ref(),
+            config.wasi_security.as_ref(),
             true,
         )?;
 
@@ -1950,6 +1969,35 @@ mod tests {
             vec![0xFF, 0xFF, 0xFF, 0xFF],
         );
         assert!(runtime.precompile(config).await.is_err());
+    }
+
+    /// A policy naming a directory that does not exist must fail at precompile
+    /// time, not on the first (or every) subsequent invoke.
+    #[tokio::test]
+    async fn test_precompile_rejects_bad_wasi_security_policy() {
+        let Some(wasm_binary) = greet_component() else {
+            return;
+        };
+        let runtime =
+            WasmtimeRuntime::new_with_options(false, false, false, Vec::new(), 8222, None, false)
+                .unwrap();
+
+        let mut config = latent_config(&uuid::Uuid::new_v4().to_string(), "greet", wasm_binary);
+        config.wasi_security = Some(
+            WasiSecurity::from_toml(
+                r#"
+                [storage]
+                mount = ["/definitely/not/a/real/path::/data"]
+                "#,
+            )
+            .unwrap(),
+        );
+
+        let result = runtime.precompile(config).await;
+        assert!(
+            result.is_err(),
+            "precompile should reject a policy whose storage entry cannot be preopened"
+        );
     }
 
     #[tokio::test]
