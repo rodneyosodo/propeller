@@ -25,7 +25,10 @@ var (
 	fileName = "config.toml"
 )
 
-const filePermission = 0o600
+// filePermission is world-readable because config.toml is bind-mounted into
+// the proplet container, which reads it as a fixed non-root user (uid 999)
+// that will not match whoever ran `provision` on the host.
+const filePermission = 0o644
 
 func SetAtomSDK(s atomsdk.SDK) {
 	atomSDK = s
