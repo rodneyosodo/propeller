@@ -152,9 +152,26 @@ For full TEE setup (KBS, image encryption, CVM provisioning), see the [Encrypted
 
 ## WASI security policy
 
-A task can carry a per-task WASI sandbox policy through `extra_config.wasi_security`. The
-value is a **TOML document sent as a JSON string**; the proplet parses it when the task
-starts and uses it to build the task's `WasiCtx`.
+A task can carry a per-task WASI sandbox policy. The manager stores it under the reserved
+`metadata.elastic` sub-map, and lifts that sub-map onto the start payload as `metadata`
+(a generic wire field, distinct from the task's own `metadata`), so the proplet receives
+it as `metadata.wasi_security`. The value is a **TOML document sent as a JSON string**;
+the proplet parses it when the task starts and uses it to build the task's `WasiCtx`.
+
+```json
+{
+  "name": "my-task",
+  "metadata": {
+    "elastic": {
+      "wasi_security": "arguments = [\"--verbose\"]\n\n[storage]\nreadonly = [\"/srv/models::/models\"]\n"
+    }
+  }
+}
+```
+
+Only keys under `metadata.elastic` reach the proplet; the rest of `metadata` stays
+manager-side as a list filter. Nesting the policy this way keeps an ordinary label from
+colliding with sandbox configuration.
 
 ```toml
 # Example WASI security policy.
@@ -189,6 +206,9 @@ Via the CLI:
 ```bash
 propeller-cli tasks create "my-task" --wasi-security policy.toml
 ```
+
+On `tasks update`, `--wasi-security` replaces the whole metadata map. Pass `--metadata`
+alongside it to preserve any other labels the task carries.
 
 Semantics:
 

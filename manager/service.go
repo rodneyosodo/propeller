@@ -647,9 +647,6 @@ func (svc *service) UpdateTask(ctx context.Context, t task.Task) (task.Task, err
 	if t.Metadata != nil {
 		dbT.Metadata = t.Metadata
 	}
-	if t.ExtraConfig != nil {
-		dbT.ExtraConfig = t.ExtraConfig
-	}
 
 	scheduleChanged := false
 	if t.Schedule != "" && t.Schedule != dbT.Schedule {
@@ -2037,9 +2034,11 @@ type startPayload struct {
 	PropletID         string                     `json:"proplet_id,omitempty"`
 	HalStoragePath    *string                    `json:"hal_storage_path,omitempty"`
 	ParentResults     map[string]any             `json:"parent_results,omitempty"`
-	ExtraConfig       map[string]any             `json:"extra_config,omitempty"`
-	// Metadata is intentionally excluded: it is a manager-side filtering field
-	// and is not needed by the proplet runtime.
+	// Metadata carries the reserved task.MetadataElasticKey sub-map, keyed
+	// generically so the wire format isn't tied to a manager-side field name.
+	// The rest of task.Metadata is intentionally excluded: it is a
+	// manager-side filtering field and is not needed by the proplet runtime.
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 func (svc *service) publishStart(ctx context.Context, t task.Task, propletID string) error {
@@ -2060,7 +2059,7 @@ func (svc *service) publishStart(ctx context.Context, t task.Task, propletID str
 		MonitoringProfile: t.MonitoringProfile,
 		PropletID:         propletID,
 		HalStoragePath:    t.HalStoragePath,
-		ExtraConfig:       t.ExtraConfig,
+		Metadata:          t.ElasticConfig(),
 	}
 
 	if len(t.DependsOn) > 0 {
