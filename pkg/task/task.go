@@ -156,6 +156,22 @@ func (s JobStatus) State() State {
 
 type Metadata map[string]any
 
+// MetadataElasticKey is the metadata sub-map reserved for ELASTIC project
+// configuration. Unlike the rest of Metadata, which is opaque to everything but
+// the manager's list filter, keys under it are interpreted by the proplet and
+// are the only part of Metadata forwarded on the start payload. Nesting them
+// keeps a free-form user label from silently changing how a task is sandboxed.
+const MetadataElasticKey = "elastic"
+
+// Keys recognised inside MetadataElasticKey.
+const (
+	ElasticWasiSecurity = "wasi_security"
+	ElasticWasiPEP      = "wasi_pep"
+)
+
+// ElasticKeys lists every key the proplet reads out of MetadataElasticKey.
+var ElasticKeys = []string{ElasticWasiSecurity, ElasticWasiPEP}
+
 type Task struct {
 	ID                string                     `json:"id"`
 	Name              string                     `json:"name"`
@@ -191,7 +207,19 @@ type Task struct {
 	Priority          int                        `json:"priority,omitempty"`
 	Metadata          Metadata                   `json:"metadata,omitempty"`
 	HalStoragePath    *string                    `json:"hal_storage_path,omitempty"`
-	ExtraConfig       map[string]any             `json:"extra_config,omitempty"`
+}
+
+// ElasticConfig returns the reserved MetadataElasticKey sub-map, or nil when the
+// task carries none. Values survive a JSON round-trip through storage as
+// map[string]any, so the assertion holds for both freshly decoded requests and
+// tasks loaded from the repository.
+func (t Task) ElasticConfig() map[string]any {
+	cfg, ok := t.Metadata[MetadataElasticKey].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	return cfg
 }
 
 type TaskPage struct {

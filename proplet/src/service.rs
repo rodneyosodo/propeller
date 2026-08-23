@@ -490,7 +490,7 @@ impl PropletService {
         // Parse the policy before anything is fetched or spawned, so a
         // malformed one (bad TOML) fails the task immediately and is reported against it.
         let wasi_security = match req
-            .extra_config
+            .metadata
             .as_ref()
             .and_then(|extra| extra.wasi_security.as_deref())
             .map(WasiSecurity::from_toml)

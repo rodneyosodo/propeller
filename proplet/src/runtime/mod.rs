@@ -24,7 +24,7 @@ pub struct StartConfig {
     /// `container_<n>/` directories. When `None`, the runtime derives a
     /// default of `/tmp/proplet/hal-storage/<task-id>`.
     pub hal_storage_path: Option<String>,
-    /// Policy parsed from `extra_config.wasi_security` before the task started.
+    /// Policy parsed from `metadata.wasi_security` before the task started.
     pub wasi_security: Option<WasiSecurity>,
 }
 

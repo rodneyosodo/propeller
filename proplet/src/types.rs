@@ -73,7 +73,7 @@ pub struct StartRequest {
     #[serde(default)]
     pub latent: bool,
     #[serde(default)]
-    pub extra_config: Option<ExtraConfig>,
+    pub metadata: Option<ExtraConfig>,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -368,7 +368,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         assert!(req.validate().is_ok());
@@ -394,7 +394,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         assert!(req.validate().is_ok());
@@ -420,7 +420,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let result = req.validate();
@@ -448,7 +448,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let result = req.validate();
@@ -476,7 +476,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let result = req.validate();
@@ -507,7 +507,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         assert!(req.validate().is_ok());
@@ -533,7 +533,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let result = req.validate();
@@ -564,7 +564,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let result = req.validate();
@@ -629,24 +629,24 @@ mod tests {
     }
 
     #[test]
-    fn test_start_request_deserializes_extra_config() {
+    fn test_start_request_deserializes_metadata() {
         let policy =
             "arguments = [\"--verbose\"]\n\n[storage]\nreadonly = [\"/srv/models::/models\"]\n";
         let json_data = json!({
             "id": "task-policy",
             "name": "run",
             "file": "ZGF0YQ==",
-            "extra_config": {
+            "metadata": {
                 "wasi_security": policy,
                 "wasi_pep": "pep-1"
             }
         });
 
         let req: StartRequest = serde_json::from_value(json_data).unwrap();
-        let extra = req.extra_config.expect("extra_config should be present");
+        let metadata = req.metadata.expect("metadata should be present");
 
-        assert_eq!(extra.wasi_pep.as_deref(), Some("pep-1"));
-        assert_eq!(extra.wasi_security.as_deref(), Some(policy));
+        assert_eq!(metadata.wasi_pep.as_deref(), Some("pep-1"));
+        assert_eq!(metadata.wasi_security.as_deref(), Some(policy));
     }
 
     /// A policy that is not valid TOML must still decode, so the proplet can
@@ -657,18 +657,18 @@ mod tests {
             "id": "task-policy",
             "name": "run",
             "file": "ZGF0YQ==",
-            "extra_config": { "wasi_security": "this is = not valid = toml" }
+            "metadata": { "wasi_security": "this is = not valid = toml" }
         });
 
         let req: StartRequest = serde_json::from_value(json_data).unwrap();
         assert_eq!(
-            req.extra_config.unwrap().wasi_security.as_deref(),
+            req.metadata.unwrap().wasi_security.as_deref(),
             Some("this is = not valid = toml")
         );
     }
 
     #[test]
-    fn test_start_request_without_extra_config() {
+    fn test_start_request_without_metadata() {
         let json_data = json!({
             "id": "task-plain",
             "name": "run",
@@ -676,7 +676,7 @@ mod tests {
         });
 
         let req: StartRequest = serde_json::from_value(json_data).unwrap();
-        assert!(req.extra_config.is_none());
+        assert!(req.metadata.is_none());
     }
 
     #[test]
@@ -935,7 +935,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         assert_eq!(req.env.as_ref().unwrap().len(), 2);
@@ -1004,7 +1004,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let json = serde_json::to_string(&req).unwrap();
@@ -1037,7 +1037,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         assert!(req.validate().is_ok());
@@ -1063,7 +1063,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         assert!(req.validate().is_ok());
@@ -1089,7 +1089,7 @@ mod tests {
             broadcast: false,
             hal_storage_path: None,
             latent: false,
-            extra_config: None,
+            metadata: None,
         };
 
         let result = req.validate();
