@@ -73,7 +73,7 @@ pub struct StartRequest {
     #[serde(default)]
     pub latent: bool,
     #[serde(default)]
-    pub metadata: Option<ExtraConfig>,
+    pub metadata: Option<Metadata>,
 }
 
 fn deserialize_null_default<'de, D, T>(deserializer: D) -> std::result::Result<T, D::Error>
@@ -256,7 +256,7 @@ impl Default for MonitoringProfile {
 }
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
-pub struct ExtraConfig {
+pub struct Metadata {
     /// WASI security policy as a TOML document string.
     #[serde(default)]
     pub wasi_security: Option<String>,
