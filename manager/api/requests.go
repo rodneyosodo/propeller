@@ -54,6 +54,37 @@ func (t *taskReq) validate() error {
 		}
 	}
 
+	if err := validateElasticConfig(t.Metadata); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateElasticConfig checks the shape of the reserved ELASTIC sub-map. The
+// proplet reads these keys to configure its sandbox, so a mistyped value has to
+// fail here rather than be silently ignored at start.
+func validateElasticConfig(m task.Metadata) error {
+	raw, ok := m[task.MetadataElasticKey]
+	if !ok {
+		return nil
+	}
+
+	cfg, ok := raw.(map[string]any)
+	if !ok {
+		return fmt.Errorf("%w: metadata.%s must be an object", pkgerrors.ErrInvalidValue, task.MetadataElasticKey)
+	}
+
+	for _, k := range task.ElasticKeys {
+		v, ok := cfg[k]
+		if !ok {
+			continue
+		}
+		if _, ok := v.(string); !ok {
+			return fmt.Errorf("%w: metadata.%s.%s must be a string", pkgerrors.ErrInvalidValue, task.MetadataElasticKey, k)
+		}
+	}
+
 	return nil
 }
 

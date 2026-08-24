@@ -1,9 +1,13 @@
 package cli
 
 import (
+	"fmt"
+	"maps"
+	"os"
 	"strings"
 
 	"github.com/absmach/propeller/pkg/sdk"
+	"github.com/absmach/propeller/pkg/task"
 	"github.com/spf13/cobra"
 )
 
@@ -40,6 +44,8 @@ type taskFlags struct {
 	timezone        string
 	isRecurring     bool
 	metadata        []string
+	wasiSecurity    string
+	wasiPEP         string
 }
 
 func registerTaskFlags(cmd *cobra.Command, tf *taskFlags) {
@@ -60,9 +66,11 @@ func registerTaskFlags(cmd *cobra.Command, tf *taskFlags) {
 	cmd.Flags().StringVar(&tf.timezone, "timezone", "", "Timezone for scheduled tasks (default UTC)")
 	cmd.Flags().BoolVar(&tf.isRecurring, "is-recurring", false, "Re-run according to schedule")
 	cmd.Flags().StringSliceVar(&tf.metadata, "metadata", nil, "Metadata KEY=VALUE (comma-separated or repeatable)")
+	cmd.Flags().StringVar(&tf.wasiSecurity, "wasi-security", "", "Path to a TOML WASI security policy applied to the task's Wasmtime sandbox (stored under metadata."+task.MetadataElasticKey+")")
+	cmd.Flags().StringVar(&tf.wasiPEP, "wasi-pep", "", "WASI policy enforcement point reference (stored under metadata."+task.MetadataElasticKey+")")
 }
 
-func taskFromFlags(cmd *cobra.Command, tf *taskFlags, id, name string) sdk.Task {
+func taskFromFlags(cmd *cobra.Command, tf *taskFlags, id, name string) (sdk.Task, error) {
 	t := sdk.Task{
 		ID:   id,
 		Name: name,
@@ -121,7 +129,52 @@ func taskFromFlags(cmd *cobra.Command, tf *taskFlags, id, name string) sdk.Task 
 		t.Metadata = toMapAny(tf.metadata)
 	}
 
-	return t
+	if f.Changed("wasi-security") || f.Changed("wasi-pep") {
+		elasticCfg, err := elasticConfigFromFlags(cmd, tf, id)
+		if err != nil {
+			return sdk.Task{}, err
+		}
+
+		if t.Metadata == nil {
+			t.Metadata = make(map[string]any)
+		}
+		t.Metadata[task.MetadataElasticKey] = elasticCfg
+	}
+
+	return t, nil
+}
+
+// elasticConfigFromFlags builds the reserved metadata sub-map the manager
+// forwards to the proplet. Flags the user actually set take precedence; on
+// update (id != ""), any elastic key the user did not touch this time is
+// preserved from the task's current server-side value, so setting just
+// --wasi-security or just --wasi-pep does not silently drop the other.
+func elasticConfigFromFlags(cmd *cobra.Command, tf *taskFlags, id string) (map[string]any, error) {
+	f := cmd.Flags()
+	cfg := make(map[string]any)
+
+	if id != "" {
+		if existing, err := psdk.GetTask(id); err == nil {
+			if existingCfg, ok := existing.Metadata[task.MetadataElasticKey].(map[string]any); ok {
+				maps.Copy(cfg, existingCfg)
+			}
+		}
+	}
+
+	if f.Changed("wasi-security") {
+		policy, err := os.ReadFile(tf.wasiSecurity)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read WASI security policy: %w", err)
+		}
+
+		cfg[task.ElasticWasiSecurity] = string(policy)
+	}
+
+	if f.Changed("wasi-pep") {
+		cfg[task.ElasticWasiPEP] = tf.wasiPEP
+	}
+
+	return cfg, nil
 }
 
 func toMap(pairs []string) map[string]string {
@@ -174,7 +227,14 @@ Examples:
 				return
 			}
 
-			t, err := psdk.CreateTask(taskFromFlags(cmd, &flags, "", args[0]))
+			payload, err := taskFromFlags(cmd, &flags, "", args[0])
+			if err != nil {
+				logErrorCmd(*cmd, err)
+
+				return
+			}
+
+			t, err := psdk.CreateTask(payload)
 			if err != nil {
 				logErrorCmd(*cmd, err)
 
@@ -247,7 +307,16 @@ func newTaskUpdateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "update <id>",
 		Short: "Update task",
-		Long:  `Update task fields. Only the fields provided as flags are changed.`,
+		Long: `Update task fields. Only the fields provided as flags are changed.
+
+--metadata replaces the whole metadata map rather than merging into it. Because
+--wasi-security and --wasi-pep are stored under metadata, passing either of them
+without --metadata drops any other labels the task carries; pass both flags
+together to keep them.
+
+--wasi-security and --wasi-pep are independent of each other: setting only one
+of them fetches the task's current value for the other from the server first,
+so it is preserved rather than dropped.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) != 1 {
 				logUsageCmd(*cmd, cmd.Use)
@@ -255,7 +324,14 @@ func newTaskUpdateCmd() *cobra.Command {
 				return
 			}
 
-			t, err := psdk.UpdateTask(taskFromFlags(cmd, &flags, args[0], ""))
+			payload, err := taskFromFlags(cmd, &flags, args[0], "")
+			if err != nil {
+				logErrorCmd(*cmd, err)
+
+				return
+			}
+
+			t, err := psdk.UpdateTask(payload)
 			if err != nil {
 				logErrorCmd(*cmd, err)
 
