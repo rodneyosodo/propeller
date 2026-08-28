@@ -49,6 +49,7 @@ PROPLET_API_KEY="${PROPLET_API_KEY:-}"
 PROPLET_CHANNEL_ID="${PROPLET_CHANNEL_ID:-}"
 PROPLET_MQTT_ADDRESS="${PROPLET_MQTT_ADDRESS:-tcp://localhost:1883}"
 KBS_URL="${KBS_URL:-http://10.0.2.2:8082}"
+KBS_CERT_PATH="${KBS_CERT_PATH:-}" # Path to a PEM cert to trust for an https:// KBS_URL
 
 # Check prerequisites
 check_prerequisites() {
@@ -67,6 +68,10 @@ check_prerequisites() {
         exit 1
     fi
 
+    if [ -n "$KBS_CERT_PATH" ] && [ ! -f "$KBS_CERT_PATH" ]; then
+        echo "KBS_CERT_PATH is set to '$KBS_CERT_PATH' but that file does not exist."
+        exit 1
+    fi
 }
 
 # Build CVM image and cloud-init configuration
@@ -161,6 +166,7 @@ write_files:
 
       [token_configs.kbs]
       url = "KBS_URI_PLACEHOLDER"
+      KBS_CERT_PLACEHOLDER
 
       [eventlog_config]
       init_pcr = 17
@@ -512,6 +518,22 @@ EOF
     sed -i "s|CHANNEL_ID_PLACEHOLDER|${PROPLET_CHANNEL_ID}|g" $USER_DATA
     sed -i "s|MQTT_ADDRESS_PLACEHOLDER|${PROPLET_MQTT_ADDRESS}|g" $USER_DATA
     sed -i "s|KBS_URI_PLACEHOLDER|${KBS_URL}|g" $USER_DATA
+
+    # Optionally embed a KBS TLS certificate (PEM) into the Attestation Agent
+    # config as an inline `cert = '''...'''` value, matching the format the
+    # attestation-agent crate expects under [token_configs.kbs].
+    if [ -n "$KBS_CERT_PATH" ]; then
+        CERT_TOML_FILE=$(mktemp)
+        {
+            echo "      cert = '''"
+            sed 's/^/      /' "$KBS_CERT_PATH"
+            echo "      '''"
+        } >"$CERT_TOML_FILE"
+        sed -i "/KBS_CERT_PLACEHOLDER/r $CERT_TOML_FILE" $USER_DATA
+        rm -f "$CERT_TOML_FILE"
+        echo "Embedded KBS TLS certificate from $KBS_CERT_PATH into attestation-agent config"
+    fi
+    sed -i "/KBS_CERT_PLACEHOLDER/d" $USER_DATA
 
     # Create meta-data
     cat <<EOF >$META_DATA
