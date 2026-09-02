@@ -165,6 +165,11 @@ check-certs:
 		echo "Server certificates not found, generating..."; \
 		$(MAKE) -C docker/ssl server_cert; \
 	fi
+	@if [ ! -f docker/ssl/certs/atom-grpc-server.crt ] || [ ! -f docker/ssl/certs/atom-grpc-server.key ] || \
+	    [ ! -f docker/ssl/certs/fluxmq-atom-client.crt ] || [ ! -f docker/ssl/certs/fluxmq-atom-client.key ]; then \
+		echo "Broker auth certificates not found, generating..."; \
+		$(MAKE) -C docker/ssl atom_grpc_certs; \
+	fi
 
 start-base: check-certs
 	docker compose -f docker/compose.yaml --env-file docker/.env up -d

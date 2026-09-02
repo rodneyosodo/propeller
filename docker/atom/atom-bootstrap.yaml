@@ -1,10 +1,29 @@
-capabilities:
-  - name: publish
-    applicability:
-      - object_kind: resource
-        object_type: resource:channel
-  - name: subscribe
-    applicability:
-      - object_kind: resource
-        object_type: resource:channel
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+#
+# Propeller Atom bootstrap file.
+#
+# Propeller runs no Magistrala services, so no rules engine, reports, alarms,
+# or bootstrap actions are declared. The built-in actions seeded by migration
+# 001 are left as-is; this file only pins Propeller's own channel
+# publish/subscribe verbs. Keep a declared capability's applicability exactly
+# in sync with what is persisted, and don't add capabilities Propeller doesn't
+# use.
 
+tenant_defaults:
+  # No extra actions on the system tenant-admin role.
+  admin_capabilities: []
+
+capabilities:
+  # MQTT publish/subscribe on channels, seeded by migration 001.
+  - name: publish
+    description: "Publish messages to a channel"
+    applicability:
+      - object_kind: resource
+        object_type: "resource:channel"
+
+  - name: subscribe
+    description: "Subscribe to channel messages"
+    applicability:
+      - object_kind: resource
+        object_type: "resource:channel"

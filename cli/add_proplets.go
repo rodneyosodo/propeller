@@ -18,7 +18,7 @@ var addPropletsCmd = &cobra.Command{
 	Long: `Add more proplets to an existing Propeller deployment without re-provisioning from scratch.
 
 Reads tenant_id, channel_id, and the current proplet count from the existing config file,
-then creates new Atom entities (kind: service, profile: Service Account), API keys,
+then creates new Atom entities (kind: service, profile: Service Account), shared keys,
 connects them to the channel, and appends their credentials to that file.
 
 Example:
@@ -94,9 +94,9 @@ Example:
 							if err != nil {
 								return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 							}
-							key, err := atomSDK.CreateAPIKey(cmd.Context(), eid, "proplet-mqtt", token)
+							key, err := atomSDK.CreateSharedKey(cmd.Context(), eid, "proplet-mqtt", token)
 							if err != nil {
-								return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
+								return fmt.Errorf("%w: %s", errFailedSharedKeyCreation, err.Error())
 							}
 							newProplets[i] = propletCreds{EntityID: eid, APIKey: key}
 
