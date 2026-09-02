@@ -13,7 +13,7 @@ import (
 var addProxyCmd = &cobra.Command{
 	Use:   "add-proxy",
 	Short: "Add a proxy entity to an existing provisioned setup",
-	Long: `Creates a new Atom service entity for the proxy, an API key, connects it to the channel,
+	Long: `Creates a new Atom service entity for the proxy, a shared key, connects it to the channel,
 and updates the config file.
 
 Reads tenant_id and channel_id from the existing config file.
@@ -82,9 +82,9 @@ Example:
 						if err != nil {
 							return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 						}
-						proxyAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
+						proxyAPIKey, err = atomSDK.CreateSharedKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
+							return fmt.Errorf("%w: %s", errFailedSharedKeyCreation, err.Error())
 						}
 
 						if err := atomSDK.Connect(cmd.Context(), proxyEntityID, channelID, tenantID, token); err != nil {

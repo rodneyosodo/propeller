@@ -17,7 +17,7 @@ var (
 	errFailedToCreateTenant     = errors.New("failed to create tenant")
 	errFailedChannelCreation    = errors.New("failed to create channel")
 	errFailedEntityCreation     = errors.New("failed to create entity")
-	errFailedAPIKeyCreation     = errors.New("failed to create API key")
+	errFailedSharedKeyCreation  = errors.New("failed to create shared key")
 	errFailedConnectionCreation = errors.New("failed to create connection")
 
 	atomSDK  atomsdk.SDK
@@ -120,9 +120,9 @@ var provisionCmd = &cobra.Command{
 						if err != nil {
 							return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 						}
-						managerAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), managerEntityID, "manager-mqtt", token)
+						managerAPIKey, err = atomSDK.CreateSharedKey(cmd.Context(), managerEntityID, "manager-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
+							return fmt.Errorf("%w: %s", errFailedSharedKeyCreation, err.Error())
 						}
 
 						return nil
@@ -151,9 +151,9 @@ var provisionCmd = &cobra.Command{
 							if err != nil {
 								return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 							}
-							key, err := atomSDK.CreateAPIKey(cmd.Context(), eid, "proplet-mqtt", token)
+							key, err := atomSDK.CreateSharedKey(cmd.Context(), eid, "proplet-mqtt", token)
 							if err != nil {
-								return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
+								return fmt.Errorf("%w: %s", errFailedSharedKeyCreation, err.Error())
 							}
 							propletEntities[i] = propletCreds{EntityID: eid, APIKey: key}
 						}
@@ -174,9 +174,9 @@ var provisionCmd = &cobra.Command{
 						if err != nil {
 							return fmt.Errorf("%w: %s", errFailedEntityCreation, err.Error())
 						}
-						proxyAPIKey, err = atomSDK.CreateAPIKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
+						proxyAPIKey, err = atomSDK.CreateSharedKey(cmd.Context(), proxyEntityID, "proxy-mqtt", token)
 						if err != nil {
-							return fmt.Errorf("%w: %s", errFailedAPIKeyCreation, err.Error())
+							return fmt.Errorf("%w: %s", errFailedSharedKeyCreation, err.Error())
 						}
 
 						return nil

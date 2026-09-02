@@ -20,14 +20,10 @@ const (
 		createEntity(input:{kind:service,name:$name,tenantId:$tid,attributes:{}}){id}
 	}`
 
-	createAccessTokenMutation = `mutation($eid:ID!,$desc:String!,$name:String!){
-		createAccessToken(input:{
-			subjectId:$eid,
-			name:$name,
-			description:$desc,
-			scoped:false,
-			permissions:[]
-		}){credentialId token}
+	createSharedKeyMutation = `mutation($eid:ID!,$desc:String!){
+		createSharedKey(entityId:$eid, input:{
+			description:$desc
+		}){credentialId key expiresAt}
 	}`
 
 	createResourceMutation = `mutation($tid:ID!,$name:String!){
@@ -86,7 +82,7 @@ type SDK interface {
 	CreateTenant(ctx context.Context, name, token string) (string, error)
 	EnsureTenant(ctx context.Context, name, token string) (string, error)
 	CreateServiceEntity(ctx context.Context, name, tenantID, token string) (string, error)
-	CreateAPIKey(ctx context.Context, entityID, description, token string) (string, error)
+	CreateSharedKey(ctx context.Context, entityID, description, token string) (string, error)
 	CreateResource(ctx context.Context, name, tenantID, token string) (string, error)
 	Connect(ctx context.Context, entityID, resourceID, tenantID, token string) error
 	DeleteEntity(ctx context.Context, id, token string) error
@@ -247,11 +243,14 @@ func (s *sdk) CreateServiceEntity(ctx context.Context, name, tenantID, token str
 	return entity.ID, nil
 }
 
-func (s *sdk) CreateAPIKey(ctx context.Context, entityID, description, token string) (string, error) {
-	data, err := s.gql(ctx, createAccessTokenMutation, map[string]any{
+// CreateSharedKey issues a machine shared key (CredentialKind::SharedKey) for
+// the entity. Propeller services present this key as their MQTT password; Atom's
+// native broker auth callout verifies shared keys, whereas access-token bearer
+// keys are only accepted by the legacy fluxmq-auth adapter.
+func (s *sdk) CreateSharedKey(ctx context.Context, entityID, description, token string) (string, error) {
+	data, err := s.gql(ctx, createSharedKeyMutation, map[string]any{
 		"eid":  entityID,
 		"desc": description,
-		"name": description,
 	}, token)
 	if err != nil {
 		return "", err
@@ -259,16 +258,16 @@ func (s *sdk) CreateAPIKey(ctx context.Context, entityID, description, token str
 
 	var key struct {
 		CredentialID string `json:"credentialId"`
-		Token        string `json:"token"`
+		Key          string `json:"key"`
 	}
-	if err := json.Unmarshal(data["createAccessToken"], &key); err != nil {
-		return "", fmt.Errorf("unmarshal createAccessToken response: %w", err)
+	if err := json.Unmarshal(data["createSharedKey"], &key); err != nil {
+		return "", fmt.Errorf("unmarshal createSharedKey response: %w", err)
 	}
-	if key.Token == "" {
-		return "", errors.New("createAccessToken returned empty token")
+	if key.Key == "" {
+		return "", errors.New("createSharedKey returned empty key")
 	}
 
-	return key.Token, nil
+	return key.Key, nil
 }
 
 func (s *sdk) CreateResource(ctx context.Context, name, tenantID, token string) (string, error) {
