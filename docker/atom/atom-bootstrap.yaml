@@ -1,10 +1,248 @@
-capabilities:
-  - name: publish
-    applicability:
-      - object_kind: resource
-        object_type: resource:channel
-  - name: subscribe
-    applicability:
-      - object_kind: resource
-        object_type: resource:channel
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+#
+# Propeller Atom bootstrap file.
+#
+#
+# Declarative replacement for the imperative bootstrap-actions Go code path.
+# Atom reads this at startup via ATOM_BOOTSTRAP_FILE and upserts capabilities
+# and guardrail rules idempotently. Rows are stamped managed_by='config' and
+# become immutable through the Atom API.
 
+# Capabilities added to Atom's system-created tenant-admin role, on top of the
+# built-in TENANT_ADMIN_BASE_CAPABILITIES. The alarm_* family is declared below
+# under `capabilities:` and permitted by the guardrails, but nothing links it to
+# a role by default, so alarm reads are denied and the alarms service returns
+# empty pages. Atom applies this to new tenants at creation and reconciles
+# existing tenant-admin roles at every startup; the set is declarative, so an
+# action added to that role by hand is dropped unless it is also named here.
+tenant_defaults:
+  admin_capabilities:
+    - alarm_read
+    - alarm_update
+    - alarm_delete
+    - alarm_assign
+    - alarm_acknowledge
+    - alarm_resolve
+
+capabilities:
+  - name: read
+    description: "Read / view an object"
+    applicability:
+      - object_kind: entity
+        object_type: "entity:device"
+      - object_kind: group
+      - object_kind: resource
+        object_type: "resource:channel"
+      - object_kind: resource
+        object_type: "resource:rule"
+      - object_kind: resource
+        object_type: "resource:report"
+      - object_kind: resource
+        object_type: "resource:bootstrap_config"
+      - object_kind: resource
+        object_type: "resource:bootstrap_profile"
+      # Applicability seeded by Atom's migration 001. Atom's bootstrap refuses
+      # to reconcile a capability whose persisted rows are not all declared
+      # here ("has persisted applicability not declared in config").
+      - object_kind: tenant
+      - object_kind: entity
+        object_type: "entity:human"
+      - object_kind: entity
+        object_type: "entity:service"
+      - object_kind: entity
+        object_type: "entity:workload"
+      - object_kind: entity
+        object_type: "entity:application"
+      - object_kind: resource
+      - object_kind: role
+      - object_kind: policy
+      - object_kind: credential
+      - object_kind: audit_log
+      - object_kind: api_endpoint
+
+  - name: write
+    description: "Create or update an object"
+    applicability:
+      - object_kind: tenant
+      - object_kind: entity
+        object_type: "entity:device"
+      - object_kind: group
+      - object_kind: resource
+        object_type: "resource:channel"
+      - object_kind: resource
+        object_type: "resource:rule"
+      - object_kind: resource
+        object_type: "resource:report"
+      - object_kind: resource
+        object_type: "resource:bootstrap_config"
+      - object_kind: resource
+        object_type: "resource:bootstrap_profile"
+      # Applicability seeded by Atom's migration 001. Atom's bootstrap refuses
+      # to reconcile a capability whose persisted rows are not all declared
+      # here ("has persisted applicability not declared in config").
+      - object_kind: entity
+        object_type: "entity:human"
+      - object_kind: entity
+        object_type: "entity:service"
+      - object_kind: entity
+        object_type: "entity:workload"
+      - object_kind: entity
+        object_type: "entity:application"
+      - object_kind: resource
+
+  - name: delete
+    description: "Delete an object"
+    applicability:
+      - object_kind: entity
+        object_type: "entity:device"
+      - object_kind: group
+      - object_kind: resource
+        object_type: "resource:channel"
+      - object_kind: resource
+        object_type: "resource:rule"
+      - object_kind: resource
+        object_type: "resource:report"
+      - object_kind: resource
+        object_type: "resource:bootstrap_config"
+      - object_kind: resource
+        object_type: "resource:bootstrap_profile"
+      # Applicability seeded by Atom's migration 001. Atom's bootstrap refuses
+      # to reconcile a capability whose persisted rows are not all declared
+      # here ("has persisted applicability not declared in config").
+      - object_kind: entity
+        object_type: "entity:human"
+      - object_kind: entity
+        object_type: "entity:service"
+      - object_kind: entity
+        object_type: "entity:workload"
+      - object_kind: entity
+        object_type: "entity:application"
+      - object_kind: resource
+
+  - name: manage
+    description: "Full administrative control"
+    applicability:
+      - object_kind: entity
+        object_type: "entity:device"
+      - object_kind: group
+      - object_kind: resource
+        object_type: "resource:channel"
+      - object_kind: resource
+        object_type: "resource:rule"
+      - object_kind: resource
+        object_type: "resource:report"
+      - object_kind: resource
+        object_type: "resource:bootstrap_config"
+      - object_kind: resource
+        object_type: "resource:bootstrap_profile"
+      # Applicability seeded by Atom's migration 001. Atom's bootstrap refuses
+      # to reconcile a capability whose persisted rows are not all declared
+      # here ("has persisted applicability not declared in config").
+      - object_kind: tenant
+      - object_kind: entity
+      - object_kind: resource
+      - object_kind: credential
+      - object_kind: policy
+      - object_kind: api_endpoint
+
+  - name: publish
+    description: "Publish messages to a channel"
+    applicability:
+      - object_kind: resource
+        object_type: "resource:channel"
+
+
+  - name: subscribe
+    description: "Subscribe to channel messages"
+    applicability:
+      - object_kind: resource
+        object_type: "resource:channel"
+
+
+  - name: execute
+    description: "Execute a command or action"
+    applicability:
+      - object_kind: resource
+        object_type: "resource:rule"
+      - object_kind: resource
+        object_type: "resource:report"
+      # Applicability seeded by Atom's migration 001. Atom's bootstrap refuses
+      # to reconcile a capability whose persisted rows are not all declared
+      # here ("has persisted applicability not declared in config").
+      - object_kind: api_endpoint
+
+
+  - name: list
+    description: "List objects"
+    applicability:
+      - object_kind: tenant
+      - object_kind: group
+      - object_kind: resource
+        object_type: "resource:rule"
+      - object_kind: resource
+        object_type: "resource:report"
+      - object_kind: resource
+        object_type: "resource:bootstrap_config"
+      - object_kind: resource
+        object_type: "resource:bootstrap_profile"
+
+  - name: alarm_read
+    description: "Read alarms in a tenant or rule scope"
+    applicability:
+      - object_kind: tenant
+      - object_kind: resource
+        object_type: "resource:rule"
+
+
+  - name: alarm_update
+    description: "Update alarms in a tenant or rule scope"
+    applicability:
+      - object_kind: tenant
+      - object_kind: resource
+        object_type: "resource:rule"
+
+
+  - name: alarm_delete
+    description: "Delete alarms in a tenant or rule scope"
+    applicability:
+      - object_kind: tenant
+      - object_kind: resource
+        object_type: "resource:rule"
+
+
+  - name: alarm_assign
+    description: "Assign alarms in a tenant or rule scope"
+    applicability:
+      - object_kind: tenant
+      - object_kind: resource
+        object_type: "resource:rule"
+
+
+  - name: alarm_acknowledge
+    description: "Acknowledge alarms in a tenant or rule scope"
+    applicability:
+      - object_kind: tenant
+      - object_kind: resource
+        object_type: "resource:rule"
+
+
+  - name: alarm_resolve
+    description: "Resolve alarms in a tenant or rule scope"
+    applicability:
+      - object_kind: tenant
+      - object_kind: resource
+        object_type: "resource:rule"
+
+action_assignment_rules:
+  - entity_kind: device
+    action_name: publish
+    object_kind: resource
+    object_type: "resource:channel"
+    decision: allow
+
+  - entity_kind: device
+    action_name: subscribe
+    object_kind: resource
+    object_type: "resource:channel"
+    decision: allow
