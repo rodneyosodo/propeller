@@ -54,12 +54,19 @@ impl WasiSecurity {
 
     pub fn allows_socket(&self, addr: SocketAddr, use_: SocketAddrUse) -> bool {
         let (rules, protocol) = match use_ {
-            SocketAddrUse::TcpBind => (&self.network_bind, NetworkRuleProtocol::Tcp),
+            // Listening is a local-address check; v47 policed it via TcpBind.
+            SocketAddrUse::TcpBind | SocketAddrUse::TcpListen => {
+                (&self.network_bind, NetworkRuleProtocol::Tcp)
+            }
             SocketAddrUse::UdpBind => (&self.network_bind, NetworkRuleProtocol::Udp),
             SocketAddrUse::TcpConnect => (&self.network_connect, NetworkRuleProtocol::Tcp),
-            SocketAddrUse::UdpConnect | SocketAddrUse::UdpOutgoingDatagram => {
-                (&self.network_connect, NetworkRuleProtocol::Udp)
-            }
+            // UDP "connect" only sets the default remote address, so it is
+            // policed together with sends (v47's UdpConnect and
+            // UdpOutgoingDatagram both map here).
+            SocketAddrUse::UdpSend => (&self.network_connect, NetworkRuleProtocol::Udp),
+            // v47 never policed accepted TCP clients or inbound datagrams, so
+            // those checks pass by default.
+            SocketAddrUse::TcpAccept | SocketAddrUse::UdpReceive => return true,
         };
 
         rules.iter().any(|rule| rule.matches(protocol, addr))
@@ -328,19 +335,23 @@ mod tests {
     }
 
     #[test]
-    fn empty_policy_denies_every_socket_use() {
+    fn empty_policy_denies_every_policed_socket_use() {
         let security = parse("");
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
 
         for use_ in [
             SocketAddrUse::TcpBind,
+            SocketAddrUse::TcpListen,
             SocketAddrUse::TcpConnect,
             SocketAddrUse::UdpBind,
-            SocketAddrUse::UdpConnect,
-            SocketAddrUse::UdpOutgoingDatagram,
+            SocketAddrUse::UdpSend,
         ] {
             assert!(!security.allows_socket(addr, use_));
         }
+
+        // Accepted clients and inbound datagrams are not policed.
+        assert!(security.allows_socket(addr, SocketAddrUse::TcpAccept));
+        assert!(security.allows_socket(addr, SocketAddrUse::UdpReceive));
 
         assert!(!security.uses_tcp());
         assert!(!security.uses_udp());
@@ -381,7 +392,7 @@ mod tests {
         );
 
         // Unspecified IP matches any host, the port still has to line up.
-        assert!(security.allows_socket("8.8.8.8:53".parse().unwrap(), SocketAddrUse::UdpConnect));
+        assert!(security.allows_socket("8.8.8.8:53".parse().unwrap(), SocketAddrUse::UdpSend));
         assert!(security.allows_socket("1.1.1.1:53".parse().unwrap(), SocketAddrUse::TcpConnect));
         assert!(!security.allows_socket("8.8.8.8:54".parse().unwrap(), SocketAddrUse::TcpConnect));
 
@@ -399,10 +410,7 @@ mod tests {
         );
 
         // Port 0 in a rule is a wildcard.
-        assert!(security.allows_socket(
-            "127.0.0.1:1234".parse().unwrap(),
-            SocketAddrUse::UdpOutgoingDatagram
-        ));
+        assert!(security.allows_socket("127.0.0.1:1234".parse().unwrap(), SocketAddrUse::UdpSend));
         assert!(
             !security.allows_socket("127.0.0.1:1234".parse().unwrap(), SocketAddrUse::TcpConnect)
         );
