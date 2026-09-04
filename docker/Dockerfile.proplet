@@ -3,7 +3,7 @@
 # Use the build-machine's platform for the builder stage so that Rust
 # cross-compiles natively instead of running the entire cargo build under
 # QEMU emulation (which would take hours for arm64).
-FROM --platform=$BUILDPLATFORM rust:1.96.0 AS builder
+FROM --platform=$BUILDPLATFORM rust:1.98.0 AS builder
 
 ARG VERSION
 ARG COMMIT
@@ -40,7 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         *) echo "Unsupported architecture: ${TARGETARCH}" && exit 1 ;; \
     esac
 
-FROM ubuntu:25.10
+FROM ubuntu:26.04
 
 LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
 LABEL org.opencontainers.image.licenses=Apache-2.0
