@@ -1,4 +1,4 @@
-FROM golang:1.26 AS builder
+FROM golang:1.27 AS builder
 ARG SVC
 # TARGETARCH / TARGETVARIANT are set automatically by docker buildx.
 # GOARCH / GOARM can still be passed explicitly via --build-arg to keep
@@ -19,7 +19,7 @@ RUN apt-get update \
     && make $SVC GOARCH=${GOARCH} ${_goarm:+GOARM=${_goarm}} \
     && mv build/$SVC /exe
 
-FROM gcr.io/distroless/cc-debian12
+FROM gcr.io/distroless/cc-debian13
 LABEL org.opencontainers.image.source=https://github.com/absmach/propeller
 LABEL org.opencontainers.image.licenses=Apache-2.0
 

@@ -124,7 +124,7 @@ services:
       - propeller-fluxmq-node1-volume:/tmp/fluxmq
 
   nginx:
-    image: docker.io/nginx:1.29.2-alpine3.22
+    image: docker.io/nginx:1.31.5-alpine3.24
     container_name: propeller-nginx
     restart: on-failure
     volumes:
@@ -163,7 +163,7 @@ services:
         hard: 65536
 
   jaeger:
-    image: docker.io/jaegertracing/all-in-one:1.74.0
+    image: docker.io/jaegertracing/all-in-one:1.76.0
     container_name: propeller-jaeger
     environment:
       COLLECTOR_OTLP_ENABLED: ${MG_JAEGER_COLLECTOR_OTLP_ENABLED}

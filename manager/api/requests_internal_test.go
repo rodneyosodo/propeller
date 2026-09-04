@@ -132,7 +132,7 @@ func TestTaskReqValidateElasticConfig(t *testing.T) {
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
-			req := taskReq{Task: task.Task{Name: "task", Metadata: tc.metadata}}
+			req := taskReq{task.Task{Name: "task", Metadata: tc.metadata}}
 			err := req.validate()
 			if tc.wantErr {
 				assert.Error(t, err, tc.desc)
