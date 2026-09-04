@@ -344,7 +344,7 @@ runcmd:
   # Install Wasmtime
   - |
     echo "=== Installing Wasmtime ==="
-    WASMTIME_VERSION="v47.0.2"
+    WASMTIME_VERSION="v48.0.1"
     echo "Downloading Wasmtime ${WASMTIME_VERSION}..."
     curl -L "https://github.com/bytecodealliance/wasmtime/releases/download/${WASMTIME_VERSION}/wasmtime-${WASMTIME_VERSION}-x86_64-linux.tar.xz" -o /tmp/wasmtime.tar.xz
     tar -xf /tmp/wasmtime.tar.xz -C /tmp

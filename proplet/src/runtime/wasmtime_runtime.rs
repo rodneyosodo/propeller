@@ -12,9 +12,11 @@ use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, RootCertStore, SignatureScheme};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::collections::HashMap;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::sync::watch;
@@ -27,16 +29,15 @@ use wasmtime::component::ResourceTable;
 use wasmtime::*;
 use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
-use wasmtime_wasi::{DirPerms, FilePerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
+use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::http::types::Scheme;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
-use wasmtime_wasi_http::p2::types::{HostFutureIncomingResponse, OutgoingRequestConfig};
-use wasmtime_wasi_http::p2::{
-    default_send_request, hyper_request_error, WasiHttpHooks, WasiHttpView,
+use wasmtime_wasi_http::{
+    default_send_request, Error as HttpError, RequestOptions, WasiBody, WasiHttpCtx,
+    WasiHttpCtxView, WasiHttpHooks, WasiHttpView,
 };
-use wasmtime_wasi_http::WasiHttpCtx;
 use wasmtime_wasi_usb::{WasiUsbCtx, WasiUsbCtxView, WasiUsbView};
 
 /// Apply the task's environment, filesystem preopens and network policy to a fresh [`WasiCtxBuilder`].
@@ -58,7 +59,7 @@ fn configure_wasi<'a>(
 
     let Some(policy) = policy else {
         for dir in global_preopens {
-            if let Err(e) = builder.preopened_dir(dir, dir, DirPerms::all(), FilePerms::all()) {
+            if let Err(e) = builder.preopened_dir(dir, dir, FsPerms::ReadWrite) {
                 warn!("Task {task_id}: failed to preopen '{dir}': {e}");
             }
         }
@@ -81,7 +82,7 @@ fn configure_wasi<'a>(
     // downgrade of the workload's capabilities, so fail the task instead.
     for (host, guest) in &policy.storage_readonly {
         builder
-            .preopened_dir(host, guest, DirPerms::READ, FilePerms::READ)
+            .preopened_dir(host, guest, FsPerms::ReadOnly)
             .map_err(|e| {
                 anyhow::anyhow!(
                     "Task {task_id}: failed to preopen read-only '{host}' as '{guest}': {e}"
@@ -91,7 +92,7 @@ fn configure_wasi<'a>(
 
     for (host, guest) in &policy.storage_mount {
         builder
-            .preopened_dir(host, guest, DirPerms::all(), FilePerms::all())
+            .preopened_dir(host, guest, FsPerms::ReadWrite)
             .map_err(|e| {
                 anyhow::anyhow!("Task {task_id}: failed to mount '{host}' as '{guest}': {e}")
             })?;
@@ -319,36 +320,94 @@ impl CustomTlsHttpHooks {
 impl WasiHttpHooks for CustomTlsHttpHooks {
     fn send_request(
         &mut self,
-        request: hyper::Request<HyperOutgoingBody>,
-        config: OutgoingRequestConfig,
-    ) -> wasmtime_wasi_http::p2::HttpResult<HostFutureIncomingResponse> {
+        request: hyper::Request<WasiBody>,
+        options: Option<RequestOptions>,
+        fut: Box<dyn Future<Output = Result<(), HttpError>> + Send>,
+    ) -> Box<
+        dyn Future<
+                Output = Result<
+                    (
+                        hyper::Response<WasiBody>,
+                        Box<dyn Future<Output = Result<(), HttpError>> + Send>,
+                    ),
+                    HttpError,
+                >,
+            > + Send,
+    > {
+        _ = fut;
         match &self.tls_config {
             Some(tls_config) => {
                 let tls_config = tls_config.clone();
-                let handle = wasmtime_wasi::runtime::spawn(async move {
-                    Ok(custom_tls_send_request_handler(request, config, tls_config).await)
-                });
-                Ok(HostFutureIncomingResponse::pending(handle))
+                Box::new(custom_tls_send_request_handler(
+                    request, options, tls_config,
+                ))
             }
-            None => Ok(default_send_request(request, config)),
+            None => Box::new(async move {
+                let (res, io) = default_send_request(request, options).await?;
+                let io = Box::new(io) as Box<dyn Future<Output = Result<(), HttpError>> + Send>;
+                Ok((res.map(|b| b.boxed_unsync()), io))
+            }),
         }
     }
 }
 
+/// Response body that enforces the request's `between_bytes_timeout`.
+struct IncomingResponseBody {
+    incoming: hyper::body::Incoming,
+    timeout: tokio::time::Interval,
+}
+
+impl http_body::Body for IncomingResponseBody {
+    type Data = <hyper::body::Incoming as http_body::Body>::Data;
+    type Error = HttpError;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        use std::task::{ready, Poll};
+        match std::pin::Pin::new(&mut self.as_mut().incoming).poll_frame(cx) {
+            Poll::Ready(None) => Poll::Ready(None),
+            Poll::Ready(Some(Err(err))) => {
+                let err = if err.is_timeout() {
+                    HttpError::HttpResponseTimeout
+                } else {
+                    HttpError::from(err)
+                };
+                Poll::Ready(Some(Err(err)))
+            }
+            Poll::Ready(Some(Ok(frame))) => {
+                self.timeout.reset();
+                Poll::Ready(Some(Ok(frame)))
+            }
+            Poll::Pending => {
+                ready!(self.timeout.poll_tick(cx));
+                Poll::Ready(Some(Err(HttpError::ConnectionReadTimeout)))
+            }
+        }
+    }
+
+    fn is_end_stream(&self) -> bool {
+        self.incoming.is_end_stream()
+    }
+
+    fn size_hint(&self) -> http_body::SizeHint {
+        self.incoming.size_hint()
+    }
+}
+
 async fn custom_tls_send_request_handler(
-    mut request: hyper::Request<HyperOutgoingBody>,
-    OutgoingRequestConfig {
-        use_tls,
-        connect_timeout,
-        first_byte_timeout,
-        between_bytes_timeout,
-    }: OutgoingRequestConfig,
+    mut request: hyper::Request<WasiBody>,
+    options: Option<RequestOptions>,
     tls_config: Arc<rustls::ClientConfig>,
 ) -> Result<
-    wasmtime_wasi_http::p2::types::IncomingResponse,
-    wasmtime_wasi_http::p2::bindings::http::types::ErrorCode,
+    (
+        hyper::Response<WasiBody>,
+        Box<dyn Future<Output = Result<(), HttpError>> + Send>,
+    ),
+    HttpError,
 > {
-    use wasmtime_wasi_http::p2::bindings::http::types::ErrorCode;
+    let use_tls = request.uri().scheme() == Some(&hyper::http::uri::Scheme::HTTPS);
 
     let authority = if let Some(authority) = request.uri().authority() {
         if authority.port().is_some() {
@@ -358,75 +417,69 @@ async fn custom_tls_send_request_handler(
             format!("{authority}:{port}")
         }
     } else {
-        return Err(ErrorCode::HttpRequestUriInvalid);
+        return Err(HttpError::HttpRequestUriInvalid);
     };
 
-    let tcp_stream = timeout(connect_timeout, tokio::net::TcpStream::connect(&authority))
-        .await
-        .map_err(|_| ErrorCode::ConnectionTimeout)?
-        .map_err(|e| match e.kind() {
-            std::io::ErrorKind::AddrNotAvailable => {
-                dns_error("address not available".to_string(), 0)
-            }
-            _ => {
-                if e.to_string()
-                    .starts_with("failed to lookup address information")
-                {
-                    dns_error("address not available".to_string(), 0)
-                } else {
-                    ErrorCode::ConnectionRefused
+    let tcp_stream = timeout(
+        options
+            .and_then(|r| r.connect_timeout)
+            .unwrap_or(Duration::from_secs(600)),
+        tokio::net::TcpStream::connect(&authority),
+    )
+    .await
+    .map_err(|_| HttpError::ConnectionTimeout)?
+    .map_err(HttpError::Connect)?;
+
+    let (mut sender, worker) = {
+        let connect_timeout = options
+            .and_then(|r| r.connect_timeout)
+            .unwrap_or(Duration::from_secs(600));
+        if use_tls {
+            let connector = tokio_rustls::TlsConnector::from(tls_config);
+            let tenant = ServerName::try_from(authority.split(':').next().unwrap_or(&authority))
+                .map_err(HttpError::InvalidDnsNameError)?
+                .to_owned();
+            let stream = connector
+                .connect(tenant, tcp_stream)
+                .await
+                .map_err(HttpError::Tls)?;
+            let stream = TokioIo::new(stream);
+
+            let (sender, conn) = timeout(
+                connect_timeout,
+                hyper::client::conn::http1::handshake(stream),
+            )
+            .await
+            .map_err(|_| HttpError::ConnectionTimeout)?
+            .map_err(HttpError::from)?;
+
+            let worker = wasmtime_wasi::runtime::spawn(async move {
+                match conn.await {
+                    Ok(()) => {}
+                    Err(e) => tracing::warn!("dropping error {e}"),
                 }
-            }
-        })?;
+            });
 
-    let (mut sender, worker) = if use_tls {
-        let connector = tokio_rustls::TlsConnector::from(tls_config);
-        let tenant = ServerName::try_from(authority.split(':').next().unwrap_or(&authority))
-            .map_err(|e| {
-                tracing::warn!("dns lookup error: {e:?}");
-                dns_error("invalid dns name".to_string(), 0)
-            })?
-            .to_owned();
-        let stream = connector.connect(tenant, tcp_stream).await.map_err(|e| {
-            tracing::warn!("tls protocol error: {e:?}");
-            ErrorCode::TlsProtocolError
-        })?;
-        let stream = TokioIo::new(stream);
+            (sender, worker)
+        } else {
+            let tcp_stream = TokioIo::new(tcp_stream);
+            let (sender, conn) = timeout(
+                connect_timeout,
+                hyper::client::conn::http1::handshake(tcp_stream),
+            )
+            .await
+            .map_err(|_| HttpError::ConnectionTimeout)?
+            .map_err(HttpError::from)?;
 
-        let (sender, conn) = timeout(
-            connect_timeout,
-            hyper::client::conn::http1::handshake(stream),
-        )
-        .await
-        .map_err(|_| ErrorCode::ConnectionTimeout)?
-        .map_err(hyper_request_error)?;
+            let worker = wasmtime_wasi::runtime::spawn(async move {
+                match conn.await {
+                    Ok(()) => {}
+                    Err(e) => tracing::warn!("dropping error {e}"),
+                }
+            });
 
-        let worker = wasmtime_wasi::runtime::spawn(async move {
-            match conn.await {
-                Ok(()) => {}
-                Err(e) => tracing::warn!("dropping error {e}"),
-            }
-        });
-
-        (sender, worker)
-    } else {
-        let tcp_stream = TokioIo::new(tcp_stream);
-        let (sender, conn) = timeout(
-            connect_timeout,
-            hyper::client::conn::http1::handshake(tcp_stream),
-        )
-        .await
-        .map_err(|_| ErrorCode::ConnectionTimeout)?
-        .map_err(hyper_request_error)?;
-
-        let worker = wasmtime_wasi::runtime::spawn(async move {
-            match conn.await {
-                Ok(()) => {}
-                Err(e) => tracing::warn!("dropping error {e}"),
-            }
-        });
-
-        (sender, worker)
+            (sender, worker)
+        }
     };
 
     preserve_host_header(&mut request);
@@ -442,17 +495,36 @@ async fn custom_tls_send_request_handler(
         .build()
         .expect("comes from valid request");
 
-    let resp = timeout(first_byte_timeout, sender.send_request(request))
-        .await
-        .map_err(|_| ErrorCode::ConnectionReadTimeout)?
-        .map_err(hyper_request_error)?
-        .map(|body| body.map_err(hyper_request_error).boxed_unsync());
+    let resp = timeout(
+        options
+            .and_then(|r| r.first_byte_timeout)
+            .unwrap_or(Duration::from_secs(600)),
+        sender.send_request(request),
+    )
+    .await
+    .map_err(|_| HttpError::ConnectionReadTimeout)?
+    .map_err(HttpError::from)?
+    .map(|incoming| {
+        let mut between_bytes = tokio::time::interval(
+            options
+                .and_then(|r| r.between_bytes_timeout)
+                .unwrap_or(Duration::from_secs(600)),
+        );
+        between_bytes.reset();
+        IncomingResponseBody {
+            incoming,
+            timeout: between_bytes,
+        }
+        .boxed_unsync()
+    });
 
-    Ok(wasmtime_wasi_http::p2::types::IncomingResponse {
+    Ok((
         resp,
-        worker: Some(worker),
-        between_bytes_timeout,
-    })
+        Box::new(async move {
+            let _ = worker.await;
+            Ok(())
+        }),
+    ))
 }
 
 fn preserve_host_header(request: &mut hyper::Request<HyperOutgoingBody>) {
@@ -465,18 +537,6 @@ fn preserve_host_header(request: &mut hyper::Request<HyperOutgoingBody>) {
             }
         }
     }
-}
-
-fn dns_error(
-    rcode: String,
-    info_code: u16,
-) -> wasmtime_wasi_http::p2::bindings::http::types::ErrorCode {
-    wasmtime_wasi_http::p2::bindings::http::types::ErrorCode::DnsError(
-        wasmtime_wasi_http::p2::bindings::http::types::DnsErrorPayload {
-            rcode: Some(rcode),
-            info_code: Some(info_code),
-        },
-    )
 }
 
 pub struct StoreData {
@@ -499,8 +559,8 @@ impl WasiView for StoreData {
 }
 
 impl WasiHttpView for StoreData {
-    fn http(&mut self) -> wasmtime_wasi_http::p2::WasiHttpCtxView<'_> {
-        wasmtime_wasi_http::p2::WasiHttpCtxView {
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
             ctx: &mut self.http,
             table: &mut self.table,
             hooks: &mut self.http_hooks,

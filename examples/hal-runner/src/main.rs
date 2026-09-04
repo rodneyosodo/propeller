@@ -13,8 +13,7 @@ use elastic_tee_hal::interfaces::{
     CapabilitiesInterface, ClockInterface, CryptoInterface, HalProvider, RandomInterface,
 };
 use elastic_tee_hal::providers::{
-    DefaultCapabilitiesProvider, DefaultClockProvider, DefaultCryptoProvider,
-    DefaultRandomProvider,
+    DefaultCapabilitiesProvider, DefaultClockProvider, DefaultCryptoProvider, DefaultRandomProvider,
 };
 use elastic_tee_hal::{
     CommunicationInterface, EventInterface, GpuInterface, ResourceInterface, SocketInterface,
@@ -28,8 +27,7 @@ use tokio::runtime::Runtime;
 use wasmtime::component::{Component, Linker, ResourceTable, Val};
 use wasmtime::{Config, Engine, Store};
 use wasmtime_wasi::{WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
-use wasmtime_wasi_http::p2::WasiHttpView;
-use wasmtime_wasi_http::WasiHttpCtx;
+use wasmtime_wasi_http::{WasiHttpCtx, WasiHttpCtxView, WasiHttpView};
 
 // Single bindgen over the modular world — each interface lives in its own
 // `elastic:<name>@0.1.0` package, matching upstream `wit-modular/` and the BRT
@@ -233,8 +231,8 @@ impl WasiView for HostState {
 }
 
 impl WasiHttpView for HostState {
-    fn http(&mut self) -> wasmtime_wasi_http::p2::WasiHttpCtxView<'_> {
-        wasmtime_wasi_http::p2::WasiHttpCtxView {
+    fn http(&mut self) -> WasiHttpCtxView<'_> {
+        WasiHttpCtxView {
             ctx: &mut self.http,
             table: &mut self.table,
             hooks: Default::default(),
@@ -466,8 +464,9 @@ impl sockets::Host for HostState {
                 .block_on(async move { s.create_udp_socket(&addr).await })
                 .map_err(|e| e.to_string())?,
             SocketProto::Tls | SocketProto::Dtls => {
-                return Err("TLS/DTLS listen requires server certificates not modelled by WIT"
-                    .to_string());
+                return Err(
+                    "TLS/DTLS listen requires server certificates not modelled by WIT".to_string(),
+                );
             }
         };
         self.socket_bridge.activate(socket, real);
@@ -610,8 +609,10 @@ impl gpu::Host for HostState {
         _y: u32,
         _z: u32,
     ) -> Result<(), String> {
-        Err("dispatch requires a compute-pass handle in upstream; not modelled by WIT v0.1"
-            .to_string())
+        Err(
+            "dispatch requires a compute-pass handle in upstream; not modelled by WIT v0.1"
+                .to_string(),
+        )
     }
 }
 
@@ -807,7 +808,11 @@ impl communication::Host for HostState {
             let comm_for_read = comm.clone();
             let buf_handle = buf.handle;
             let msg = self
-                .block_on(async move { comm_for_read.read_data_from_buffer(buf_handle, "wasm-guest").await })
+                .block_on(async move {
+                    comm_for_read
+                        .read_data_from_buffer(buf_handle, "wasm-guest")
+                        .await
+                })
                 .map_err(|e| e.to_string())?;
             if let Some(m) = msg {
                 return Ok(Some(communication::Message {
@@ -916,7 +921,6 @@ impl storage::Host for HostState {
     }
 }
 
-
 // ============================================================================
 // CLI
 // ============================================================================
@@ -955,7 +959,9 @@ fn parse_cli() -> Result<Cli> {
         );
         eprintln!();
         eprintln!("Env:");
-        eprintln!("  HAL_STORAGE_PATH          Storage base dir (default: $TMPDIR/hal-runner-storage)");
+        eprintln!(
+            "  HAL_STORAGE_PATH          Storage base dir (default: $TMPDIR/hal-runner-storage)"
+        );
         eprintln!();
         eprintln!("Examples:");
         eprintln!(
@@ -966,9 +972,7 @@ fn parse_cli() -> Result<Cli> {
             "  HAL_STORAGE_PATH=$PWD/hal-storage {} ./brt_eucnc_front.wasm \\",
             args[0]
         );
-        eprintln!(
-            "    -f 'elastic:brt-eucnc-front-service/server-api@0.1.0#start-server' \\"
-        );
+        eprintln!("    -f 'elastic:brt-eucnc-front-service/server-api@0.1.0#start-server' \\");
         eprintln!("    --start-server 0.0.0.0:8080");
         std::process::exit(1);
     }
@@ -1085,18 +1089,17 @@ fn main() -> Result<()> {
     let func = resolve_export(&instance, &mut store, &cli.function)
         .with_context(|| format!("Export '{}' not found in component", cli.function))?;
 
-    let (wasm_args, mut results): (Vec<Val>, Vec<Val>) = if let Some((host, port)) =
-        cli.start_server.clone()
-    {
-        // BRT-style: start-server(host: string, port: u16) -> result<_, string>
-        (
-            vec![Val::String(host), Val::U16(port)],
-            vec![Val::Bool(false)],
-        )
-    } else {
-        // HAL example exports each return a single string summary.
-        (vec![], vec![Val::Bool(false)])
-    };
+    let (wasm_args, mut results): (Vec<Val>, Vec<Val>) =
+        if let Some((host, port)) = cli.start_server.clone() {
+            // BRT-style: start-server(host: string, port: u16) -> result<_, string>
+            (
+                vec![Val::String(host), Val::U16(port)],
+                vec![Val::Bool(false)],
+            )
+        } else {
+            // HAL example exports each return a single string summary.
+            (vec![], vec![Val::Bool(false)])
+        };
 
     func.call(&mut store, &wasm_args, &mut results)
         .map_err(|e| anyhow::anyhow!("Failed to call export '{}': {e}", cli.function))?;
