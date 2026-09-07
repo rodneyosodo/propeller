@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
 
   workflow_dispatch:
 
@@ -39,9 +41,19 @@ jobs:
       - name: Compute build metadata
         id: meta
         run: |
-          echo "version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')" >> $GITHUB_OUTPUT
-          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          commit=$(git rev-parse HEAD)
+          time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "commit=$commit" >> $GITHUB_OUTPUT
+          echo "time=$time" >> $GITHUB_OUTPUT
+          tags="${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:latest"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version_tag="${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:${GITHUB_REF_NAME}"
+          else
+            version_tag="${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:$commit"
+          fi
+          printf 'tags<<EOF\n%s\n%s\nEOF\n' "$tags" "$version_tag" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -68,9 +80,7 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ steps.meta.outputs.commit }}
             TIME=${{ steps.meta.outputs.time }}
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:latest
-            ${{ env.IMAGE_PREFIX }}/${{ matrix.svc }}:${{ steps.meta.outputs.commit }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -91,9 +101,19 @@ jobs:
       - name: Compute build metadata
         id: meta
         run: |
-          echo "version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')" >> $GITHUB_OUTPUT
-          echo "commit=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
-          echo "time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
+          commit=$(git rev-parse HEAD)
+          time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "commit=$commit" >> $GITHUB_OUTPUT
+          echo "time=$time" >> $GITHUB_OUTPUT
+          tags="${{ env.IMAGE_PREFIX }}/proplet:latest"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version_tag="${{ env.IMAGE_PREFIX }}/proplet:${GITHUB_REF_NAME}"
+          else
+            version_tag="${{ env.IMAGE_PREFIX }}/proplet:$commit"
+          fi
+          printf 'tags<<EOF\n%s\n%s\nEOF\n' "$tags" "$version_tag" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
@@ -122,9 +142,7 @@ jobs:
             VERSION=${{ steps.meta.outputs.version }}
             COMMIT=${{ steps.meta.outputs.commit }}
             TIME=${{ steps.meta.outputs.time }}
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/proplet:latest
-            ${{ env.IMAGE_PREFIX }}/proplet:${{ steps.meta.outputs.commit }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -141,6 +159,23 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - name: Compute build metadata
+        id: meta
+        run: |
+          commit=$(git rev-parse HEAD)
+          time=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          version=$(git describe --abbrev=0 --tags 2>/dev/null || echo 'v0.0.0')
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "commit=$commit" >> $GITHUB_OUTPUT
+          echo "time=$time" >> $GITHUB_OUTPUT
+          tags="${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:latest"
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            version_tag="${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:${GITHUB_REF_NAME}"
+          else
+            version_tag="${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:$commit"
+          fi
+          printf 'tags<<EOF\n%s\n%s\nEOF\n' "$tags" "$version_tag" >> $GITHUB_OUTPUT
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -160,8 +195,10 @@ jobs:
           # OpenVINO backend is x86-only
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:latest
-            ${{ env.IMAGE_PREFIX }}/proplet-wasi-nn:${{ github.sha }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ steps.meta.outputs.commit }}
+            TIME=${{ steps.meta.outputs.time }}
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
