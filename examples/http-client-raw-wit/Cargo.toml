@@ -1,6 +1,6 @@
 [package]
 name = "http-client-raw-wit"
-version = "0.6.0"
+version = "0.6.1"
 edition = "2021"
 publish = false
 
