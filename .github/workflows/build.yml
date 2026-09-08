@@ -126,3 +126,69 @@ jobs:
         with:
           files: dist/**
           generate_release_notes: true
+          body: |
+            ## Docker Images
+
+            Multi-architecture Docker images (linux/amd64, linux/arm64) are available on GHCR:
+
+            ```
+            docker pull ghcr.io/absmach/propeller/manager:${{ github.ref_name }}
+            docker pull ghcr.io/absmach/propeller/cli:${{ github.ref_name }}
+            docker pull ghcr.io/absmach/propeller/proxy:${{ github.ref_name }}
+            docker pull ghcr.io/absmach/propeller/proplet:${{ github.ref_name }}
+            docker pull ghcr.io/absmach/propeller/proplet-wasi-nn:${{ github.ref_name }}
+            ```
+
+            Images are tagged with the release version (e.g., `${{ github.ref_name }}`) and `:latest` is updated to point to the most recent stable release. The `proplet-wasi-nn` image (wasi-nn/OpenVINO support) is linux/amd64 only.
+
+            ## Quick Start
+
+            Follow the [getting started guide](https://www.absmach.eu/docs/propeller/getting-started/) for the full walkthrough, or the steps below (requires Go, Rust, Docker and Make).
+
+            1. Clone the repository at the release tag and build the binaries:
+
+            ```bash
+            git clone --depth 1 --branch ${{ github.ref_name }} https://github.com/absmach/propeller.git
+            cd propeller
+            make all -j $(nproc)
+            make install
+            ```
+
+            2. Start the base services (Atom, FluxMQ, Nginx). TLS certificates are generated automatically:
+
+            ```bash
+            make start-base
+            ```
+
+            3. Provision the Propeller resources in Atom — creates the tenant, manager/proplet/proxy service accounts, channel and writes `config.toml`:
+
+            ```bash
+            propeller-cli provision
+            ```
+
+            4. Copy the generated config into the Docker directory, pin the release images in `docker/.env` (set `PROP_RELEASE_TAG` and `PROPLET_IMAGE_TAG` to `${{ github.ref_name }}`), and start Propeller:
+
+            ```bash
+            cp config.toml docker/config.toml
+            make start-propeller
+            ```
+
+            5. Verify the deployment:
+
+            ```bash
+            curl http://localhost:7070/health
+            curl http://localhost:7070/proplets
+            ```
+
+            ## Running the Binaries Directly
+
+            Download the binaries for your architecture, make them executable, and run:
+
+            ```bash
+            chmod +x manager-linux-<arch>
+            ./manager-linux-<arch>
+            ```
+
+            Available binaries: `manager` (amd64, arm64), `cli` (amd64, arm64, riscv64), `proxy` (amd64, arm64) and `proplet` (amd64, arm64, riscv64).
+
+            For full documentation, visit the [README](https://github.com/absmach/propeller).
