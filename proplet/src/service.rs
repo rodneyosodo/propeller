@@ -7,7 +7,7 @@ use crate::plugin::{TaskInfo as PluginTaskInfo, TaskResult as PluginTaskResult};
 use crate::runtime::{Runtime, RuntimeContext, StartConfig};
 use crate::telemetry::PropletMetrics;
 use crate::types::*;
-use crate::wasi_security::WasiSecurity;
+use crate::wasi_security::{WasiSecurity, WasiSecurityProvider, WasmWorkloadMetadata};
 use anyhow::{Context, Result};
 use reqwest::Client as HttpClient;
 use std::collections::{BTreeMap, HashMap};
@@ -17,6 +17,7 @@ use sysinfo::System;
 use tokio::sync::{mpsc, Mutex};
 use tokio::time::Instant;
 use tracing::{debug, error, info, warn, Instrument};
+use dlopen2::wrapper::Container;
 
 const WASM_FETCH_MAX_BYTES: usize = 100 * 1024 * 1024; // 100MB
 
@@ -505,6 +506,68 @@ impl PropletService {
             }
         };
 
+        // Try loading alternative WASI security config from metadata.wasi_pep (external WASI security provider) if it is present instead of metadata.wasi_security
+        let wasi_security:Option<WasiSecurity> = match req.metadata.as_ref() {
+            None => None,
+            Some(meta) => {
+                match meta.wasi_pep.as_deref() {
+                    // If wasi_pep metadata undefined, use the previously set wasi_security.
+                    None => wasi_security,
+                    Some(wasi_pep_conf) => {
+                        if wasi_security.is_some() {
+                            // wasi_security already set from metadata.wasi_security property. Cannot be overridden by wasi_pep.
+                            let err = anyhow::anyhow!("Invalid Metadata: 'wasi_pep' conflicts with 'wasi_security' property. Only one of these properties is allowed in the metadata.");
+                            error!("Validation error for task {}: {}", req.id, err);
+                            // FIXME: this does not seem to trigger any error on the Manager side, as it should (Manager keeps ignoring this and logging "Task started successfully").
+                            self.publish_result(&req.id, Vec::new(), Some(err.to_string()))
+                                .await?;
+                            return Err(err);
+                        }
+                        // Load the WASI PEP (security plugin) library from $PROPLET_PLUGIN_DIR/libWasiSecurityPlugin.so
+                        let Some(ref plugin_dir) = self.config.plugin_dir else {
+                            let err = anyhow::anyhow!("PROPLET_PLUGIN_DIR undefined but it is required by 'wasi_pep' metadata to find the WASI PEP library ($PROPLET_PLUGIN_DIR/libWasiSecurityPlugin.so)");
+                            error!("Validation error for task {}: {}", req.id, err);
+                            // FIXME: this does not seem to trigger any error on the Manager side, as it should (Manager keeps ignoring this and logging "Task started successfully").
+                            self.publish_result(&req.id, Vec::new(), Some(err.to_string()))
+                                .await?;
+                            return Err(err);
+                        };
+                        let plugin_path = std::path::Path::new(plugin_dir);
+                        let wasi_pep_lib_path = plugin_path.join("libWasiSecurityPlugin.so");
+                        let wasi_security_provider: Container<WasiSecurityProvider> = match unsafe { Container::load(wasi_pep_lib_path.clone()) } {
+                            Ok(container) => container,
+                            Err(e) => {
+                                let err = anyhow::anyhow!("Could not open WASI security plugin library or load symbols from file '{}': {}", wasi_pep_lib_path.display(), e);
+                                error!("Task {} - metadata.wasi_pep config loading error: {}", req.id, err);
+                                // FIXME: this does not seem to trigger any error on the Manager side, as it should (Manager keeps ignoring this and logging "Task started successfully").
+                                self.publish_result(&req.id, Vec::new(), Some(err.to_string()))
+                                   .await?;
+                                return Err(err);
+                            }
+                        };
+                        let workload_meta = WasmWorkloadMetadata {
+                            id: req.id.clone(),
+                            name: req.name.clone(),
+                            inputs: req.inputs.clone(),
+                            env: req.env.clone(),
+                            worker_node_id: req.proplet_id.clone(),
+                        };
+                        match wasi_security_provider.get_wasi_security_instance(wasi_pep_conf, workload_meta) {
+                            Ok(new_wasi_security) => Some(new_wasi_security),
+                            Err(e) => {
+                                let err = anyhow::anyhow!("Could not load the WASI security config from plugin library file '{}': {}", wasi_pep_lib_path.display(), e);
+                                error!("Task {} - metadata.wasi_pep config loading error: {}", req.id, err);
+                                // FIXME: this does not seem to trigger any error on the Manager side, as it should (Manager keeps ignoring this and logging "Task started successfully").
+                                self.publish_result(&req.id, Vec::new(), Some(err.to_string()))
+                                    .await?;
+                                return Err(err);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        
         let plugin_task_info = PluginTaskInfo {
             id: req.id.clone(),
             name: req.name.clone(),
