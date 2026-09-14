@@ -19,7 +19,8 @@ pub struct WasiSecurity {
 /// Interface for external WASI security plugins (e.g. Elastic - THS ABAC component)
 #[derive(WrapperApi)]
 pub struct WasiSecurityProvider {
-    get_wasi_security_instance: fn(config: &str, workload_meta: WasmWorkloadMetadata)-> Result<WasiSecurity>
+    get_wasi_security_instance:
+        fn(config: &str, workload_meta: WasmWorkloadMetadata) -> Result<WasiSecurity>,
 }
 
 /// WASM workload metadata relevant to WASI security plugins
@@ -31,7 +32,7 @@ pub struct WasmWorkloadMetadata {
     pub env: Option<HashMap<String, String>>,
 
     /// ID of the worker node, i.e. the proplet in this context
-    pub worker_node_id: Option<String>
+    pub worker_node_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

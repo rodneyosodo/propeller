@@ -1,7 +1,7 @@
 package cli
 
 import (
-    "errors"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -172,9 +172,9 @@ func elasticConfigFromFlags(cmd *cobra.Command, tf *taskFlags, id string) (map[s
 	}
 
 	if f.Changed("wasi-pep") {
-	    if cfg[task.ElasticWasiSecurity] != nil {
-	        return nil, errors.New("--wasi-pep argument cannot be used with --wasi-security, only one of them may be present!")
-	    }
+		if cfg[task.ElasticWasiSecurity] != nil {
+			return nil, errors.New("--wasi-pep argument cannot be used with --wasi-security, only one of them may be present")
+		}
 		cfg[task.ElasticWasiPEP] = tf.wasiPEP
 	}
 

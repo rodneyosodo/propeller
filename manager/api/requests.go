@@ -85,12 +85,12 @@ func validateElasticConfig(m task.Metadata) error {
 		}
 	}
 
-    // Check that not both wasi_security and wasi_pep are present (illegal). Only one of the two is allowed at a time.
-    _, hasWasiSec := cfg[task.ElasticWasiSecurity]
-    _, hasWasiPep := cfg[task.ElasticWasiPEP]
-    if hasWasiSec && hasWasiPep {
-        return fmt.Errorf("%w: metadata.%s shall not have both %s and %s properties at the same time!", pkgerrors.ErrInvalidValue, task.MetadataElasticKey, task.ElasticWasiSecurity, task.ElasticWasiPEP)
-    }
+	// Check that not both wasi_security and wasi_pep are present (illegal). Only one of the two is allowed at a time.
+	_, hasWasiSec := cfg[task.ElasticWasiSecurity]
+	_, hasWasiPep := cfg[task.ElasticWasiPEP]
+	if hasWasiSec && hasWasiPep {
+		return fmt.Errorf("%w: metadata.%s shall not have both %s and %s properties at the same time", pkgerrors.ErrInvalidValue, task.MetadataElasticKey, task.ElasticWasiSecurity, task.ElasticWasiPEP)
+	}
 
 	return nil
 }
