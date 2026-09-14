@@ -22,8 +22,8 @@ pub struct WasiSecurityProvider {
     get_wasi_security_instance:
         fn(config: &str, workload_meta: WasmWorkloadMetadata) -> Result<WasiSecurity>,
 }
-
 /// WASM workload metadata relevant to WASI security plugins
+#[allow(dead_code)]
 pub struct WasmWorkloadMetadata {
     //// These fields are inherited from Proplet's Task StartRequest struct
     pub id: String,
