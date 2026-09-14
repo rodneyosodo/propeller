@@ -261,8 +261,9 @@ pub struct Metadata {
     #[serde(default)]
     pub wasi_security: Option<String>,
 
-    /// Preparation for upcoming THS changes.
-    #[allow(dead_code)]
+    /// Input config for THS WASI PEP component or other WASI Security Provider plugins (WasiSecurityProvider interface implementations).
+    /// Type String here is because the Manager API (/manager/api/requests.go) only accept String values in metadata.elastic properties.
+    #[serde(default)]
     pub wasi_pep: Option<String>,
 }
 

@@ -1,6 +1,7 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use anyhow::{anyhow, Context, Result};
+use dlopen2::wrapper::WrapperApi;
 use serde::Deserialize;
 use wasmtime_wasi::sockets::SocketAddrUse;
 
@@ -13,6 +14,25 @@ pub struct WasiSecurity {
     pub network_bind: Vec<NetworkRule>,
     pub network_connect: Vec<NetworkRule>,
     pub allow_ip_name_lookup: bool,
+}
+
+/// Interface for external WASI security plugins (e.g. Elastic - THS ABAC component)
+#[derive(WrapperApi)]
+pub struct WasiSecurityProvider {
+    get_wasi_security_instance:
+        fn(config: &str, workload_meta: WasmWorkloadMetadata) -> Result<WasiSecurity>,
+}
+/// WASM workload metadata relevant to WASI security plugins
+#[allow(dead_code)]
+pub struct WasmWorkloadMetadata {
+    //// These fields are inherited from Proplet's Task StartRequest struct
+    pub id: String,
+    pub name: String,
+    pub inputs: Vec<String>,
+    pub env: Option<HashMap<String, String>>,
+
+    /// ID of the worker node, i.e. the proplet in this context
+    pub worker_node_id: Option<String>,
 }
 
 #[derive(Debug, Clone)]

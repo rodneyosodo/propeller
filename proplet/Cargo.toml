@@ -76,6 +76,9 @@ wasm-wave = "0.254.0"
 # ELASTIC WasmHAL-Hardware: wasi-usb
 wasmtime-wasi-usb = "48.0.0"
 
+# ELASTIC - Dependency for loading external WASI security providers (as a shared library), e.g. THS WASI PEP library.
+dlopen2 = "0.9"
+
 [dev-dependencies]
 wiremock = "0.6"
 tokio = { version = "1.52", features = ["full"] }
@@ -85,3 +88,9 @@ default = []
 
 [profile.release]
 strip = "symbols"
+
+# ELASTIC - The wasi_security structures are used by external WASI security providers, e.g. THS WASI PEP library.
+# TODO: make wasi_security.rs a separate library crate
+[lib]
+path = "src/wasi_security.rs"
+crate-type = ["lib"]
