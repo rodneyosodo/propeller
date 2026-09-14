@@ -472,7 +472,14 @@ impl PropletService {
             );
             e
         })?;
-        req.validate()?;
+        if let Err(e) = req.validate() {
+            error!("Invalid start request for task '{}': {:#}", req.id, e);
+            if !req.id.is_empty() {
+                self.publish_result(&req.id, Vec::new(), Some(format!("{e:#}")))
+                    .await?;
+            }
+            return Err(e);
+        }
 
         tracing::Span::current().record("task_id", req.id.as_str());
         tracing::Span::current().record("task_name", req.name.as_str());
@@ -520,7 +527,16 @@ impl PropletService {
         };
 
         if let Some(ref registry) = self.plugin_registry {
-            if let Some(reason) = registry.authorize(&plugin_task_info)? {
+            let authorized = match registry.authorize(&plugin_task_info) {
+                Ok(a) => a,
+                Err(e) => {
+                    error!("Plugin authorize failed for task {}: {:#}", req.id, e);
+                    self.publish_result(&req.id, Vec::new(), Some(format!("{e:#}")))
+                        .await?;
+                    return Err(e);
+                }
+            };
+            if let Some(reason) = authorized {
                 error!("Plugin denied task {}: {}", req.id, reason);
                 self.publish_result(&req.id, Vec::new(), Some(reason.clone()))
                     .await?;
@@ -530,7 +546,15 @@ impl PropletService {
 
         let plugin_env_additions: Vec<(String, String)> =
             if let Some(ref registry) = self.plugin_registry {
-                registry.enrich(&plugin_task_info)?
+                match registry.enrich(&plugin_task_info) {
+                    Ok(e) => e,
+                    Err(e) => {
+                        error!("Plugin enrich failed for task {}: {:#}", req.id, e);
+                        self.publish_result(&req.id, Vec::new(), Some(format!("{e:#}")))
+                            .await?;
+                        return Err(e);
+                    }
+                }
             } else {
                 Vec::new()
             };
@@ -849,6 +873,19 @@ impl PropletService {
                     Some(url) => url,
                     None => {
                         error!("MODEL_REGISTRY_URL not set. Must be provided via environment variable in .env file.");
+                        let err_msg = "MODEL_REGISTRY_URL not set. Must be provided via environment variable in .env file."
+                            .to_string();
+                        let result_msg = ResultMessage {
+                            task_id: task_id.clone(),
+                            proplet_id: proplet_id.clone(),
+                            results: String::new(),
+                            error: Some(err_msg),
+                        };
+                        let topic =
+                            build_topic(&tenant_id, &channel_id, "control/proplet/results");
+                        if let Err(e) = pubsub.publish(&topic, &result_msg, qos).await {
+                            error!("Failed to publish result for task {}: {}", task_id, e);
+                        }
                         running_tasks.lock().await.remove(&task_id);
                         metrics.tasks_failed.inc();
                         metrics.tasks_running.dec();
@@ -1003,10 +1040,28 @@ impl PropletService {
                     Some(url) => url,
                     None => {
                         error!("MANAGER_COORDINATOR_URL not set. Must be provided via environment variable in .env file for FML tasks.");
-                        running_tasks.lock().await.remove(&task_id);
-                        if error.is_none() {
-                            metrics.tasks_failed.inc();
+                        let final_error = match error {
+                            Some(e) => Some(e),
+                            None => {
+                                metrics.tasks_failed.inc();
+                                Some(
+                                    "MANAGER_COORDINATOR_URL not set. Must be provided via environment variable in .env file for FML tasks."
+                                        .to_string(),
+                                )
+                            }
+                        };
+                        let result_msg = ResultMessage {
+                            task_id: task_id.clone(),
+                            proplet_id: proplet_id.clone(),
+                            results: result_str.clone(),
+                            error: final_error,
+                        };
+                        let topic =
+                            build_topic(&tenant_id, &channel_id, "control/proplet/results");
+                        if let Err(e) = pubsub.publish(&topic, &result_msg, qos).await {
+                            error!("Failed to publish result for task {}: {}", task_id, e);
                         }
+                        running_tasks.lock().await.remove(&task_id);
                         metrics.tasks_running.dec();
                         return;
                     }
