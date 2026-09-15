@@ -47,10 +47,10 @@ LABEL org.opencontainers.image.licenses=Apache-2.0
 LABEL org.opencontainers.image.title="Propeller Proplet (Rust)"
 LABEL org.opencontainers.image.description="Propeller edge runtime for WebAssembly modules"
 
-ARG WASMTIME_VERSION=48.0.1
-ARG WASMTIME_SHA256_AMD64=4c2e31b68ad99e0a519f225a261fda099eb15f056d4a24fdb3c2a46517bde1df
-ARG WASMTIME_SHA256_ARM64=fdbebd838ed7b9cc4e2b63f6d7d855b33386fc388f3595f668bf394131dd072f
-ARG WASMTIME_SHA256_RISCV64=806f6f45adf6518196bad5828f5325c317bbb7b511ffe5ec0e4e08d2bc078599
+ARG WASMTIME_VERSION=48.0.2
+ARG WASMTIME_SHA256_AMD64=f2b0ad1ce9253f2f9a38793c2c42cd1cba4e90b27dc40d685eaf723dc8438d94
+ARG WASMTIME_SHA256_ARM64=230aa7104d3e25da303fc30925ca606fcfb7b8a5d45d1bfee68db04e217be45e
+ARG WASMTIME_SHA256_RISCV64=6257c83d191863b34bf9ce934de69cb6d6657429b9029ef41013e33b30ad8c5d
 ARG TARGETARCH
 
 # Map Docker's TARGETARCH to the architecture label used in wasmtime release tarballs.
