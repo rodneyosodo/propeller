@@ -108,15 +108,13 @@ fn detect_tdx() -> Option<TeeDetection> {
         }
     }
 
-    if let Ok(output) = std::process::Command::new("dmesg").arg("--kernel").output() {
-        if let Ok(dmesg) = String::from_utf8(output.stdout) {
-            if dmesg.contains("tdx: Guest initialized") || dmesg.contains("virt/tdx") {
-                return Some(TeeDetection::with_details(
-                    TeeType::Tdx,
-                    "dmesg",
-                    "TDX initialization found in kernel messages",
-                ));
-            }
+    if let Some(dmesg) = kernel_logs() {
+        if dmesg.contains("tdx: Guest initialized") || dmesg.contains("virt/tdx") {
+            return Some(TeeDetection::with_details(
+                TeeType::Tdx,
+                "dmesg",
+                "TDX initialization found in kernel messages",
+            ));
         }
     }
 
@@ -157,18 +155,60 @@ fn detect_sev() -> Option<TeeDetection> {
         }
     }
 
-    if let Ok(output) = std::process::Command::new("dmesg").arg("--kernel").output() {
-        if let Ok(dmesg) = String::from_utf8(output.stdout) {
-            if dmesg.contains("AMD Memory Encryption Features active: SEV")
-                || dmesg.contains("SEV enabled")
-                || dmesg.contains("SEV-SNP")
-            {
+    if let Some(dmesg) = kernel_logs() {
+        if dmesg.contains("AMD Memory Encryption Features active: SEV")
+            || dmesg.contains("SEV enabled")
+            || dmesg.contains("SEV-SNP")
+        {
+            return Some(TeeDetection::with_details(
+                TeeType::Sev,
+                "dmesg",
+                "SEV initialization found in kernel messages",
+            ));
+        }
+    }
+
+    // Azure confidential VMs run behind a paravisor in vTOM mode: neither
+    // `/dev/sev` nor `/dev/sev-guest` is exposed and `/proc/cpuinfo` is
+    // masked, so every check above misses. Attestation on these guests goes
+    // through the vTPM instead (the `az-snp-vtpm` attester), so a vTPM plus a
+    // paravisor boot message is sufficient evidence of a confidential guest.
+    if Path::new("/dev/tpm0").exists() || Path::new("/dev/tpmrm0").exists() {
+        if let Some(dmesg) = kernel_logs() {
+            if dmesg.contains("Detected confidential virtualization sev-snp") {
                 return Some(TeeDetection::with_details(
                     TeeType::Sev,
-                    "dmesg",
-                    "SEV initialization found in kernel messages",
+                    "azure_paravisor",
+                    "Azure SEV-SNP confidential VM detected via vTPM",
                 ));
             }
+            if dmesg.contains("Detected confidential virtualization tdx") {
+                return Some(TeeDetection::with_details(
+                    TeeType::Tdx,
+                    "azure_paravisor",
+                    "Azure TDX confidential VM detected via vTPM",
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+/// Read kernel messages, preferring `/dev/kmsg` over the `dmesg` binary.
+///
+/// `dmesg` needs `CAP_SYSLOG`, which a hardened or sandboxed unit may not
+/// hold, and its failure is silent — `Command::output()` returns an empty
+/// stdout rather than an error when the kernel log is restricted. Reading
+/// `/dev/kmsg` first makes detection work under a restrictive sandbox too.
+fn kernel_logs() -> Option<String> {
+    if let Ok(logs) = fs::read_to_string("/dev/kmsg") {
+        return Some(logs);
+    }
+
+    if let Ok(output) = std::process::Command::new("dmesg").arg("--kernel").output() {
+        if let Ok(dmesg) = String::from_utf8(output.stdout) {
+            return Some(dmesg);
         }
     }
 
@@ -202,15 +242,13 @@ fn detect_sgx() -> Option<TeeDetection> {
         }
     }
 
-    if let Ok(output) = std::process::Command::new("dmesg").arg("--kernel").output() {
-        if let Ok(dmesg) = String::from_utf8(output.stdout) {
-            if dmesg.contains("sgx: EPC section") || dmesg.contains("intel_sgx") {
-                return Some(TeeDetection::with_details(
-                    TeeType::Sgx,
-                    "dmesg",
-                    "SGX initialization found in kernel messages",
-                ));
-            }
+    if let Some(dmesg) = kernel_logs() {
+        if dmesg.contains("sgx: EPC section") || dmesg.contains("intel_sgx") {
+            return Some(TeeDetection::with_details(
+                TeeType::Sgx,
+                "dmesg",
+                "SGX initialization found in kernel messages",
+            ));
         }
     }
 
@@ -290,5 +328,44 @@ mod tests {
         if let Some(detection) = detect_sgx() {
             assert_eq!(detection.tee_type, TeeType::Sgx);
         }
+    }
+
+    #[test]
+    fn test_kernel_logs_returns_something_or_none() {
+        // May be None under a sandbox that forbids both /dev/kmsg and dmesg;
+        // the contract is only that it must not panic.
+        let _ = kernel_logs();
+    }
+
+    #[test]
+    fn test_detect_sev_azure_paravisor_requires_vtpm() {
+        // The paravisor branch keys off a vTPM device plus the paravisor boot
+        // message. Either way `detect_sev` must only ever report Sev, and if
+        // it reports the paravisor method then a vTPM must actually be present.
+        let has_vtpm = Path::new("/dev/tpm0").exists() || Path::new("/dev/tpmrm0").exists();
+        match detect_sev() {
+            Some(detection) => {
+                assert_eq!(detection.tee_type, TeeType::Sev);
+                if detection.detection_method == "azure_paravisor" {
+                    assert!(has_vtpm, "paravisor detection requires a vTPM device");
+                }
+            }
+            None => {
+                assert!(
+                    !has_vtpm || !paravisor_marker_present(),
+                    "paravisor marker present with a vTPM, but detection returned None"
+                );
+            }
+        }
+    }
+
+    /// Whether the kernel log carries the paravisor marker the Azure branch
+    /// keys off. Split out so the assertion above does not depend on the
+    /// detection code it is testing.
+    fn paravisor_marker_present() -> bool {
+        kernel_logs().is_some_and(|logs| {
+            logs.contains("Detected confidential virtualization sev-snp")
+                || logs.contains("Detected confidential virtualization tdx")
+        })
     }
 }

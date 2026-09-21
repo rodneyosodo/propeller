@@ -186,11 +186,36 @@ impl PropletConfig {
 
         {
             let tee_detection = tee_detection::detect_tee();
-
             config.tee_enabled = tee_detection.is_tee();
 
+            // Detection relies on device files, /proc/cpuinfo, EFI variables
+            // and kernel logs, none of which are guaranteed on every
+            // confidential platform — Azure CVMs hide all of them behind a
+            // paravisor. An explicit override is provided so an operator can
+            // force the TEE runtime on when detection cannot see the guest.
+            if let Ok(val) = env::var("PROPLET_TEE_ENABLED") {
+                if !val.is_empty() {
+                    let forced = is_truthy(&val);
+                    if forced != config.tee_enabled {
+                        tracing::info!(
+                            "PROPLET_TEE_ENABLED={} overrides TEE detection ({})",
+                            val,
+                            tee_detection.detection_method
+                        );
+                    }
+                    config.tee_enabled = forced;
+                }
+            }
+
+            tracing::info!(
+                "TEE detection: type={:?} method={} enabled={}",
+                tee_detection.tee_type,
+                tee_detection.detection_method,
+                config.tee_enabled
+            );
+
             if config.tee_enabled && config.kbs_uri.is_none() {
-                return Err("KBS URI must be configured when TEE is detected. Set PROPLET_KBS_URI environment variable.".into());
+                return Err("KBS URI must be configured when TEE is enabled. Set PROPLET_KBS_URI environment variable.".into());
             }
         }
 

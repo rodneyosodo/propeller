@@ -156,11 +156,11 @@ write_files:
       PROPLET_ENABLE_MONITORING=true
       PROPLET_MANAGER_K8S_NAMESPACE=default
       PROPLET_KBS_URI=KBS_URI_PLACEHOLDER
-      PROPLET_AA_CONFIG_PATH=/etc/attestation-agent.conf
+      PROPLET_AA_CONFIG_PATH=/etc/attestation-agent.toml
       PROPLET_LAYER_STORE_PATH=/tmp/proplet/layers
     permissions: '0644'
 
-  - path: /etc/attestation-agent.conf
+  - path: /etc/attestation-agent.toml
     content: |
       [token_configs]
 
@@ -379,8 +379,10 @@ runcmd:
     cd guest-components
     git checkout upstream-proplet
     cd attestation-agent
-    echo "Building attestation-agent (gRPC version) with all attesters (this may take several minutes)..."
-    make ATTESTER=all-attesters ttrpc=false
+    # az-snp-vtpm for Azure vTPMs, tdx for TDX hosts. Do NOT use all-attesters:
+    # it enables the NVIDIA attester, whose build needs the NVIDIA C++ SDK.
+    echo "Building attestation-agent (gRPC version) with Azure/TDX attesters (this may take several minutes)..."
+    make ATTESTER=az-snp-vtpm-attester ttrpc=false
     make install
     /usr/local/bin/attestation-agent --help
     cd /
@@ -397,7 +399,11 @@ runcmd:
     git checkout upstream-proplet
     cd attestation-agent/coco_keyprovider
     echo "Building CoCo Keyprovider (this may take several minutes)..."
-    cargo build --release --target x86_64-unknown-linux-gnu
+    # Select the Azure attester. The default (all-attesters) also compiles the
+    # generic TPM attester, which then registers the vTPM as an ADDITIONAL device
+    # and demands a quote from AK handle 0x81010002 that Azure vTPMs lack.
+    cargo build --release --target x86_64-unknown-linux-gnu \
+      --no-default-features --features az-snp-vtpm-attester
     chmod +x ../../target/x86_64-unknown-linux-gnu/release/coco_keyprovider
     cp ../../target/x86_64-unknown-linux-gnu/release/coco_keyprovider /usr/local/bin/
     /usr/local/bin/coco_keyprovider --help

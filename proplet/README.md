@@ -19,23 +19,24 @@ cargo build --release
 
 ## Configure
 
-| Variable                        | Description                                               | Default                |
-| ------------------------------- | --------------------------------------------------------- | ---------------------- |
-| `PROPLET_LOG_LEVEL`             | Log level (`debug`, `info`, `warn`, `error`)              | `info`                 |
-| `PROPLET_INSTANCE_ID`           | Unique ID for this instance                               | Generated UUID         |
-| `PROPLET_MQTT_ADDRESS`          | MQTT broker address                                       | `tcp://localhost:1883` |
-| `PROPLET_MQTT_TIMEOUT`          | MQTT operation timeout (seconds)                          | `30`                   |
-| `PROPLET_MQTT_QOS`              | MQTT Quality of Service level                             | `2`                    |
-| `PROPLET_LIVELINESS_INTERVAL`   | Heartbeat interval in seconds                             | `10`                   |
-| `PROPLET_TENANT_ID`             | Propeller tenant ID                                       |                        |
-| `PROPLET_CHANNEL_ID`            | Propeller channel ID                                      |                        |
-| `PROPLET_ENTITY_ID`             | MQTT entity ID                                            |                        |
-| `PROPLET_API_KEY`               | MQTT entity key                                           |                        |
-| `PROPLET_EXTERNAL_WASM_RUNTIME` | Path to external Wasm runtime; uses Wasmtime if unset     | `""` (empty)           |
-| `PROPLET_HAL_ENABLED`           | Expose the ELASTIC TEE HAL to workloads (see HAL section) | `true`                 |
-| `PROPLET_KBS_URI`               | Key Broker Service URL (required for encrypted workloads) |                        |
-| `PROPLET_AA_CONFIG_PATH`        | Path to the Attestation Agent config file                 |                        |
-| `PROPLET_LAYER_STORE_PATH`      | OCI layer cache path                                      | `/tmp/proplet/layers`  |
+| Variable                        | Description                                                 | Default                |
+| ------------------------------- | ----------------------------------------------------------- | ---------------------- |
+| `PROPLET_LOG_LEVEL`             | Log level (`debug`, `info`, `warn`, `error`)                | `info`                 |
+| `PROPLET_INSTANCE_ID`           | Unique ID for this instance                                 | Generated UUID         |
+| `PROPLET_MQTT_ADDRESS`          | MQTT broker address                                         | `tcp://localhost:1883` |
+| `PROPLET_MQTT_TIMEOUT`          | MQTT operation timeout (seconds)                            | `30`                   |
+| `PROPLET_MQTT_QOS`              | MQTT Quality of Service level                               | `2`                    |
+| `PROPLET_LIVELINESS_INTERVAL`   | Heartbeat interval in seconds                               | `10`                   |
+| `PROPLET_TENANT_ID`             | Propeller tenant ID                                         |                        |
+| `PROPLET_CHANNEL_ID`            | Propeller channel ID                                        |                        |
+| `PROPLET_ENTITY_ID`             | MQTT entity ID                                              |                        |
+| `PROPLET_API_KEY`               | MQTT entity key                                             |                        |
+| `PROPLET_EXTERNAL_WASM_RUNTIME` | Path to external Wasm runtime; uses Wasmtime if unset       | `""` (empty)           |
+| `PROPLET_HAL_ENABLED`           | Expose the ELASTIC TEE HAL to workloads (see HAL section)   | `true`                 |
+| `PROPLET_TEE_ENABLED`           | Force the TEE runtime on/off, overriding auto-detection     | (unset)                |
+| `PROPLET_KBS_URI`               | Key Broker Service URL (required for encrypted workloads)   |                        |
+| `PROPLET_AA_CONFIG_PATH`        | Path to the Attestation Agent config file (`.toml`/`.json`) |                        |
+| `PROPLET_LAYER_STORE_PATH`      | OCI layer cache path                                        | `/tmp/proplet/layers`  |
 
 ## Run without TEE
 
@@ -91,6 +92,13 @@ TEE hardware (AMD SEV / Intel TDX) and safe defaults elsewhere. v1 covers the
 provider-backed interfaces (`platform`, `attestation`, `crypto`, `clock`,
 `random`); the stub-only interfaces (`sockets`, `gpu`, `resources`, `events`,
 `communication`, `storage`) and the async HTTP-proxy path are not yet wired.
+
+On Azure AMD CVMs the paravisor exposes no `/dev/sev*` or TSM configfs, so both
+detection and attestation go through the guest vTPM: the platform provider
+reports `AmdSev` and `attestation` returns the HCL report, a TPM quote bound to
+the caller's report data, and the VCEK certificate from IMDS. This requires a
+`elastic-tee-hal` revision with that support — older revs report no TEE and
+return placeholder measurements. Reading the vTPM needs root or the `tss` group.
 
 ## Run inside a TEE
 
@@ -149,5 +157,3 @@ url = "http://10.0.2.2:8082"
 Do not include a `file` field for encrypted workloads.
 
 For full TEE setup (KBS, image encryption, CVM provisioning), see the [Encrypted workloads guide](https://propeller.absmach.eu/docs/tee).
-
-

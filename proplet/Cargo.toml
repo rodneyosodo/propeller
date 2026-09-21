@@ -20,7 +20,7 @@ hyper = { version = "1.11", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 uuid = { version = "1.26", features = ["v4", "serde"] }
 which = "8.0"
-thiserror = "2.0" 
+thiserror = "2.0"
 anyhow = "1.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
@@ -35,7 +35,7 @@ opentelemetry-otlp = { version = "0.32", features = [
 prometheus = "0.14"
 http-body = "1"
 http-body-util = "0.1"
-config = "0.15.25"
+config = "0.15.26"
 async-trait = "0.1"
 base64 = "0.23.1"
 url = "2.5"
@@ -49,6 +49,7 @@ reqwest = { version = "0.13", features = ["json", "rustls"] }
 attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "rust-crypto",
   "kbs",
+  "az-snp-vtpm-attester",
 ] }
 image-rs = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "encryption-ring",
@@ -60,6 +61,7 @@ image-rs = { git = "https://github.com/rodneyosodo/guest-components", branch = "
 kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", features = [
   "background_check",
   "rust-crypto",
+  "az-snp-vtpm-attester",
 ], default-features = false }
 oci-client = { version = "0.17.0", default-features = false, features = ["rustls-tls"] }
 oci-spec = { version = "0.10.0" }
@@ -68,7 +70,7 @@ hex = { version = "0.4" }
 futures-util = { version = "0.3" }
 
 # ELASTIC TEE HAL — hardware abstraction layer for TEE workloads
-elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", rev = "f25abaf2448a4d424061e6355e8a915e4b5c6cf2", default-features = false, features = [
+elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false, features = [
   "amd-sev",
 ] }
 wasm-wave = "0.254.0"
