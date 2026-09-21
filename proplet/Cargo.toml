@@ -49,7 +49,6 @@ reqwest = { version = "0.13", features = ["json", "rustls"] }
 attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "rust-crypto",
   "kbs",
-  "az-snp-vtpm-attester",
 ] }
 image-rs = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "encryption-ring",
@@ -61,7 +60,6 @@ image-rs = { git = "https://github.com/rodneyosodo/guest-components", branch = "
 kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", features = [
   "background_check",
   "rust-crypto",
-  "az-snp-vtpm-attester",
 ], default-features = false }
 oci-client = { version = "0.17.0", default-features = false, features = ["rustls-tls"] }
 oci-spec = { version = "0.10.0" }
@@ -96,3 +94,18 @@ strip = "symbols"
 [lib]
 path = "src/wasi_security.rs"
 crate-type = ["lib"]
+
+# Azure SEV-SNP attestation via the vTPM. `tss-esapi-sys` (pulled in by
+# az-snp-vtpm) only supports x86_64 and aarch64 Linux, so it cannot be enabled
+# unconditionally — the riscv64 proplet build would fail.
+[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
+  "rust-crypto",
+  "kbs",
+  "az-snp-vtpm-attester",
+] }
+kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", features = [
+  "background_check",
+  "rust-crypto",
+  "az-snp-vtpm-attester",
+], default-features = false }
