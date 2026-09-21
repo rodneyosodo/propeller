@@ -1,5 +1,7 @@
 # Propeller on an AMD SEV-SNP Azure CVM with Trustee
 
+For the rendered version of this guide, see [propeller.absmach.eu/docs/azure-cvm](https://propeller.absmach.eu/docs/azure-cvm).
+
 Deploy [Trustee](https://github.com/confidential-containers/trustee) **outside** the confidential VM and run the Propeller stack with the CoCo **guest
 components** **inside** an Azure AMD SEV-SNP confidential VM. This is the production-shaped topology: the relying party (Trustee) verifies evidence and releases keys, and it must not share the trust boundary with the workload it is attesting.
 
@@ -769,6 +771,7 @@ evidence: 7b2276657273696f6e223a312c2274706d5f71756f7465223a...
 
 ## References
 
+- [Azure Confidential VMs guide](https://propeller.absmach.eu/docs/azure-cvm)
 - [Trustee](https://github.com/confidential-containers/trustee)
 - [Guest Components](https://github.com/confidential-containers/guest-components)
 - [Propeller encrypted workloads guide](https://propeller.absmach.eu/docs/tee)
