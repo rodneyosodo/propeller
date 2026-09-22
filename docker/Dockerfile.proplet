@@ -15,9 +15,15 @@ WORKDIR /build
 COPY proplet/ ./
 
 # Install cross-compilation toolchains and build for the target architecture.
+# libtss2-dev + pkg-config are needed for the amd64 target: the x86_64-only
+# amd-sev feature pulls az-snp-vtpm -> tss-esapi-sys, whose build script probes
+# tss2-sys.pc. arm64/riscv64 don't enable that feature and need no TSS headers.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         clang \
         libclang-dev \
+        pkg-config \
+        libtss2-dev \
+        libssl-dev \
         gcc-aarch64-linux-gnu \
         libc6-dev-arm64-cross \
         gcc-riscv64-linux-gnu \

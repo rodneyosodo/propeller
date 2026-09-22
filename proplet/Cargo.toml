@@ -67,10 +67,9 @@ resource_uri = { git = "https://github.com/rodneyosodo/guest-components", branch
 hex = { version = "0.4" }
 futures-util = { version = "0.3" }
 
-# ELASTIC TEE HAL — hardware abstraction layer for TEE workloads
-elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false, features = [
-  "amd-sev",
-] }
+# ELASTIC TEE HAL — hardware abstraction layer for TEE workloads.
+# The `amd-sev` feature is enabled per-target below (x86_64 only).
+elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false }
 wasm-wave = "0.254.0"
 
 # ELASTIC WasmHAL-Hardware: wasi-usb
@@ -95,10 +94,12 @@ strip = "symbols"
 path = "src/wasi_security.rs"
 crate-type = ["lib"]
 
-# Azure SEV-SNP attestation via the vTPM. `tss-esapi-sys` (pulled in by
-# az-snp-vtpm) only supports x86_64 and aarch64 Linux, so it cannot be enabled
-# unconditionally — the riscv64 proplet build would fail.
-[target.'cfg(any(target_arch = "x86_64", target_arch = "aarch64"))'.dependencies]
+# Azure SEV-SNP attestation via the vTPM, x86_64 only. SEV-SNP and TDX are
+# x86_64-only technologies, and `tss-esapi-sys` (pulled in by az-snp-vtpm)
+# neither supports riscv64 nor cross-compiles without a target sysroot, so
+# these features must not be enabled unconditionally — the arm64/riscv64
+# proplet builds would fail.
+[target.'cfg(target_arch = "x86_64")'.dependencies]
 attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "rust-crypto",
   "kbs",
@@ -109,3 +110,6 @@ kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch
   "rust-crypto",
   "az-snp-vtpm-attester",
 ], default-features = false }
+elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false, features = [
+  "amd-sev",
+] }

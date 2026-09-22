@@ -83,9 +83,12 @@ jobs:
             riscv64) sudo apt-get install -y gcc-riscv64-linux-gnu libc6-dev-riscv64-cross ;;
           esac
 
-      # The amd-sev feature pulls az-snp-vtpm -> tss-esapi-sys, whose build
-      # script needs the TPM2 TSS headers (tss2-sys.pc) on the runner.
+      # The x86_64-only amd-sev feature pulls az-snp-vtpm -> tss-esapi-sys,
+      # whose build script needs the TPM2 TSS headers (tss2-sys.pc) on the
+      # runner. arm64/riscv64 builds don't enable that feature, so they
+      # don't need the headers.
       - name: Install TPM2 TSS development headers
+        if: matrix.goarch == 'amd64'
         run: |
           sudo apt-get update
           sudo apt-get install -y libtss2-dev libssl-dev pkg-config
