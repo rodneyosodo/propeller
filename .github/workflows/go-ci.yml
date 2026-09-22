@@ -40,6 +40,13 @@ jobs:
       - name: Install wabt
         run: sudo apt-get install -y wabt
 
+      # The amd-sev feature pulls az-snp-vtpm -> tss-esapi-sys, whose build
+      # script needs the TPM2 TSS headers (tss2-sys.pc) on the runner.
+      - name: Install TPM2 TSS development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtss2-dev libssl-dev pkg-config
+
       - name: Install wasmtools
         run: cargo install --locked wasm-tools
 
