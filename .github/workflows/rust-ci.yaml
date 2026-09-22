@@ -47,8 +47,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libtss2-dev libssl-dev pkg-config
 
-      - name: Check cargo
-        run: cargo check --release
+      - name: Check HAL WIT dep copies are identical
+        working-directory: .
+        run: |
+          diff -r proplet/wit/hal/deps examples/hal-test/wit/deps
+          diff -r proplet/wit/hal/deps examples/hal-runner/wit/deps
+          diff -r proplet/wit/hal/deps examples/attestation-test/wit/deps
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -56,12 +60,8 @@ jobs:
       - name: Run linter
         run: cargo clippy -- -D warnings
 
-      - name: Check HAL WIT dep copies are identical
-        working-directory: .
-        run: |
-          diff -r proplet/wit/hal/deps examples/hal-test/wit/deps
-          diff -r proplet/wit/hal/deps examples/hal-runner/wit/deps
-          diff -r proplet/wit/hal/deps examples/attestation-test/wit/deps
+      - name: Check cargo
+        run: cargo check --release
 
       - name: Run tests
         run: cargo test --verbose
