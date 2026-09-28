@@ -13,7 +13,7 @@ use rustls::{DigitallySignedStruct, RootCertStore, SignatureScheme};
 use socket2::{Domain, Protocol, Socket, Type};
 use std::collections::HashMap;
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -29,14 +29,15 @@ use wasmtime::component::ResourceTable;
 use wasmtime::*;
 use wasmtime_wasi::p2::bindings::Command;
 use wasmtime_wasi::p2::pipe::MemoryOutputPipe;
+use wasmtime_wasi::sockets::SocketAddrUse;
 use wasmtime_wasi::{FsPerms, WasiCtx, WasiCtxBuilder, WasiCtxView, WasiView};
 use wasmtime_wasi_http::io::TokioIo;
 use wasmtime_wasi_http::p2::bindings::http::types::Scheme;
 use wasmtime_wasi_http::p2::bindings::ProxyPre;
 use wasmtime_wasi_http::p2::body::HyperOutgoingBody;
 use wasmtime_wasi_http::{
-    default_send_request, Error as HttpError, RequestOptions, WasiBody, WasiHttpCtx,
-    WasiHttpCtxView, WasiHttpHooks, WasiHttpView,
+    Error as HttpError, RequestOptions, WasiBody, WasiHttpCtx, WasiHttpCtxView, WasiHttpHooks,
+    WasiHttpView,
 };
 use wasmtime_wasi_usb::{WasiUsbCtx, WasiUsbCtxView, WasiUsbView};
 
@@ -142,10 +143,21 @@ fn is_proxy_component(bytes: &[u8]) -> bool {
 
 const INVOCATION_OUTPUT_CAPACITY: usize = 1024 * 1024;
 
-fn find_available_port(start_port: u16) -> Result<(Socket, u16)> {
+/// `socket_addr_check` for the listener the host binds itself, which never reaches WASI.
+fn proxy_bind_allowed(policy: Option<&WasiSecurity>, addr: SocketAddr) -> bool {
+    policy.is_none_or(|p| {
+        p.allows_socket(addr, SocketAddrUse::TcpBind)
+            && p.allows_socket(addr, SocketAddrUse::TcpListen)
+    })
+}
+
+fn find_available_port(start_port: u16, policy: Option<&WasiSecurity>) -> Result<(Socket, u16)> {
     let max_attempts = 100u16;
     for port in start_port..start_port.saturating_add(max_attempts) {
         let addr: SocketAddr = ([0, 0, 0, 0], port).into();
+        if !proxy_bind_allowed(policy, addr) {
+            continue;
+        }
         match Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP)) {
             Ok(socket) => {
                 let _ = socket.set_reuse_address(true);
@@ -157,10 +169,9 @@ fn find_available_port(start_port: u16) -> Result<(Socket, u16)> {
         }
     }
     let end_port = start_port.saturating_add(max_attempts - 1);
+    let granted = policy.map_or("", |_| " granted by the policy's [network] bind rules");
     Err(anyhow::anyhow!(
-        "No available port found in range {}-{}",
-        start_port,
-        end_port,
+        "No available port found in range {start_port}-{end_port}{granted}"
     ))
 }
 
@@ -325,12 +336,28 @@ fn build_tls_client_config(
 }
 
 struct CustomTlsHttpHooks {
-    tls_config: Option<Arc<rustls::ClientConfig>>,
+    tls_config: Arc<rustls::ClientConfig>,
+    /// The task's policy; only its `[network]` rules are consulted here.
+    policy: Option<Arc<WasiSecurity>>,
 }
 
-impl CustomTlsHttpHooks {
-    fn new(tls_config: Option<Arc<rustls::ClientConfig>>) -> Self {
-        Self { tls_config }
+/// Whether a URI host is an address rather than a name. IPv6 arrives bracketed (`[::1]`).
+fn is_ip_literal(host: &str) -> bool {
+    host.strip_prefix('[')
+        .and_then(|h| h.strip_suffix(']'))
+        .unwrap_or(host)
+        .parse::<IpAddr>()
+        .is_ok()
+}
+
+/// `authority[:port]`, filling in the scheme's default port so a rule always has one to match.
+fn request_authority(uri: &hyper::Uri, use_tls: bool) -> Result<String, HttpError> {
+    let authority = uri.authority().ok_or(HttpError::HttpRequestUriInvalid)?;
+    if authority.port().is_some() {
+        Ok(authority.to_string())
+    } else {
+        let port = if use_tls { 443 } else { 80 };
+        Ok(format!("{authority}:{port}"))
     }
 }
 
@@ -352,20 +379,55 @@ impl WasiHttpHooks for CustomTlsHttpHooks {
             > + Send,
     > {
         _ = fut;
-        match &self.tls_config {
-            Some(tls_config) => {
-                let tls_config = tls_config.clone();
-                Box::new(custom_tls_send_request_handler(
-                    request, options, tls_config,
-                ))
-            }
-            None => Box::new(async move {
-                let (res, io) = default_send_request(request, options).await?;
-                let io = Box::new(io) as Box<dyn Future<Output = Result<(), HttpError>> + Send>;
-                Ok((res.map(|b| b.boxed_unsync()), io))
-            }),
-        }
+        let policy = self.policy.clone();
+        let tls_config = self.tls_config.clone();
+        Box::new(async move {
+            let checked = enforce_http_egress(request.uri(), policy.as_deref()).await?;
+            custom_tls_send_request_handler(request, options, tls_config, checked).await
+        })
     }
+}
+
+/// Resolve the request target and keep the addresses the policy grants `TcpConnect` to.
+/// `None` means the task carries no policy.
+async fn enforce_http_egress(
+    uri: &hyper::Uri,
+    policy: Option<&WasiSecurity>,
+) -> Result<Option<Vec<SocketAddr>>, HttpError> {
+    let Some(policy) = policy else {
+        return Ok(None);
+    };
+
+    // The host resolves this name on the task's behalf, the capability the flag governs.
+    let host = uri.host().ok_or(HttpError::HttpRequestUriInvalid)?;
+    if !policy.allow_ip_name_lookup && !is_ip_literal(host) {
+        warn!(
+            "wasi_security: denied outbound wasi:http to {host}; \
+             resolving a name needs [network] allow_ip_name_lookup"
+        );
+        return Err(HttpError::HttpRequestDenied);
+    }
+
+    let use_tls = uri.scheme() == Some(&hyper::http::uri::Scheme::HTTPS);
+    let authority = request_authority(uri, use_tls)?;
+    let resolved: Vec<SocketAddr> = tokio::net::lookup_host(&authority)
+        .await
+        .map_err(HttpError::Connect)?
+        .collect();
+    let allowed: Vec<SocketAddr> = resolved
+        .iter()
+        .copied()
+        .filter(|addr| policy.allows_socket(*addr, SocketAddrUse::TcpConnect))
+        .collect();
+
+    if allowed.is_empty() {
+        warn!(
+            "wasi_security: denied outbound wasi:http to {authority} (resolved {resolved:?}); \
+             no matching [network] connect grant"
+        );
+        return Err(HttpError::HttpRequestDenied);
+    }
+    Ok(Some(allowed))
 }
 
 /// Response body that enforces the request's `between_bytes_timeout`.
@@ -417,6 +479,7 @@ async fn custom_tls_send_request_handler(
     mut request: hyper::Request<WasiBody>,
     options: Option<RequestOptions>,
     tls_config: Arc<rustls::ClientConfig>,
+    checked_addrs: Option<Vec<SocketAddr>>,
 ) -> Result<
     (
         hyper::Response<WasiBody>,
@@ -425,23 +488,19 @@ async fn custom_tls_send_request_handler(
     HttpError,
 > {
     let use_tls = request.uri().scheme() == Some(&hyper::http::uri::Scheme::HTTPS);
-
-    let authority = if let Some(authority) = request.uri().authority() {
-        if authority.port().is_some() {
-            authority.to_string()
-        } else {
-            let port = if use_tls { 443 } else { 80 };
-            format!("{authority}:{port}")
-        }
-    } else {
-        return Err(HttpError::HttpRequestUriInvalid);
-    };
+    let authority = request_authority(request.uri(), use_tls)?;
 
     let tcp_stream = timeout(
         options
             .and_then(|r| r.connect_timeout)
             .unwrap_or(Duration::from_secs(600)),
-        tokio::net::TcpStream::connect(&authority),
+        // Connect to the checked addresses, not the name: a second lookup could differ.
+        async {
+            match &checked_addrs {
+                Some(addrs) => tokio::net::TcpStream::connect(&addrs[..]).await,
+                None => tokio::net::TcpStream::connect(&authority).await,
+            }
+        },
     )
     .await
     .map_err(|_| HttpError::ConnectionTimeout)?
@@ -613,7 +672,7 @@ pub struct WasmtimeRuntime {
     usb_enabled: bool,
     preopened_dirs: Vec<String>,
     proxy_port: u16,
-    http_tls_config: Option<Arc<rustls::ClientConfig>>,
+    http_tls_config: Arc<rustls::ClientConfig>,
 }
 
 impl WasmtimeRuntime {
@@ -634,26 +693,19 @@ impl WasmtimeRuntime {
 
         let engine = Engine::new(&config)?;
 
-        let http_tls_config = match (http_tls_ca_cert, http_tls_insecure_skip_verify) {
-            (Some(_), _) | (None, true) => {
-                match build_tls_client_config(http_tls_ca_cert, http_tls_insecure_skip_verify) {
-                    Ok(cfg) => {
-                        if http_tls_ca_cert.is_some() {
-                            info!("Custom TLS CA certificate loaded for outgoing HTTP requests");
-                        }
-                        if http_tls_insecure_skip_verify {
-                            warn!("TLS certificate verification is disabled for outgoing HTTP requests");
-                        }
-                        Some(Arc::new(cfg))
-                    }
-                    Err(e) => {
-                        warn!("Failed to build custom TLS config, using default: {e}");
-                        None
-                    }
-                }
-            }
-            _ => None,
-        };
+        let custom_tls = build_tls_client_config(http_tls_ca_cert, http_tls_insecure_skip_verify)
+            .inspect_err(|e| warn!("Failed to build custom TLS config, using default roots: {e}"));
+        if custom_tls.is_ok() && http_tls_ca_cert.is_some() {
+            info!("Custom TLS CA certificate loaded for outgoing HTTP requests");
+        }
+        if http_tls_insecure_skip_verify {
+            warn!("TLS certificate verification is disabled for outgoing HTTP requests");
+        }
+        // Always built, so every outgoing request takes the same send path.
+        let http_tls_config = Arc::new(match custom_tls {
+            Ok(cfg) => cfg,
+            Err(_) => build_tls_client_config(None, http_tls_insecure_skip_verify)?,
+        });
 
         Ok(Self {
             engine,
@@ -1018,7 +1070,10 @@ impl WasmtimeRuntime {
             table: ResourceTable::new(),
             hal: self.hal_enabled.then(|| self.hal.clone()),
             storage,
-            http_hooks: CustomTlsHttpHooks::new(self.http_tls_config.clone()),
+            http_hooks: CustomTlsHttpHooks {
+                tls_config: self.http_tls_config.clone(),
+                policy: config.wasi_security.clone().map(Arc::new),
+            },
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -1162,7 +1217,10 @@ impl WasmtimeRuntime {
             table: ResourceTable::new(),
             hal: self.hal_enabled.then(|| self.hal.clone()),
             storage,
-            http_hooks: CustomTlsHttpHooks::new(self.http_tls_config.clone()),
+            http_hooks: CustomTlsHttpHooks {
+                tls_config: self.http_tls_config.clone(),
+                policy: config.wasi_security.clone().map(Arc::new),
+            },
         };
 
         let mut store = Store::new(&self.engine, store_data);
@@ -1309,6 +1367,8 @@ impl WasmtimeRuntime {
                     .and_then(|a| a.split(':').next_back()?.parse().ok())
             });
 
+        let policy = config.wasi_security.clone().map(Arc::new);
+
         // Bind the port up front and keep it claimed to eliminate the TOCTOU
         // window between probing and the real bind. When the user explicitly
         // provided --port/--addr, use that port directly and fail if busy;
@@ -1316,6 +1376,13 @@ impl WasmtimeRuntime {
         let (socket, port) = match preferred_port {
             Some(p) => {
                 let addr: SocketAddr = ([0, 0, 0, 0], p).into();
+                if !proxy_bind_allowed(policy.as_deref(), addr) {
+                    return Err(anyhow::anyhow!(
+                        "wasi_security: task {} is not granted bind/listen on {addr} \
+                         (add it to the policy's [network] bind list)",
+                        config.id
+                    ));
+                }
                 let socket = Socket::new(Domain::IPV4, Type::STREAM, Some(Protocol::TCP))?;
                 socket.set_reuse_address(true)?;
                 socket
@@ -1323,7 +1390,7 @@ impl WasmtimeRuntime {
                     .with_context(|| format!("Failed to bind HTTP proxy port {addr}"))?;
                 (socket, p)
             }
-            None => find_available_port(self.proxy_port)?,
+            None => find_available_port(self.proxy_port, policy.as_deref())?,
         };
 
         let addr: SocketAddr = ([0, 0, 0, 0], port).into();
@@ -1351,8 +1418,6 @@ impl WasmtimeRuntime {
                 .map_err(|e| anyhow::anyhow!("Failed to create ProxyPre: {e}"))?,
         );
 
-        // Shared because every connection and request clones it below.
-        let policy = config.wasi_security.clone().map(Arc::new);
         let env: Arc<Vec<(String, String)>> = Arc::new(config.env.into_iter().collect());
         let preopened_dirs = self.preopened_dirs.clone();
 
@@ -1713,7 +1778,7 @@ async fn handle_proxy_request(
     policy: Option<Arc<WasiSecurity>>,
     req: hyper::Request<hyper::body::Incoming>,
     task_id: String,
-    http_tls_config: Option<Arc<rustls::ClientConfig>>,
+    http_tls_config: Arc<rustls::ClientConfig>,
 ) -> Result<hyper::Response<HyperOutgoingBody>> {
     let mut wasi_builder = WasiCtxBuilder::new();
     configure_wasi(
@@ -1732,7 +1797,10 @@ async fn handle_proxy_request(
         table: ResourceTable::new(),
         hal: None,
         storage: None,
-        http_hooks: CustomTlsHttpHooks::new(http_tls_config),
+        http_hooks: CustomTlsHttpHooks {
+            tls_config: http_tls_config,
+            policy,
+        },
     };
 
     let mut store = Store::new(pre.engine(), store_data);
@@ -1782,6 +1850,74 @@ mod tests {
 
     fn policy_from_toml(toml: &str) -> WasiSecurity {
         WasiSecurity::from_toml(toml).unwrap()
+    }
+
+    #[test]
+    fn proxy_bind_allowed_needs_a_bind_grant_for_that_port() {
+        let addr: SocketAddr = ([0, 0, 0, 0], 8081).into();
+        let other: SocketAddr = ([0, 0, 0, 0], 8082).into();
+        let bind = policy_from_toml("[network]\nbind = [\"tcp://0.0.0.0:8081\"]\n");
+        assert!(proxy_bind_allowed(Some(&bind), addr));
+        assert!(!proxy_bind_allowed(Some(&bind), other));
+        assert!(!proxy_bind_allowed(Some(&policy_from_toml("")), addr));
+        // A connect grant is not a bind grant, despite the implicit-bind allowance.
+        let connect = policy_from_toml("[network]\nconnect = [\"tcp://0.0.0.0:8081\"]\n");
+        assert!(!proxy_bind_allowed(Some(&connect), addr));
+        assert!(proxy_bind_allowed(None, addr));
+    }
+
+    #[tokio::test]
+    async fn enforce_http_egress_only_returns_granted_targets() {
+        let uri: hyper::Uri = "http://127.0.0.1:8081/message".parse().unwrap();
+        let other: hyper::Uri = "http://127.0.0.1:9999/message".parse().unwrap();
+        let addr = SocketAddr::from(([127, 0, 0, 1], 8081));
+
+        let connect = policy_from_toml("[network]\nconnect = [\"tcp://127.0.0.1:8081\"]\n");
+        let allowed = enforce_http_egress(&uri, Some(&connect)).await.unwrap();
+        assert_eq!(allowed, Some(vec![addr]));
+        assert!(enforce_http_egress(&other, Some(&connect)).await.is_err());
+
+        let bind = policy_from_toml("[network]\nbind = [\"tcp://127.0.0.1:8081\"]\n");
+        assert!(enforce_http_egress(&uri, Some(&bind)).await.is_err());
+        assert_eq!(enforce_http_egress(&uri, None).await.unwrap(), None);
+
+        let bare: hyper::Uri = "http://127.0.0.1/message".parse().unwrap();
+        assert_eq!(request_authority(&bare, false).unwrap(), "127.0.0.1:80");
+        assert_eq!(request_authority(&bare, true).unwrap(), "127.0.0.1:443");
+    }
+
+    #[tokio::test]
+    async fn enforce_http_egress_needs_allow_ip_name_lookup_for_a_name() {
+        let rule = "connect = [\"tcp://0.0.0.0:8081\"]\n";
+        let named: hyper::Uri = "http://localhost:8081/message".parse().unwrap();
+        let literal: hyper::Uri = "http://127.0.0.1:8081/message".parse().unwrap();
+
+        // An address target resolves no name, so the flag does not apply to it.
+        let denied = policy_from_toml(&format!("[network]\n{rule}"));
+        assert!(enforce_http_egress(&literal, Some(&denied)).await.is_ok());
+        assert!(enforce_http_egress(&named, Some(&denied)).await.is_err());
+
+        // With the flag the name is resolved, and the result still goes through the grants.
+        let allowed = policy_from_toml(&format!("[network]\nallow_ip_name_lookup = true\n{rule}"));
+        assert!(enforce_http_egress(&named, Some(&allowed)).await.is_ok());
+    }
+
+    #[test]
+    fn ip_literal_detection_unwraps_ipv6_brackets() {
+        assert!(is_ip_literal("[::1]"));
+        assert!(is_ip_literal("127.0.0.1"));
+        assert!(!is_ip_literal("batch.elastic.local"));
+        assert!(!is_ip_literal("localhost"));
+    }
+
+    #[test]
+    fn find_available_port_skips_ports_the_policy_does_not_grant() {
+        let policy = policy_from_toml("[network]\nbind = [\"tcp://0.0.0.0:34503\"]\n");
+        let (_socket, port) = find_available_port(34501, Some(&policy)).unwrap();
+        assert_eq!(port, 34503);
+
+        let policy = policy_from_toml("[network]\nbind = [\"tcp://0.0.0.0:1\"]\n");
+        assert!(find_available_port(34501, Some(&policy)).is_err());
     }
 
     #[test]
