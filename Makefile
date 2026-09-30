@@ -13,6 +13,9 @@ DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 DOCKERS_RUST = $(addprefix docker_,$(RUST_SERVICES))
 DOCKERS_RUST_DEV = $(addprefix docker_dev_,$(RUST_SERVICES))
 DOCKER_IMAGE_NAME_PREFIX ?= ghcr.io/absmach/propeller
+# Image prefix for the CI integration test. Deliberately off the ghcr.io
+# namespace so a local CI build can never clobber a real release tag.
+CI_IMAGE_NAME_PREFIX ?= propeller-ci
 WASMTIME_VERSION ?= 48.0.2
 
 define compile_service
@@ -133,7 +136,7 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-propeller stop-propeller start-otel stop-otel start-all stop-all
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-propeller stop-propeller start-propeller-ci stop-propeller-ci ci-images start-otel stop-otel start-all stop-all
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat greet-component http-client http-client-raw-wit http-greet-component http-server filesystem hal-test attestation-test hal-runner
 
 clean:
@@ -182,6 +185,21 @@ start-propeller:
 
 stop-propeller:
 	docker compose -f docker/compose.propeller.yaml --env-file docker/.env down
+
+# Build the binaries and the addition example, then wrap them in local images
+# for the integration test to run against. Only what the test needs is built;
+# `make all` would also compile every other example, which the test never uses.
+ci-images: manager cli proxy proplet addition
+	$(MAKE) docker_dev_manager docker_dev_proxy docker_dev_proplet DOCKER_IMAGE_NAME_PREFIX=$(CI_IMAGE_NAME_PREFIX)
+
+# start/stop-propeller-ci layer compose.propeller.ci.yaml over the regular
+# compose file, so Propeller runs from the ci-images build instead of the
+# published ghcr.io images.
+start-propeller-ci:
+	docker compose -f docker/compose.propeller.yaml -f docker/compose.propeller.ci.yaml --env-file docker/.env up -d
+
+stop-propeller-ci:
+	docker compose -f docker/compose.propeller.yaml -f docker/compose.propeller.ci.yaml --env-file docker/.env down
 
 start-otel:
 	docker compose -f docker/addons/grafana/docker-compose.yaml --env-file docker/.env up -d
@@ -286,6 +304,9 @@ help:
 	@echo "  stop-base:             stop base services only"
 	@echo "  start-propeller:       start Propeller services only (requires provisioned config.toml)"
 	@echo "  stop-propeller:        stop Propeller services only"
+	@echo "  ci-images:             build binaries + addition example into local images for the integration test"
+	@echo "  start-propeller-ci:    start Propeller from the ci-images build (requires provisioned config.toml)"
+	@echo "  stop-propeller-ci:     stop the ci-images Propeller services"
 	@echo "  start-otel:            start Prometheus and Grafana observability stack"
 	@echo "  stop-otel:             stop Prometheus and Grafana observability stack"
 	@echo "  start-all:             start base and Propeller services (requires provisioned config.toml)"
