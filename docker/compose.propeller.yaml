@@ -120,6 +120,11 @@ services:
       PROPLET_API_KEY: ${PROPLET_API_KEY}
       PROPLET_HAL_ENABLED: ${PROPLET_HAL_ENABLED}
       PROPLET_HTTP_ENABLED: ${PROPLET_HTTP_ENABLED}
+      # Comma-separated boolean WASI features to link on the external Wasm
+      # runtime, e.g. "cli,http". Without these a component importing e.g.
+      # wasi:cli/environment fails with "a matching implementation was not
+      # found in the linker" unless each task passes -S flags in cli_args.
+      PROPLET_WASI_FEATURES: ${PROPLET_WASI_FEATURES:-}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME}
       PROPLET_METRICS_PORT: ${PROPLET_METRICS_PORT}
       PROPLET_METRICS_ENABLED: ${PROPLET_METRICS_ENABLED:-true}

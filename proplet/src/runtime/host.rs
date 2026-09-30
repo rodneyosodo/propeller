@@ -17,16 +17,23 @@ pub struct HostRuntime {
     runtime_path: String,
     http_proxy_port: u16,
     preopened_dirs: Vec<String>,
+    wasi_features: Vec<String>,
     processes: Arc<Mutex<HashMap<String, Child>>>,
     pids: Arc<Mutex<HashMap<String, u32>>>,
 }
 
 impl HostRuntime {
-    pub fn new(runtime_path: String, http_proxy_port: u16, preopened_dirs: Vec<String>) -> Self {
+    pub fn new(
+        runtime_path: String,
+        http_proxy_port: u16,
+        preopened_dirs: Vec<String>,
+        wasi_features: Vec<String>,
+    ) -> Self {
         Self {
             runtime_path,
             http_proxy_port,
             preopened_dirs,
+            wasi_features,
             processes: Arc::new(Mutex::new(HashMap::new())),
             pids: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -39,6 +46,61 @@ impl HostRuntime {
             .filter(|dir| !dir.is_empty())
             .flat_map(|dir| ["--dir".to_string(), format!("{dir}::{dir}")])
             .collect()
+    }
+
+    /// `-S<key>` args for the configured WASI features. The task's own
+    /// `cli_args` win, so a task can override an operator-wide default.
+    fn wasi_feature_args(&self, task_args: &[String]) -> Vec<String> {
+        let mut args = Vec::new();
+
+        for feature in &self.wasi_features {
+            if !Self::is_valid_wasi_feature(feature) {
+                warn!(
+                    "Ignoring PROPLET_WASI_FEATURES entry '{feature}': not a known boolean WASI feature. Options that take a value (cwd=, tcplisten=, config-var=, ...) must be set per task in cli_args"
+                );
+                continue;
+            }
+
+            if task_args.iter().any(|a| a == &format!("-S{feature}")) {
+                continue;
+            }
+
+            args.push(format!("-S{feature}"));
+        }
+
+        args
+    }
+
+    /// The boolean WASI feature keys wasmtime accepts as `-S<key>`. An
+    /// unrecognised key is warned about rather than refused, since wasmtime
+    /// gains keys over time.
+    fn is_valid_wasi_feature(feature: &str) -> bool {
+        const KNOWN: &[&str] = &[
+            "allow-ip-name-lookup",
+            "cli",
+            "cli-exit-with-code",
+            "common",
+            "config",
+            "http",
+            "inherit-env",
+            "inherit-network",
+            "inherit-stderr",
+            "inherit-stdin",
+            "inherit-stdout",
+            "keyvalue",
+            "listenfd",
+            "network-error-code",
+            "nn",
+            "p3",
+            "preview0",
+            "preview2",
+            "tcp",
+            "threads",
+            "tls",
+            "udp",
+        ];
+
+        KNOWN.contains(&feature)
     }
 
     async fn create_temp_wasm_file(&self, id: &str, wasm_binary: &[u8]) -> Result<PathBuf> {
@@ -145,6 +207,7 @@ impl Runtime for HostRuntime {
             }
 
             cmd.args(self.preopened_dir_args());
+            cmd.args(self.wasi_feature_args(&config.cli_args));
 
             let has_addr = config
                 .cli_args
@@ -291,6 +354,7 @@ impl Runtime for HostRuntime {
             cmd.arg("run");
 
             cmd.args(self.preopened_dir_args());
+            cmd.args(self.wasi_feature_args(&config.cli_args));
 
             let cli_args_has_invoke = config.cli_args.iter().any(|a| a == "--invoke");
             let has_custom_export = !config.function_name.is_empty()
@@ -532,10 +596,16 @@ mod tests {
 
     #[test]
     fn test_host_runtime_new() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            Vec::new(),
+        );
         assert_eq!(runtime.runtime_path, "/usr/bin/wasmtime");
         assert_eq!(runtime.http_proxy_port, 8222);
         assert!(runtime.preopened_dirs.is_empty());
+        assert!(runtime.wasi_features.is_empty());
     }
 
     #[test]
@@ -544,6 +614,7 @@ mod tests {
             "/usr/bin/wasmtime".to_string(),
             8222,
             vec!["/tmp".to_string(), "/data".to_string()],
+            Vec::new(),
         );
 
         assert_eq!(
@@ -558,6 +629,7 @@ mod tests {
             "/usr/bin/wasmtime".to_string(),
             8222,
             vec![String::new(), "/tmp".to_string(), String::new()],
+            Vec::new(),
         );
 
         let args = runtime.preopened_dir_args();
@@ -566,9 +638,68 @@ mod tests {
 
     #[test]
     fn test_no_preopened_dirs_yields_no_args() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            Vec::new(),
+        );
 
         assert!(runtime.preopened_dir_args().is_empty());
+    }
+
+    #[test]
+    fn test_configured_wasi_features_become_flag_args() {
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            vec!["cli".to_string(), "http".to_string()],
+        );
+
+        assert_eq!(runtime.wasi_feature_args(&[]), vec!["-Scli", "-Shttp"]);
+    }
+
+    #[test]
+    fn test_task_cli_args_override_configured_features() {
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            vec!["cli".to_string(), "http".to_string()],
+        );
+
+        assert_eq!(
+            runtime.wasi_feature_args(&["-Scli".to_string()]),
+            vec!["-Shttp"]
+        );
+    }
+
+    /// An unknown key is dropped rather than emitted, so a newer wasmtime
+    /// that supports it is not locked out.
+    #[test]
+    fn test_unknown_wasi_feature_is_ignored() {
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            vec!["cli".to_string(), "not-a-feature".to_string()],
+        );
+
+        assert_eq!(runtime.wasi_feature_args(&[]), vec!["-Scli"]);
+    }
+
+    /// wasmtime options that take a value cannot be a bare `-S<key>`.
+    #[test]
+    fn test_value_taking_wasi_options_are_rejected() {
+        for opt in ["cwd=/tmp", "tcplisten=8080", "config-var=x=y"] {
+            assert!(
+                !HostRuntime::is_valid_wasi_feature(opt),
+                "{opt} should not be accepted as a bare feature"
+            );
+        }
+
+        assert!(HostRuntime::is_valid_wasi_feature("http"));
     }
 
     #[test]
@@ -623,7 +754,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_cleanup_temp_file() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            Vec::new(),
+        );
         let task_id = "test-cleanup-task";
         let wasm_data = vec![0x00, 0x61, 0x73, 0x6d]; // WASM magic number
 
@@ -644,7 +780,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_nonexistent_file() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            Vec::new(),
+        );
         let fake_path = std::env::temp_dir().join("nonexistent-file.wasm");
 
         let result = runtime.cleanup_temp_file(fake_path).await;
@@ -653,7 +794,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_temp_file_with_empty_data() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            Vec::new(),
+        );
         let task_id = "empty-task";
         let wasm_data = vec![];
 
@@ -672,7 +818,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_temp_file_with_large_data() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            Vec::new(),
+            Vec::new(),
+        );
         let task_id = "large-task";
         let wasm_data = vec![0xAB; 1024 * 1024]; // 1 MB of data
 

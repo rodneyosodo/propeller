@@ -158,10 +158,19 @@ async fn main() -> Result<()> {
                 external_runtime.clone(),
                 config.http_proxy_port,
                 config.preopened_dirs.clone(),
+                config.wasi_features.clone(),
             ))
         }
     } else {
         info!("Using Wasmtime runtime");
+
+        if !config.wasi_features.is_empty() {
+            warn!(
+                "PROPLET_WASI_FEATURES is set but the in-process Wasmtime runtime links the full WASI \
+                 implementation, so it has no effect; remove it or set PROPLET_EXTERNAL_WASM_RUNTIME"
+            );
+        }
+
         Arc::new(WasmtimeRuntime::new_with_options(
             config.hal_enabled,
             config.http_enabled,
