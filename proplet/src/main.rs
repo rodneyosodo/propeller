@@ -142,9 +142,25 @@ async fn main() -> Result<()> {
             )?)
         } else {
             info!("Using external Wasm runtime: {}", external_runtime);
+
+            // The external runtime shells out to a wasmtime binary. It can
+            // honour the preopened-directory list, but not the in-process
+            // capabilities, so say so up front rather than letting the
+            // operator believe a setting is active when it is not.
+            if config.hal_enabled {
+                warn!("PROPLET_HAL_ENABLED is set but the external Wasm runtime does not support the HAL; ignoring it");
+            }
+            if config.usb_enabled {
+                warn!("PROPLET_USB_ENABLED is set but the external Wasm runtime does not support USB; ignoring it");
+            }
+            if config.http_tls_ca_cert.is_some() {
+                warn!("PROPLET_HTTP_TLS_CA_CERT is set but the external Wasm runtime does not support custom TLS CAs; ignoring it");
+            }
+
             Arc::new(HostRuntime::new(
                 external_runtime.clone(),
                 config.http_proxy_port,
+                config.preopened_dirs.clone(),
             ))
         }
     } else {
