@@ -164,13 +164,21 @@ log "Provisioning"
 ATOM_SECRET="$(sed -n 's/^ATOM_ADMIN_SECRET=//p' docker/.env | tail -1)"
 [ -n "$ATOM_SECRET" ] || fail "could not read ATOM_ADMIN_SECRET from docker/.env"
 
+# Start from a clean slate: both paths are gitignored, so a CI checkout has
+# neither, but a local run may have leftovers from a previous run and a stale
+# file would make a failed provisioning look like a success.
+CONFIG=config.toml
+rm -f "$CONFIG" docker/config.toml
+
 PROPELLER_ATOM_IDENTIFIER="${CI_ATOM_IDENTIFIER:-admin}" \
 PROPELLER_ATOM_SECRET="${CI_ATOM_SECRET:-$ATOM_SECRET}" \
 PROPELLER_TENANT_NAME="${CI_TENANT_NAME:-propeller-ci}" \
 PROPELLER_PROPLET_COUNT=1 \
     ./build/cli provision
 
-CONFIG=docker/config.toml
+# `provision` writes config.toml into the working directory, which is the repo
+# root. The compose file bind-mounts ./docker/config.toml, so it is copied
+# there below.
 [ -f "$CONFIG" ] || fail "provision did not produce $CONFIG"
 
 for section in manager proplet proxy; do
@@ -180,7 +188,7 @@ done
 api_keys="$(grep -c '^api_key = "[^"]\+"' "$CONFIG" || true)"
 assert_eq "config.toml api_key count" "3" "$api_keys"
 
-cp config.toml docker/config.toml
+cp "$CONFIG" docker/config.toml
 
 # ---------------------------------------------------------------------------
 # 4. Start Propeller and wait for the proplet to register

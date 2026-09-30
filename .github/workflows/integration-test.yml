@@ -64,7 +64,17 @@ jobs:
           restore-keys: |
             integration-test-
 
+      # Kept as its own step, separate from the test, for two reasons: a build
+      # failure and a test failure are then distinguishable, and the artifact
+      # cache is saved whenever this step succeeds. Folded into the test step,
+      # a failing test would skip the cache save and every retry would pay for
+      # a cold ~13 min cargo build of the proplet.
+      - name: Build images under test
+        run: make ci-images
+
       - name: Run integration test
+        env:
+          PROPELLER_CI_SKIP_BUILD: "1"
         run: tools/ci/integration-test.sh
 
       - name: Dump propeller logs
