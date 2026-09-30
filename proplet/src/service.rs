@@ -70,6 +70,12 @@ pub struct PropletService {
 }
 
 impl PropletService {
+    /// How many liveness ticks pass between discovery re-announcements. With
+    /// the default 10s liveness interval that is one small message a minute,
+    /// which is enough to recover the metadata whenever the manager was not
+    /// listening at startup.
+    const DISCOVERY_RENOTIFY_TICKS: u64 = 6;
+
     pub fn new(
         config: PropletConfig,
         pubsub: PubSub,
@@ -179,9 +185,13 @@ impl PropletService {
     pub async fn run(self: Arc<Self>, mut mqtt_rx: mpsc::Receiver<MqttMessage>) -> Result<()> {
         info!("Starting PropletService");
 
-        self.publish_discovery().await?;
-
+        // Subscribe before announcing: the manager only learns about this
+        // proplet from the discovery message, and publishing first means the
+        // manager may not be listening yet. Announcing last also means the
+        // proplet is already able to receive work when it becomes visible.
         self.subscribe_topics().await?;
+
+        self.publish_discovery().await?;
 
         let service = self.clone();
         tokio::spawn(async move {
@@ -320,12 +330,32 @@ impl PropletService {
 
     async fn start_liveliness_updates(&self) {
         let mut interval = tokio::time::interval(self.config.liveliness_interval());
+        let mut ticks: u64 = 0;
 
         loop {
             interval.tick().await;
+            ticks += 1;
 
             if let Err(e) = self.publish_liveliness().await {
                 error!("Failed to publish liveliness: {}", e);
+            }
+
+            // Re-announce periodically as well as on reconnect. A proplet that
+            // connects before the manager publishes its discovery message into
+            // a broker nobody is subscribed to yet, and a stable connection
+            // means no reconnect to trigger a retry, so the manager would know
+            // the proplet only from its liveness heartbeats — which carry no
+            // metadata — and the record would keep empty metadata forever.
+            //
+            // The manager treats a repeat discovery message as a metadata
+            // refresh, so this is idempotent. A liveness interval of 10s over
+            // DISCOVERY_RENOTIFY_TICKS gives one small message a minute.
+            if ticks % Self::DISCOVERY_RENOTIFY_TICKS == 0 {
+                if let Err(e) = self.publish_discovery().await {
+                    error!("Failed to re-publish discovery: {}", e);
+                } else {
+                    debug!("Re-published discovery message");
+                }
             }
         }
     }
@@ -437,6 +467,18 @@ impl PropletService {
             } else {
                 info!("Successfully re-subscribed to topics after reconnection");
             }
+
+            // Re-announce after every reconnect. The manager records a proplet
+            // from the discovery message; a discovery message published while
+            // the manager was not subscribed is lost, and the proplet would
+            // otherwise be known only through its liveness heartbeats, which
+            // carry no metadata.
+            if let Err(e) = self.publish_discovery().await {
+                error!("Failed to re-publish discovery after reconnection: {}", e);
+            } else {
+                info!("Re-published discovery message after reconnection");
+            }
+
             return Ok(());
         }
 

@@ -1398,22 +1398,52 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 
 	meta := maps.GetMap(msg, "metadata")
 
+	md := proplet.PropletMetadata{
+		Description:      maps.GetString(meta, "description", ""),
+		Tags:             maps.GetStringSlice(meta, "tags"),
+		Location:         maps.GetString(meta, "location", ""),
+		IP:               maps.GetString(meta, "ip", ""),
+		Environment:      maps.GetString(meta, "environment", ""),
+		OS:               maps.GetString(meta, "os", ""),
+		Hostname:         maps.GetString(meta, "hostname", ""),
+		CPUArch:          maps.GetString(meta, "cpu_arch", ""),
+		TotalMemoryBytes: maps.GetUint64(meta, "total_memory_bytes"),
+		PropletVersion:   maps.GetString(meta, "proplet_version", ""),
+		WasmRuntime:      maps.GetString(meta, "wasm_runtime", ""),
+	}
+
+	// A proplet can already be known here without any metadata: the proplet
+	// publishes its discovery message once at startup, and if the manager was
+	// not subscribed yet that message is lost. The record is then created from
+	// the first liveness message, which carries no metadata, and it would
+	// otherwise keep empty metadata forever — leaving plugin-constrained
+	// scheduling blind to a capable proplet. Refresh it instead of failing.
+	//
+	// GetProplet rather than propletRepo.Get: the storage backends return
+	// different not-found sentinels (storage.ErrPropletNotFound for badger and
+	// sqlite, the in-memory one normalises), and GetProplet maps them all to
+	// pkgerrors.ErrNotFound.
+	existing, err := svc.GetProplet(ctx, propletID)
+	switch {
+	case err == nil:
+		existing.Metadata = md
+		if err := svc.propletRepo.Update(ctx, existing); err != nil {
+			return err
+		}
+
+		svc.logger.InfoContext(ctx, "refreshed metadata for known proplet", "proplet_id", propletID)
+
+		return nil
+	case errors.Is(err, pkgerrors.ErrNotFound):
+		// Expected first contact; fall through and create.
+	default:
+		return err
+	}
+
 	p := proplet.Proplet{
-		ID:   propletID,
-		Name: namegen.Generate(),
-		Metadata: proplet.PropletMetadata{
-			Description:      maps.GetString(meta, "description", ""),
-			Tags:             maps.GetStringSlice(meta, "tags"),
-			Location:         maps.GetString(meta, "location", ""),
-			IP:               maps.GetString(meta, "ip", ""),
-			Environment:      maps.GetString(meta, "environment", ""),
-			OS:               maps.GetString(meta, "os", ""),
-			Hostname:         maps.GetString(meta, "hostname", ""),
-			CPUArch:          maps.GetString(meta, "cpu_arch", ""),
-			TotalMemoryBytes: maps.GetUint64(meta, "total_memory_bytes"),
-			PropletVersion:   maps.GetString(meta, "proplet_version", ""),
-			WasmRuntime:      maps.GetString(meta, "wasm_runtime", ""),
-		},
+		ID:       propletID,
+		Name:     namegen.Generate(),
+		Metadata: md,
 	}
 	if err := svc.propletRepo.Create(ctx, p); err != nil {
 		return err
