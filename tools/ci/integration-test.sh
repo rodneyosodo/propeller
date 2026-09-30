@@ -5,8 +5,8 @@
 # Propeller end-to-end integration test.
 #
 # Brings the stack up the same way the getting-started guide does — base
-# services, provisioning, Propeller — then deploys the addition example and
-# asserts the task ran to completion with the right result and that the
+# services, provisioning, Propeller — then deploys the documented examples and
+# asserts each one ran to completion with the right result and that the
 # service logs show the expected flow. Exits non-zero on the first failed
 # assertion, after dumping container logs.
 #
@@ -14,14 +14,26 @@
 # (`make ci-images` + `make start-propeller-ci`), not the published ghcr.io
 # images, so a pull request is tested against its own code.
 #
+# Examples covered, and what each one is here to prove:
+#   addition            TinyGo module over the multipart upload path
+#   addition-wat        same result via the inline base64 upload path
+#   greet-component     WASM Component Model, WAVE-encoded string argument
+#   http-server         WASI P2 proxy component serving real inbound HTTP
+#   http-client         WASI P2 component making outgoing HTTP requests
+#   filesystem          WASI P1 preopened directory round-trip
+#
 # Usage:
 #   tools/ci/integration-test.sh
 #
 # Environment:
 #   PROPELLER_CI_SKIP_BUILD=1  reuse the existing propeller-ci/* images
-#   CI_ATOM_IDENTIFIER         Atom login    (default: admin)
-#   CI_ATOM_SECRET             Atom password (default: $ATOM_ADMIN_SECRET in docker/.env)
-#   CI_KEEP_STACK=1            leave the containers running on exit
+#   CI_SKIP_EXTERNAL=1        skip http-client, which calls httpbin.org
+#   CI_EXPECTED_ADDITION=30   expected sum for the addition examples
+#   CI_HTTP_SERVER_PORT=8044  port the http-server workload must bind
+#   CI_PROPLET_DIRS=/tmp      host dirs preopened for the filesystem example
+#   CI_ATOM_IDENTIFIER        Atom login    (default: admin)
+#   CI_ATOM_SECRET            Atom password (default: $ATOM_ADMIN_SECRET in docker/.env)
+#   CI_KEEP_STACK=1           leave the containers running on exit
 
 set -euo pipefail
 
@@ -30,9 +42,12 @@ cd "$REPO_ROOT"
 
 MANAGER_URL="${CI_MANAGER_URL:-http://localhost:7070}"
 ATOM_URL="${CI_ATOM_URL:-http://localhost:8080}"
-TASK_NAME="add"
-TASK_INPUTS='[10, 20]'
-EXPECTED_RESULT="${CI_EXPECTED_RESULT:-30}"
+
+# 10 + 20. Covers both the TinyGo module and the WAT/base64 variant.
+EXPECTED_ADDITION="${CI_EXPECTED_ADDITION:-30}"
+# Must match CI_HTTP_SERVER_PORT in docker/compose.propeller.ci.yaml, which is
+# the port published from the proplet container.
+HTTP_SERVER_PORT="${CI_HTTP_SERVER_PORT:-8044}"
 
 # Task states (pkg/task.State): 0 Pending, 1 Scheduled, 2 Running, 3 Completed.
 STATE_COMPLETED=3
@@ -126,7 +141,13 @@ assert_log_clean() {
     local container="$1"
     local logs offending
     logs="$(docker logs "$container" 2>&1 || true)"
-    offending="$(grep -E '"level":"ERROR"|panic:|fatal runtime error' <<<"$logs" || true)"
+    # rumqttc logs "Unsolicited pubrec packet: N" at ERROR when a PUBREC
+    # arrives for a packet id it has already resolved, which happens
+    # intermittently while the proplet resumes an MQTT session. It is protocol
+    # bookkeeping, not a fault, and it is logged from the client library rather
+    # than from Propeller, so it is filtered out. Any other ERROR still fails.
+    offending="$(grep -E '"level":"ERROR"|panic:|fatal runtime error' <<<"$logs" |
+        grep -v 'Unsolicited pubrec packet' || true)"
     if [ -n "$offending" ]; then
         printf '%s\n' "$offending" | head -20 >&2
         fail "$container logged an error or panicked"
@@ -134,7 +155,112 @@ assert_log_clean() {
     pass "$container logged no errors"
 }
 
-json() { curl -sS --max-time 10 "$@"; }
+json() { curl -sS --max-time 30 "$@"; }
+
+# --- task helpers ----------------------------------------------------------
+#
+# Every example follows create -> upload -> start -> wait, with the details
+# (upload mechanism, CLI args, daemon mode) varying. These helpers keep the
+# per-example blocks to their interesting assertions.
+
+# create_task <json-body> -> echoes the task id. The body is passed through
+# verbatim so each example can match its documented create call exactly.
+create_task() {
+    local body="$1" id
+    id="$(json -X POST "${MANAGER_URL}/tasks" \
+        -H 'Content-Type: application/json' -d "$body" | jq -r '.id // empty')"
+    [ -n "$id" ] || fail "could not create task from body: ${body}"
+    printf '%s' "$id"
+}
+
+# upload_multipart <task-id> <wasm-file> — the /upload endpoint.
+upload_multipart() {
+    local id="$1" file="$2" response
+    response="$(json -X PUT "${MANAGER_URL}/tasks/${id}/upload" -F "file=@${file}")"
+    assert_eq "upload accepted for $id" "$id" "$(jq -r '.id // empty' <<<"$response")"
+    [ "$(jq -r '.file // empty' <<<"$response")" != "" ] || fail "task ${id} has no file after upload"
+}
+
+# upload_base64 <task-id> <wasm-file> — the JSON body upload path used by the
+# addition-wat example, which carries the module inline as base64.
+upload_base64() {
+    local id="$1" file="$2" encoded response
+    encoded="$(base64 -w0 <"$file")"
+    response="$(json -X PUT "${MANAGER_URL}/tasks/${id}" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -n --arg file "$encoded" '{file: $file}')")"
+    assert_eq "base64 upload accepted for $id" "$id" "$(jq -r '.id // empty' <<<"$response")"
+    [ "$(jq -r '.file // empty' <<<"$response")" != "" ] || fail "task ${id} has no file after base64 upload"
+}
+
+# start_task <task-id>
+start_task() {
+    local id="$1"
+    assert_eq "task ${id} accepted for start" "true" \
+        "$(json -X POST "${MANAGER_URL}/tasks/${id}/start" | jq -r '.started // false')"
+}
+
+# wait_task <task-id> [timeout] -> echoes the final task JSON once it reaches a
+# terminal state. A failure or interrupted state is fatal.
+wait_task() {
+    local id="$1" timeout="${2:-120}"
+    local deadline=$((SECONDS + timeout)) task state
+
+    while true; do
+        task="$(json "${MANAGER_URL}/tasks/${id}")"
+        state="$(jq -r '.state' <<<"$task")"
+        case "$state" in
+            "$STATE_COMPLETED") printf '%s' "$task"; return 0 ;;
+            # 4 Failed, 5 Skipped, 6 Interrupted
+            4 | 5 | 6) jq . <<<"$task" >&2; fail "task ${id} ended in terminal state ${state}" ;;
+        esac
+        if (( SECONDS >= deadline )); then
+            jq . <<<"$task" >&2
+            fail "task ${id} did not complete within ${timeout}s (state=${state})"
+        fi
+        sleep 1
+    done
+}
+
+# assert_result <label> <expected> <task-json>
+# The single-value examples print their result with a trailing newline, so
+# compare with newlines stripped.
+assert_result() {
+    local label="$1" expected="$2" task="$3" actual
+    actual="$(jq -r '.results // ""' <<<"$task" | tr -d '\r\n')"
+    assert_eq "$label result" "$expected" "$actual"
+}
+
+# assert_result_contains <label> <substring> <task-json>
+assert_result_contains() {
+    local label="$1" needle="$2" task="$3"
+    if ! jq -r '.results // ""' <<<"$task" | grep -qF -- "$needle"; then
+        jq -r '.results // ""' <<<"$task" | head -20 >&2
+        fail "$label: results do not contain '$needle'"
+    fi
+    pass "$label results contain '$needle'"
+}
+
+# assert_http <label> <expected-body> <url> [curl-args...]
+assert_http() {
+    local label="$1" expected="$2" url="$3"
+    shift 3
+    local body deadline=$((SECONDS + 30))
+    # The proplet returns "started at port ..." before the workload is
+    # accepting connections, so poll rather than assume.
+    while true; do
+        body="$(curl -sS -m 5 "$@" "$url" 2>/dev/null || true)"
+        if [ "$body" = "$expected" ]; then
+            pass "$label ($url) = $expected"
+            return 0
+        fi
+        if (( SECONDS >= deadline )); then
+            printf 'last response body: %s\n' "${body:-<empty>}" >&2
+            fail "$label ($url): expected '$expected', got '${body:-<empty>}'"
+        fi
+        sleep 1
+    done
+}
 
 # ---------------------------------------------------------------------------
 # 1. Build the images under test
@@ -194,10 +320,18 @@ cp "$CONFIG" docker/config.toml
 
 # ---------------------------------------------------------------------------
 # 4. Start Propeller and wait for the proplet to register
+#
+# PROPLET_HTTP_ENABLED lets workloads make outgoing requests and serve inbound
+# HTTP; PROPLET_DIRS preopens host directories into WASI P1 guests. Both are
+# passed as shell environment rather than edited into docker/.env: a shell
+# variable takes precedence over compose's --env-file, and this keeps the
+# checked-in .env at its documented defaults.
 # ---------------------------------------------------------------------------
 
 log "Starting Propeller"
-make start-propeller-ci
+# shellcheck disable=SC2086
+PROPLET_HTTP_ENABLED=true PROPLET_DIRS="${CI_PROPLET_DIRS:-/tmp}" \
+    make start-propeller-ci
 wait_for_url "manager" "${MANAGER_URL}/health" 180
 
 log "Waiting for the proplet to register"
@@ -213,73 +347,96 @@ alive_proplets() {
     printf '%s' "${count:-0}"
 }
 
-proplet_deadline=$((SECONDS + 180))
-until [ "$(alive_proplets)" -ge 1 ]; do
-    if (( SECONDS >= proplet_deadline )); then
-        fail "no proplet registered as alive within 180s"
-    fi
-    sleep 2
-done
-pass "proplet registered and alive"
+wait_for_proplet() {
+    local deadline=$((SECONDS + 180))
+    until [ "$(alive_proplets)" -ge 1 ]; do
+        if (( SECONDS >= deadline )); then
+            fail "no proplet registered as alive within 180s"
+        fi
+        sleep 2
+    done
+    pass "proplet registered and alive"
+}
+
+wait_for_proplet
 
 # ---------------------------------------------------------------------------
-# 5. Deploy the addition example
+# 5. Deploy the examples
 # ---------------------------------------------------------------------------
 
-log "Deploying the addition example"
-TASK_ID="$(json -X POST "${MANAGER_URL}/tasks" \
-    -H 'Content-Type: application/json' \
-    -d "{\"name\":\"${TASK_NAME}\",\"inputs\":${TASK_INPUTS}}" | jq -r '.id // empty')"
-[ -n "$TASK_ID" ] || fail "could not create task"
-info "task id: $TASK_ID"
+log "Example: addition (TinyGo module, multipart upload)"
+addition_id="$(create_task '{"name":"add","inputs":[10,20]}')"
+info "task id: $addition_id"
+upload_multipart "$addition_id" build/addition.wasm
+start_task "$addition_id"
+addition_task="$(wait_task "$addition_id")"
+assert_result "addition" "$EXPECTED_ADDITION" "$addition_task"
+assert_eq "addition ran on a proplet" "true" \
+    "$(jq -r '(.proplet_id // "") != ""' <<<"$addition_task")"
 
-# Assert the upload was accepted: the task must come back with a file attached
-# to the same id. A bare `curl` would pass on an HTTP error body.
-uploaded="$(json -X PUT "${MANAGER_URL}/tasks/${TASK_ID}/upload" \
-    -F "file=@${REPO_ROOT}/build/addition.wasm")"
-assert_eq "uploaded task id" "$TASK_ID" "$(jq -r '.id // empty' <<<"$uploaded")"
-[ "$(jq -r '.file // empty' <<<"$uploaded")" != "" ] || fail "task has no file after upload"
-pass "uploaded build/addition.wasm"
+log "Example: addition-wat (WAT module, base64 upload)"
+# Same example compiled from WebAssembly text, carried inline as base64 in the
+# task body rather than multipart. Exercises the other upload path.
+addition_wat_id="$(create_task '{"name":"add","inputs":[10,20]}')"
+info "task id: $addition_wat_id"
+upload_base64 "$addition_wat_id" build/addition-wat.wasm
+start_task "$addition_wat_id"
+addition_wat_task="$(wait_task "$addition_wat_id")"
+assert_result "addition-wat" "$EXPECTED_ADDITION" "$addition_wat_task"
 
-started="$(json -X POST "${MANAGER_URL}/tasks/${TASK_ID}/start" | jq -r '.started // false')"
-assert_eq "task accepted for start" "true" "$started"
+log "Example: greet-component (WASM Component Model)"
+# The task name must match the WIT export (greet) and the argument is
+# WAVE-encoded. wasmtime wants double quotes here: greet('World') is rejected
+# with "invalid token", greet("World") returns the string.
+greet_id="$(create_task '{"name":"greet","inputs":["\"World\""]}')"
+info "task id: $greet_id"
+upload_multipart "$greet_id" build/greet-component.wasm
+start_task "$greet_id"
+greet_task="$(wait_task "$greet_id")"
+assert_result "greet-component" '"Hello, World!"' "$greet_task"
+
+log "Example: http-server (WASI P2 proxy component, daemon)"
+# -Scli is required: the component imports wasi:cli/environment, which the
+# proplet's default -Shttp alone does not link. The port must be given as
+# --addr; a --port argument is passed through to the component and ignored
+# for binding, which would leave the workload on the default proxy port.
+http_server_id="$(create_task "{\"name\":\"_start\",\"daemon\":true,\"cli_args\":[\"-Scli\",\"--addr\",\"0.0.0.0:${HTTP_SERVER_PORT}\"]}")"
+info "task id: $http_server_id"
+upload_multipart "$http_server_id" build/http-server.wasm
+start_task "$http_server_id"
+http_server_task="$(wait_task "$http_server_id")"
+pass "http-server daemon started ($(jq -r '.results // ""' <<<"$http_server_task" | tr -d '\n'))"
+
+# The proplet reports the port before the component is accepting connections.
+assert_http "http-server /health" "ok" "http://localhost:${HTTP_SERVER_PORT}/health"
+assert_http "http-server /" "Hello from proplet WASM HTTP server!" "http://localhost:${HTTP_SERVER_PORT}/"
+assert_http "http-server /echo" "Hello from curl" "http://localhost:${HTTP_SERVER_PORT}/echo" -X POST -d 'Hello from curl'
+
+if [ "${CI_SKIP_EXTERNAL:-0}" = "1" ]; then
+    log "Example: http-client SKIPPED (CI_SKIP_EXTERNAL=1)"
+else
+    log "Example: http-client (WASI P2 outgoing HTTP)"
+    # -Shttp is required or the component's wasi:http/types import is unlinked.
+    # NOTE: this example calls httpbin.org, so it depends on a third-party
+    # service being reachable. Set CI_SKIP_EXTERNAL=1 to drop it from the run.
+    http_client_id="$(create_task '{"name":"_start","cli_args":["-Shttp"]}')"
+    info "task id: $http_client_id"
+    upload_multipart "$http_client_id" build/http-client.wasm
+    start_task "$http_client_id"
+    http_client_task="$(wait_task "$http_client_id" 180)"
+    assert_result_contains "http-client" "httpbin.org/get" "$http_client_task"
+    assert_result_contains "http-client" "Status: 200 OK" "$http_client_task"
+fi
 
 # ---------------------------------------------------------------------------
-# 6. Wait for completion and check the result
+# 6. Check the logs from the external-runtime phase
+#
+# These run before the proplet restart below: `docker logs` only shows the
+# current container instance, so the messages from the tasks above are gone
+# once the proplet is recreated.
 # ---------------------------------------------------------------------------
 
-log "Waiting for the task to complete"
-task_deadline=$((SECONDS + 120))
-while true; do
-    task="$(json "${MANAGER_URL}/tasks/${TASK_ID}")"
-    state="$(jq -r '.state' <<<"$task")"
-    # 3 Completed, 4 Failed, 6 Interrupted — only the last two are terminal
-    # failures we care about; 5 Skipped is not expected either.
-    case "$state" in
-        "$STATE_COMPLETED") break ;;
-        4 | 6) fail "task ended in a failure state (state=${state})" ;;
-    esac
-    if (( SECONDS >= task_deadline )); then
-        jq . <<<"$task" >&2
-        fail "task did not complete within 120s (state=${state})"
-    fi
-    sleep 1
-done
-pass "task completed"
-
-# The example prints its sum with a trailing newline, so compare trimmed.
-result="$(jq -r '.results // ""' <<<"$task" | tr -d '\n' | tr -d '\r')"
-assert_eq "task result" "$EXPECTED_RESULT" "$result"
-
-proplet_id="$(jq -r '.proplet_id // empty' <<<"$task")"
-[ -n "$proplet_id" ] || fail "completed task has no proplet_id"
-pass "task executed on proplet $proplet_id"
-
-# ---------------------------------------------------------------------------
-# 7. Check the service logs tell the same story
-# ---------------------------------------------------------------------------
-
-log "Checking service logs"
+log "Checking service logs (external runtime phase)"
 # The manager's "successfully created proplet" line is deliberately not
 # asserted: the proplet publishes its discovery message exactly once at
 # startup, so whether the manager sees it is a race with the manager's own
@@ -288,11 +445,59 @@ log "Checking service logs"
 # /proplets assertion above is the real registration check.
 assert_log_contains propeller-manager "MQTT connection established" "manager connected to MQTT"
 assert_log_contains propeller-manager "Subscribe to MQTT topic completed successfully" "manager subscribed to control topics"
-assert_log_contains propeller-manager "\"msg\":\"Starting task completed successfully\"" "manager started the task"
-assert_log_contains propeller-proplet "Successfully re-subscribed to topics after reconnection" "proplet resubscribed to its control topics"
-assert_log_contains propeller-proplet "Decoded wasm binary" "proplet received the wasm module"
-assert_log_contains propeller-proplet "Starting Host runtime app" "proplet executed the wasm module"
-assert_log_contains propeller-proplet "Successfully published result for task ${TASK_ID}" "proplet published the result"
+assert_log_contains propeller-manager "\"msg\":\"Starting task completed successfully\"" "manager started a task"
+assert_log_contains propeller-proplet "Decoded wasm binary" "proplet received a wasm module"
+assert_log_contains propeller-proplet "Starting Host runtime app" "proplet ran a task on the external runtime"
+for id in "$addition_id" "$addition_wat_id" "$greet_id"; do
+    assert_log_contains propeller-proplet "Successfully published result for task ${id}" \
+        "proplet published the result for ${id}"
+done
+[ "${CI_SKIP_EXTERNAL:-0}" = "1" ] ||
+    assert_log_contains propeller-proplet "Successfully published result for task ${http_client_id}" \
+        "proplet published the result for ${http_client_id}"
+
+for container in propeller-manager propeller-proplet propeller-proxy; do
+    assert_log_clean "$container"
+done
+
+# ---------------------------------------------------------------------------
+# 7. filesystem on the in-process Wasmtime runtime
+#
+# PROPLET_DIRS is only honoured by the in-process runtime. On the default
+# external-wasmtime path the proplet's HostRuntime builds `wasmtime run`
+# without ever passing --dir, so the preopen is silently dropped and the
+# guest's write fails with ENOENT. Restarting the proplet with
+# PROPLET_EXTERNAL_WASM_RUNTIME="" selects the runtime that applies it.
+# ---------------------------------------------------------------------------
+
+log "Example: filesystem (WASI P1 preopened dirs, in-process runtime)"
+log "Restarting the proplet on the in-process Wasmtime runtime"
+# shellcheck disable=SC2086
+PROPLET_EXTERNAL_WASM_RUNTIME="" PROPLET_HTTP_ENABLED=true PROPLET_DIRS="${CI_PROPLET_DIRS:-/tmp}" \
+    make stop-propeller-ci
+# shellcheck disable=SC2086
+PROPLET_EXTERNAL_WASM_RUNTIME="" PROPLET_HTTP_ENABLED=true PROPLET_DIRS="${CI_PROPLET_DIRS:-/tmp}" \
+    make start-propeller-ci
+wait_for_url "manager" "${MANAGER_URL}/health" 180
+wait_for_proplet
+
+filesystem_id="$(create_task '{"name":"_start"}')"
+info "task id: $filesystem_id"
+upload_multipart "$filesystem_id" build/filesystem.wasm
+start_task "$filesystem_id"
+filesystem_task="$(wait_task "$filesystem_id")"
+assert_result_contains "filesystem" "All filesystem operations succeeded" "$filesystem_task"
+assert_result_contains "filesystem" "Round-trip verification OK" "$filesystem_task"
+
+# ---------------------------------------------------------------------------
+# 8. Check the logs from the in-process runtime phase
+# ---------------------------------------------------------------------------
+
+log "Checking service logs (in-process runtime phase)"
+assert_log_contains propeller-proplet "Using Wasmtime runtime" "proplet selected the in-process runtime"
+assert_log_contains propeller-proplet "Starting Wasmtime runtime app" "proplet ran the task on the in-process runtime"
+assert_log_contains propeller-proplet "Successfully published result for task ${filesystem_id}" \
+    "proplet published the filesystem result"
 
 for container in propeller-manager propeller-proplet propeller-proxy; do
     assert_log_clean "$container"

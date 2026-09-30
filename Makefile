@@ -186,10 +186,13 @@ start-propeller:
 stop-propeller:
 	docker compose -f docker/compose.propeller.yaml --env-file docker/.env down
 
-# Build the binaries and the addition example, then wrap them in local images
-# for the integration test to run against. Only what the test needs is built;
-# `make all` would also compile every other example, which the test never uses.
-ci-images: manager cli proxy proplet addition
+# Build the binaries and the examples the integration test deploys, then wrap
+# them in local images. Only what the test needs is built; `make all` would
+# also compile every other example, which the test never uses.
+# addition-wat additionally needs wat2wasm (package wabt).
+CI_EXAMPLES = addition addition-wat greet-component filesystem http-client http-server
+
+ci-images: manager cli proxy proplet $(CI_EXAMPLES)
 	$(MAKE) docker_dev_manager docker_dev_proxy docker_dev_proplet DOCKER_IMAGE_NAME_PREFIX=$(CI_IMAGE_NAME_PREFIX)
 
 # start/stop-propeller-ci layer compose.propeller.ci.yaml over the regular

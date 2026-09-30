@@ -46,6 +46,15 @@ jobs:
           wget -q https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo_0.42.0_amd64.deb
           sudo dpkg -i tinygo_0.42.0_amd64.deb
 
+      # The addition-wat example is authored as WebAssembly text, so
+      # `make addition-wat` needs wat2wasm from wabt.
+      - name: Install wabt
+        run: sudo apt-get install -y wabt
+
+      # greet-component (and the other WASI P2 examples) build for this target.
+      - name: Add wasm32-wasip2 target
+        run: rustup target add wasm32-wasip2
+
       # The x86_64 proplet enables the amd-sev feature, which pulls
       # az-snp-vtpm -> tss-esapi-sys. Its build script probes tss2-sys.pc, so
       # the TPM2 TSS development headers must be present on the runner.
