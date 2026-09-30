@@ -76,17 +76,19 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# wait_for polls a command until it succeeds, up to a timeout in seconds.
-# On timeout it reports the failure and the current container state.
-wait_for() {
-    local what="$1" timeout="$2"
-    shift 2
+# wait_for_url polls a URL until it answers 2xx, up to a timeout in seconds.
+# It must issue a real request: `test "$url"` only checks the string is
+# non-empty, so it returns success immediately and lets the script race the
+# service's startup.
+wait_for_url() {
+    local what="$1" url="$2" timeout="$3"
     local deadline=$((SECONDS + timeout))
-    until "$@" >/dev/null 2>&1; do
+
+    until curl -sSf -o /dev/null --max-time 2 "$url"; do
         if (( SECONDS >= deadline )); then
             echo "----- docker ps -a -----" >&2
             docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' >&2 || true
-            fail "$what did not become ready within ${timeout}s"
+            fail "$what ($url) did not become ready within ${timeout}s"
         fi
         sleep 2
     done
@@ -152,7 +154,7 @@ fi
 
 log "Starting base services"
 make start-base
-wait_for "atom" 240 test "${ATOM_URL}/health"
+wait_for_url "atom" "${ATOM_URL}/health" 240
 
 # ---------------------------------------------------------------------------
 # 3. Provision Atom resources (tenant, entities, channel) -> config.toml
@@ -196,7 +198,7 @@ cp "$CONFIG" docker/config.toml
 
 log "Starting Propeller"
 make start-propeller-ci
-wait_for "manager" 180 test "${MANAGER_URL}/health"
+wait_for_url "manager" "${MANAGER_URL}/health" 180
 
 log "Waiting for the proplet to register"
 # The proplet registers over MQTT after connecting to Atom/FluxMQ, so give the
