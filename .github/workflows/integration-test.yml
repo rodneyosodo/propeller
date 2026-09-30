@@ -66,9 +66,16 @@ jobs:
       - name: Cache build artifacts
         uses: actions/cache@v4
         with:
+          # The example target dirs are the integration test's own fixtures, not
+          # code under test, but they are cargo projects and cost ~40s to
+          # compile from cold on every run. 362M for all four.
           path: |
             build
             proplet/target
+            examples/greet-component/target
+            examples/http-client/target
+            examples/http-server/target
+            examples/filesystem/target
           key: integration-test-${{ github.sha }}
           restore-keys: |
             integration-test-

@@ -46,8 +46,12 @@ endef
 define make_docker_dev
 	$(eval svc=$(subst docker_dev_,,$(1)))
 
+# No --no-cache here, unlike the release targets: this image only wraps an
+# already-built binary, and the COPY of that binary is what should invalidate
+# the build. Forcing a cold build re-runs the base image pull and the
+# certificate copy on every invocation, which is pure overhead for a target
+# used by local development and CI.
 	docker build \
-		--no-cache \
 		--build-arg SVC=$(svc) \
 		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc):latest \
 		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc):$(COMMIT) \
@@ -71,8 +75,10 @@ endef
 define make_docker_rust_dev
 	$(eval svc=$(subst docker_dev_,,$(1)))
 
+# See make_docker_dev for why this does not pass --no-cache. It matters more
+# here: the proplet image installs packages and downloads the wasmtime tarball,
+# and a cold build repeats all of that on every invocation.
 	docker build \
-		--no-cache \
 		--build-arg SVC=$(svc) \
 		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc):latest \
 		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc):$(COMMIT) \
@@ -136,7 +142,7 @@ push_proplet_wasinn:
 install:
 	$(foreach f,$(wildcard $(BUILD_DIR)/*[!.wasm]),cp $(f) $(patsubst $(BUILD_DIR)/%,$(GOBIN)/propeller-%,$(f));)
 
-.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-propeller stop-propeller start-propeller-ci stop-propeller-ci ci-images start-otel stop-otel start-all stop-all
+.PHONY: all $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) hal-test attestation-test hal-runner http-client-raw-wit docker_proplet_wasinn push_proplet_wasinn mocks check-certs start-propeller stop-propeller start-propeller-ci stop-propeller-ci ci-images ci-images-parallel start-otel stop-otel start-all stop-all
 all: $(SERVICES) $(RUST_SERVICES) $(EXAMPLES) addition-wat greet-component http-client http-client-raw-wit http-greet-component http-server filesystem hal-test attestation-test hal-runner
 
 clean:
@@ -192,8 +198,21 @@ stop-propeller:
 # addition-wat additionally needs wat2wasm (package wabt).
 CI_EXAMPLES = addition addition-wat greet-component filesystem http-client http-server
 
-ci-images: manager cli proxy proplet $(CI_EXAMPLES)
-	$(MAKE) docker_dev_manager docker_dev_proxy docker_dev_proplet DOCKER_IMAGE_NAME_PREFIX=$(CI_IMAGE_NAME_PREFIX)
+# The binaries, the proplet and the examples are all independent of each
+# other, so they build in parallel. Recursing with -j rather than relying on
+# the caller means `make ci-images` is parallel however it is invoked, which
+# it is not when the flag is only added in the workflow. Serial, the same
+# work is the sum of five stages (Go ~80s, proplet ~2m, examples ~40s) rather
+# than roughly the slowest one.
+CI_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
+
+ci-images:
+	$(MAKE) -j$(CI_JOBS) ci-images-parallel
+
+# Split in two so the prerequisites and the image builds can each be
+# parallelised: every image consumes the binaries from the first stage.
+ci-images-parallel: manager cli proxy proplet $(CI_EXAMPLES)
+	$(MAKE) -j$(CI_JOBS) docker_dev_manager docker_dev_proxy docker_dev_proplet DOCKER_IMAGE_NAME_PREFIX=$(CI_IMAGE_NAME_PREFIX)
 
 # start/stop-propeller-ci layer compose.propeller.ci.yaml over the regular
 # compose file, so Propeller runs from the ci-images build instead of the
