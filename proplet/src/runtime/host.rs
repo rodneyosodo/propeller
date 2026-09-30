@@ -70,6 +70,21 @@ impl HostRuntime {
             .any(|w| w == b"wasi:http/incoming-handler")
     }
 
+    /// Extract the value of a `--port <n>` / `--port=<n>` argument, if the
+    /// task has one. Returns the raw value so the warning can quote what the
+    /// task actually asked for.
+    fn requested_port_arg(cli_args: &[String]) -> Option<String> {
+        cli_args
+            .windows(2)
+            .find(|w| w[0] == "--port")
+            .map(|w| w[1].clone())
+            .or_else(|| {
+                cli_args
+                    .iter()
+                    .find_map(|a| a.strip_prefix("--port=").map(str::to_string))
+            })
+    }
+
     async fn find_available_port(start_port: u16) -> Result<(u16, TcpListener)> {
         let max_attempts = 100u16;
         for port in start_port..start_port.saturating_add(max_attempts) {
@@ -124,6 +139,22 @@ impl Runtime for HostRuntime {
                 .cli_args
                 .iter()
                 .any(|a| a == "--addr" || a.starts_with("--addr="));
+
+            // The listening port comes from --addr, or from the proplet's
+            // configured proxy port when --addr is absent. A --port argument
+            // is forwarded to the component and has no effect on binding, so
+            // asking for one and silently getting another is worth saying out
+            // loud: the task result reports the port actually bound, which
+            // otherwise contradicts what the task asked for.
+            if !has_addr {
+                if let Some(port) = Self::requested_port_arg(&config.cli_args) {
+                    warn!(
+                        "Task {}: --port {port} does not choose the listening port; it is forwarded to the component. Use --addr 0.0.0.0:{port} to bind that port, or leave --port out to use the proplet's configured proxy port {}",
+                        config.id,
+                        self.http_proxy_port
+                    );
+                }
+            }
 
             let mut _port_holder: Option<(u16, TcpListener)> = None;
 
@@ -496,6 +527,43 @@ mod tests {
         let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222);
         assert_eq!(runtime.runtime_path, "/usr/bin/wasmtime");
         assert_eq!(runtime.http_proxy_port, 8222);
+    }
+
+    /// `--port` does not choose the listening port, so the value is recovered
+    /// purely to quote it in the warning. Both spellings have to be recognised.
+    #[test]
+    fn test_requested_port_arg() {
+        let args = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
+
+        assert_eq!(
+            HostRuntime::requested_port_arg(&args(&["--port", "8044"])),
+            Some("8044".to_string())
+        );
+        assert_eq!(
+            HostRuntime::requested_port_arg(&args(&["--port=8044"])),
+            Some("8044".to_string())
+        );
+        assert_eq!(
+            HostRuntime::requested_port_arg(&args(&[
+                "-Shttp",
+                "--port",
+                "9999",
+                "--addr",
+                "0.0.0.0:1"
+            ])),
+            Some("9999".to_string())
+        );
+
+        assert_eq!(HostRuntime::requested_port_arg(&args(&["-Shttp"])), None);
+        assert_eq!(HostRuntime::requested_port_arg(&[]), None);
+    }
+
+    /// A trailing --port with no value must not be mistaken for a request.
+    #[test]
+    fn test_requested_port_arg_without_value() {
+        let args = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
+
+        assert_eq!(HostRuntime::requested_port_arg(&args(&["--addr"])), None);
     }
 
     #[test]
