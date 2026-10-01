@@ -16,18 +16,29 @@ use tracing::{debug, error, info, warn};
 pub struct HostRuntime {
     runtime_path: String,
     http_proxy_port: u16,
+    preopened_dirs: Vec<String>,
     processes: Arc<Mutex<HashMap<String, Child>>>,
     pids: Arc<Mutex<HashMap<String, u32>>>,
 }
 
 impl HostRuntime {
-    pub fn new(runtime_path: String, http_proxy_port: u16) -> Self {
+    pub fn new(runtime_path: String, http_proxy_port: u16, preopened_dirs: Vec<String>) -> Self {
         Self {
             runtime_path,
             http_proxy_port,
+            preopened_dirs,
             processes: Arc::new(Mutex::new(HashMap::new())),
             pids: Arc::new(Mutex::new(HashMap::new())),
         }
+    }
+
+    /// `--dir <host>::<guest>` args for every configured preopened directory.
+    fn preopened_dir_args(&self) -> Vec<String> {
+        self.preopened_dirs
+            .iter()
+            .filter(|dir| !dir.is_empty())
+            .flat_map(|dir| ["--dir".to_string(), format!("{dir}::{dir}")])
+            .collect()
     }
 
     async fn create_temp_wasm_file(&self, id: &str, wasm_binary: &[u8]) -> Result<PathBuf> {
@@ -119,6 +130,8 @@ impl Runtime for HostRuntime {
             if !has_http_flag {
                 cmd.arg("-Shttp");
             }
+
+            cmd.args(self.preopened_dir_args());
 
             let has_addr = config
                 .cli_args
@@ -252,6 +265,8 @@ impl Runtime for HostRuntime {
             Ok(format!("started at port {actual_port}").into_bytes())
         } else {
             cmd.arg("run");
+
+            cmd.args(self.preopened_dir_args());
 
             let cli_args_has_invoke = config.cli_args.iter().any(|a| a == "--invoke");
             let has_custom_export = !config.function_name.is_empty()
@@ -493,9 +508,43 @@ mod tests {
 
     #[test]
     fn test_host_runtime_new() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222);
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
         assert_eq!(runtime.runtime_path, "/usr/bin/wasmtime");
         assert_eq!(runtime.http_proxy_port, 8222);
+        assert!(runtime.preopened_dirs.is_empty());
+    }
+
+    #[test]
+    fn test_preopened_dirs_become_dir_flags() {
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            vec!["/tmp".to_string(), "/data".to_string()],
+        );
+
+        assert_eq!(
+            runtime.preopened_dir_args(),
+            vec!["--dir", "/tmp::/tmp", "--dir", "/data::/data"]
+        );
+    }
+
+    #[test]
+    fn test_empty_preopened_dirs_are_skipped() {
+        let runtime = HostRuntime::new(
+            "/usr/bin/wasmtime".to_string(),
+            8222,
+            vec![String::new(), "/tmp".to_string(), String::new()],
+        );
+
+        let args = runtime.preopened_dir_args();
+        assert_eq!(args, vec!["--dir", "/tmp::/tmp"]);
+    }
+
+    #[test]
+    fn test_no_preopened_dirs_yields_no_args() {
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
+
+        assert!(runtime.preopened_dir_args().is_empty());
     }
 
     #[test]
@@ -522,7 +571,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_and_cleanup_temp_file() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222);
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
         let task_id = "test-cleanup-task";
         let wasm_data = vec![0x00, 0x61, 0x73, 0x6d]; // WASM magic number
 
@@ -543,7 +592,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cleanup_nonexistent_file() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222);
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
         let fake_path = std::env::temp_dir().join("nonexistent-file.wasm");
 
         let result = runtime.cleanup_temp_file(fake_path).await;
@@ -552,7 +601,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_temp_file_with_empty_data() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222);
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
         let task_id = "empty-task";
         let wasm_data = vec![];
 
@@ -571,7 +620,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_create_temp_file_with_large_data() {
-        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222);
+        let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
         let task_id = "large-task";
         let wasm_data = vec![0xAB; 1024 * 1024]; // 1 MB of data
 
