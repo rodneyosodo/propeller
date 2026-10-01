@@ -13,8 +13,6 @@ DOCKERS_DEV = $(addprefix docker_dev_,$(SERVICES))
 DOCKERS_RUST = $(addprefix docker_,$(RUST_SERVICES))
 DOCKERS_RUST_DEV = $(addprefix docker_dev_,$(RUST_SERVICES))
 DOCKER_IMAGE_NAME_PREFIX ?= ghcr.io/absmach/propeller
-# Image prefix for the CI integration test. Deliberately off the ghcr.io
-# namespace so a local CI build can never clobber a real release tag.
 CI_IMAGE_NAME_PREFIX ?= propeller-ci
 WASMTIME_VERSION ?= 48.0.2
 
@@ -46,11 +44,6 @@ endef
 define make_docker_dev
 	$(eval svc=$(subst docker_dev_,,$(1)))
 
-# No --no-cache here, unlike the release targets: this image only wraps an
-# already-built binary, and the COPY of that binary is what should invalidate
-# the build. Forcing a cold build re-runs the base image pull and the
-# certificate copy on every invocation, which is pure overhead for a target
-# used by local development and CI.
 	docker build \
 		--build-arg SVC=$(svc) \
 		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc):latest \
@@ -75,9 +68,6 @@ endef
 define make_docker_rust_dev
 	$(eval svc=$(subst docker_dev_,,$(1)))
 
-# See make_docker_dev for why this does not pass --no-cache. It matters more
-# here: the proplet image installs packages and downloads the wasmtime tarball,
-# and a cold build repeats all of that on every invocation.
 	docker build \
 		--build-arg SVC=$(svc) \
 		--tag=$(DOCKER_IMAGE_NAME_PREFIX)/$(svc):latest \
@@ -192,31 +182,16 @@ start-propeller:
 stop-propeller:
 	docker compose -f docker/compose.propeller.yaml --env-file docker/.env down
 
-# Build the binaries and the examples the integration test deploys, then wrap
-# them in local images. Only what the test needs is built; `make all` would
-# also compile every other example, which the test never uses.
-# addition-wat additionally needs wat2wasm (package wabt).
 CI_EXAMPLES = addition addition-wat greet-component filesystem http-client http-server
 
-# The binaries, the proplet and the examples are all independent of each
-# other, so they build in parallel. Recursing with -j rather than relying on
-# the caller means `make ci-images` is parallel however it is invoked, which
-# it is not when the flag is only added in the workflow. Serial, the same
-# work is the sum of five stages (Go ~80s, proplet ~2m, examples ~40s) rather
-# than roughly the slowest one.
 CI_JOBS ?= $(shell nproc 2>/dev/null || echo 4)
 
 ci-images:
 	$(MAKE) -j$(CI_JOBS) ci-images-parallel
 
-# Split in two so the prerequisites and the image builds can each be
-# parallelised: every image consumes the binaries from the first stage.
 ci-images-parallel: manager cli proxy proplet $(CI_EXAMPLES)
 	$(MAKE) -j$(CI_JOBS) docker_dev_manager docker_dev_proxy docker_dev_proplet DOCKER_IMAGE_NAME_PREFIX=$(CI_IMAGE_NAME_PREFIX)
 
-# start/stop-propeller-ci layer compose.propeller.ci.yaml over the regular
-# compose file, so Propeller runs from the ci-images build instead of the
-# published ghcr.io images.
 start-propeller-ci:
 	docker compose -f docker/compose.propeller.yaml -f docker/compose.propeller.ci.yaml --env-file docker/.env up -d
 

@@ -92,9 +92,7 @@ cleanup() {
 trap cleanup EXIT
 
 # wait_for_url polls a URL until it answers 2xx, up to a timeout in seconds.
-# It must issue a real request: `test "$url"` only checks the string is
-# non-empty, so it returns success immediately and lets the script race the
-# service's startup.
+# A real request is required; testing the string only checks it is non-empty.
 wait_for_url() {
     local what="$1" url="$2" timeout="$3"
     local deadline=$((SECONDS + timeout))
@@ -120,10 +118,7 @@ assert_eq() {
 }
 
 # assert_log_contains fails unless the container's logs contain the pattern.
-# The logs are captured into a variable first: piping `docker logs` straight
-# into `grep -q` makes grep exit on the first match, docker logs die of
-# SIGPIPE, and `set -o pipefail` then reports the whole pipeline as a failure
-# even though the pattern was found.
+# Logs are captured first to avoid a SIGPIPE failure under `set -o pipefail`.
 assert_log_contains() {
     local container="$1" pattern="$2" what="$3"
     local logs
@@ -287,14 +282,12 @@ wait_for_url "atom" "${ATOM_URL}/health" 240
 # ---------------------------------------------------------------------------
 
 log "Provisioning"
-# The Atom admin credentials come from docker/.env so there is a single
-# source of truth for them.
+# Admin credentials come from docker/.env, the single source of truth.
 ATOM_SECRET="$(sed -n 's/^ATOM_ADMIN_SECRET=//p' docker/.env | tail -1)"
 [ -n "$ATOM_SECRET" ] || fail "could not read ATOM_ADMIN_SECRET from docker/.env"
 
-# Start from a clean slate: both paths are gitignored, so a CI checkout has
-# neither, but a local run may have leftovers from a previous run and a stale
-# file would make a failed provisioning look like a success.
+# Start clean: a stale config.toml from a previous local run would mask a
+# failed provisioning.
 CONFIG=config.toml
 rm -f "$CONFIG" docker/config.toml
 
@@ -304,9 +297,7 @@ PROPELLER_TENANT_NAME="${CI_TENANT_NAME:-propeller-ci}" \
 PROPELLER_PROPLET_COUNT=1 \
     ./build/cli provision
 
-# `provision` writes config.toml into the working directory, which is the repo
-# root. The compose file bind-mounts ./docker/config.toml, so it is copied
-# there below.
+# The compose file bind-mounts ./docker/config.toml, so copy it there.
 [ -f "$CONFIG" ] || fail "provision did not produce $CONFIG"
 
 for section in manager proplet proxy; do
@@ -322,10 +313,7 @@ cp "$CONFIG" docker/config.toml
 # 4. Start Propeller and wait for the proplet to register
 #
 # PROPLET_HTTP_ENABLED lets workloads make outgoing requests and serve inbound
-# HTTP; PROPLET_DIRS preopens host directories into WASI P1 guests. Both are
-# passed as shell environment rather than edited into docker/.env: a shell
-# variable takes precedence over compose's --env-file, and this keeps the
-# checked-in .env at its documented defaults.
+# HTTP; PROPLET_DIRS preopens host directories into WASI P1 guests.
 # ---------------------------------------------------------------------------
 
 log "Starting Propeller"
@@ -335,10 +323,7 @@ PROPLET_HTTP_ENABLED=true PROPLET_DIRS="${CI_PROPLET_DIRS:-/tmp}" \
 wait_for_url "manager" "${MANAGER_URL}/health" 180
 
 log "Waiting for the proplet to register"
-# The proplet registers over MQTT after connecting to Atom/FluxMQ, so give the
-# registration a generous window. The count defaults to 0 so a transient
-# empty or non-JSON response from the manager is treated as "not yet" rather
-# than blowing up the integer comparison.
+# The count defaults to 0 so a transient empty response reads as "not yet".
 alive_proplets() {
     local count
     count="$(json "${MANAGER_URL}/proplets" 2>/dev/null |
@@ -437,12 +422,9 @@ fi
 # ---------------------------------------------------------------------------
 
 log "Checking service logs (external runtime phase)"
-# The manager's "successfully created proplet" line is deliberately not
-# asserted: the proplet publishes its discovery message exactly once at
-# startup, so whether the manager sees it is a race with the manager's own
-# subscription. A missed message is not a failure — the proplet's periodic
-# liveness heartbeat recreates the record (see updateLivenessHandler). The
-# /proplets assertion above is the real registration check.
+# The manager's "successfully created proplet" line is not asserted: the
+# discovery message is published once at startup and may race the manager's
+# subscription. The /proplets assertion above is the registration check.
 assert_log_contains propeller-manager "MQTT connection established" "manager connected to MQTT"
 assert_log_contains propeller-manager "Subscribe to MQTT topic completed successfully" "manager subscribed to control topics"
 assert_log_contains propeller-manager "\"msg\":\"Starting task completed successfully\"" "manager started a task"
@@ -463,11 +445,8 @@ done
 # ---------------------------------------------------------------------------
 # 7. filesystem on the in-process Wasmtime runtime
 #
-# PROPLET_DIRS is only honoured by the in-process runtime. On the default
-# external-wasmtime path the proplet's HostRuntime builds `wasmtime run`
-# without ever passing --dir, so the preopen is silently dropped and the
-# guest's write fails with ENOENT. Restarting the proplet with
-# PROPLET_EXTERNAL_WASM_RUNTIME="" selects the runtime that applies it.
+# PROPLET_DIRS is only honoured by the in-process runtime, so restart the
+# proplet with PROPLET_EXTERNAL_WASM_RUNTIME="" to select it.
 # ---------------------------------------------------------------------------
 
 log "Example: filesystem (WASI P1 preopened dirs, in-process runtime)"

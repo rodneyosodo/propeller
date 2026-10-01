@@ -83,12 +83,8 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# The x86_64 target enables the amd-sev feature, which pulls az-snp-vtpm ->
-# tss-esapi-sys and links the proplet dynamically against the TPM2 stack
-# (libtss2-esys/mu/sys). The builder stage installs libtss2-dev for the build,
-# but the runtime stage needs the shared libraries too or the proplet exits 127
-# with "error while loading shared libraries: libtss2-esys.so.0". arm64 and
-# riscv64 do not enable amd-sev and do not link these.
+# The x86_64 target enables the amd-sev feature and links dynamically against
+# the TPM2 stack, so the runtime stage needs these shared libraries too.
 RUN if [ "${TARGETARCH}" = "amd64" ]; then \
         apt-get update && \
         apt-get install -y --no-install-recommends \

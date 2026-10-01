@@ -1,12 +1,5 @@
 name: Integration Test
 
-# End-to-end test of the whole Propeller stack: base services (Atom, FluxMQ,
-# Nginx), provisioning, the manager/proplet/proxy services, and a real WASM
-# workload (the addition example) deployed and verified end to end.
-#
-# The actual test lives in tools/ci/integration-test.sh so it can also be run
-# locally, which is the only practical way to debug a stack this size.
-
 on:
   pull_request:
     branches:
@@ -46,18 +39,12 @@ jobs:
           wget -q https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo_0.42.0_amd64.deb
           sudo dpkg -i tinygo_0.42.0_amd64.deb
 
-      # The addition-wat example is authored as WebAssembly text, so
-      # `make addition-wat` needs wat2wasm from wabt.
       - name: Install wabt
         run: sudo apt-get install -y wabt
 
-      # greet-component (and the other WASI P2 examples) build for this target.
       - name: Add wasm32-wasip2 target
         run: rustup target add wasm32-wasip2
 
-      # The x86_64 proplet enables the amd-sev feature, which pulls
-      # az-snp-vtpm -> tss-esapi-sys. Its build script probes tss2-sys.pc, so
-      # the TPM2 TSS development headers must be present on the runner.
       - name: Install TPM2 TSS development headers
         run: |
           sudo apt-get update
@@ -66,9 +53,6 @@ jobs:
       - name: Cache build artifacts
         uses: actions/cache@v4
         with:
-          # The example target dirs are the integration test's own fixtures, not
-          # code under test, but they are cargo projects and cost ~40s to
-          # compile from cold on every run. 362M for all four.
           path: |
             build
             proplet/target
@@ -80,11 +64,6 @@ jobs:
           restore-keys: |
             integration-test-
 
-      # Kept as its own step, separate from the test, for two reasons: a build
-      # failure and a test failure are then distinguishable, and the artifact
-      # cache is saved whenever this step succeeds. Folded into the test step,
-      # a failing test would skip the cache save and every retry would pay for
-      # a cold ~13 min cargo build of the proplet.
       - name: Build images under test
         run: make ci-images
 

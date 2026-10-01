@@ -25,10 +25,8 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# This image is x86_64-only (see the wasmtime tarball above), and the x86_64
-# proplet enables the amd-sev feature, which links dynamically against the
-# TPM2 stack. Without these the proplet exits 127 with "error while loading
-# shared libraries: libtss2-esys.so.0".
+# The x86_64 proplet enables the amd-sev feature and links dynamically
+# against the TPM2 stack, so these shared libraries are required at runtime.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         libtss2-esys-3.0.2-0t64 \
