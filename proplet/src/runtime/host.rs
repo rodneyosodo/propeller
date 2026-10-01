@@ -70,9 +70,7 @@ impl HostRuntime {
             .any(|w| w == b"wasi:http/incoming-handler")
     }
 
-    /// Extract the value of a `--port <n>` / `--port=<n>` argument, if the
-    /// task has one. Returns the raw value so the warning can quote what the
-    /// task actually asked for.
+    // Value of a `--port <n>` / `--port=<n>` argument, if the task has one.
     fn requested_port_arg(cli_args: &[String]) -> Option<String> {
         cli_args
             .windows(2)
@@ -140,12 +138,7 @@ impl Runtime for HostRuntime {
                 .iter()
                 .any(|a| a == "--addr" || a.starts_with("--addr="));
 
-            // The listening port comes from --addr, or from the proplet's
-            // configured proxy port when --addr is absent. A --port argument
-            // is forwarded to the component and has no effect on binding, so
-            // asking for one and silently getting another is worth saying out
-            // loud: the task result reports the port actually bound, which
-            // otherwise contradicts what the task asked for.
+            // --port is forwarded to the component and does not choose the listening port.
             if !has_addr {
                 if let Some(port) = Self::requested_port_arg(&config.cli_args) {
                     warn!(
@@ -529,8 +522,6 @@ mod tests {
         assert_eq!(runtime.http_proxy_port, 8222);
     }
 
-    /// `--port` does not choose the listening port, so the value is recovered
-    /// purely to quote it in the warning. Both spellings have to be recognised.
     #[test]
     fn test_requested_port_arg() {
         let args = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
@@ -556,13 +547,6 @@ mod tests {
 
         assert_eq!(HostRuntime::requested_port_arg(&args(&["-Shttp"])), None);
         assert_eq!(HostRuntime::requested_port_arg(&[]), None);
-    }
-
-    /// A trailing --port with no value must not be mistaken for a request.
-    #[test]
-    fn test_requested_port_arg_without_value() {
-        let args = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
-
         assert_eq!(HostRuntime::requested_port_arg(&args(&["--addr"])), None);
     }
 
