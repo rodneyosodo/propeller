@@ -67,6 +67,7 @@ pub struct PropletConfig {
     pub http_enabled: bool,
     pub usb_enabled: bool,
     pub preopened_dirs: Vec<String>,
+    pub wasi_features: Vec<String>,
     pub http_proxy_port: u16,
     pub description: Option<String>,
     pub tags: Vec<String>,
@@ -114,6 +115,7 @@ impl Default for PropletConfig {
             http_enabled: false,
             usb_enabled: false,
             preopened_dirs: Vec::new(),
+            wasi_features: Vec::new(),
             http_proxy_port: 8222,
             description: None,
             tags: Vec::new(),
@@ -412,6 +414,14 @@ impl PropletConfig {
                 if let Ok(port) = val.parse() {
                     config.http_proxy_port = port;
                 }
+            }
+
+            if let Ok(val) = env::var("PROPLET_WASI_FEATURES") {
+                config.wasi_features = val
+                    .split(',')
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+                    .collect();
             }
 
             if let Ok(val) = env::var("PROPLET_DIRS") {
