@@ -48,8 +48,9 @@ impl HostRuntime {
             .collect()
     }
 
-    /// `-S<key>` args for the configured WASI features. The task's own
-    /// `cli_args` win, so a task can override an operator-wide default.
+    // WASI feature flags for a task, as `-S<key>`. Features already in the
+    // task's own `cli_args` are left alone. Only boolean keys are accepted;
+    // options taking a value must go in `cli_args`.
     fn wasi_feature_args(&self, task_args: &[String]) -> Vec<String> {
         let mut args = Vec::new();
 
@@ -71,9 +72,7 @@ impl HostRuntime {
         args
     }
 
-    /// The boolean WASI feature keys wasmtime accepts as `-S<key>`. An
-    /// unrecognised key is warned about rather than refused, since wasmtime
-    /// gains keys over time.
+    // Boolean WASI feature keys wasmtime accepts as `-S<key>`.
     fn is_valid_wasi_feature(feature: &str) -> bool {
         const KNOWN: &[&str] = &[
             "allow-ip-name-lookup",
