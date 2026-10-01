@@ -1412,17 +1412,8 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 		WasmRuntime:      maps.GetString(meta, "wasm_runtime", ""),
 	}
 
-	// A proplet can already be known here without any metadata: the proplet
-	// publishes its discovery message once at startup, and if the manager was
-	// not subscribed yet that message is lost. The record is then created from
-	// the first liveness message, which carries no metadata, and it would
-	// otherwise keep empty metadata forever — leaving plugin-constrained
-	// scheduling blind to a capable proplet. Refresh it instead of failing.
-	//
-	// GetProplet rather than propletRepo.Get: the storage backends return
-	// different not-found sentinels (storage.ErrPropletNotFound for badger and
-	// sqlite, the in-memory one normalises), and GetProplet maps them all to
-	// pkgerrors.ErrNotFound.
+	// Refresh metadata if the proplet is already known from a liveness message.
+	// GetProplet normalises the storage backend not-found errors.
 	existing, err := svc.GetProplet(ctx, propletID)
 	switch {
 	case err == nil:
@@ -1435,7 +1426,6 @@ func (svc *service) createPropletHandler(ctx context.Context, msg map[string]any
 
 		return nil
 	case errors.Is(err, pkgerrors.ErrNotFound):
-		// Expected first contact; fall through and create.
 	default:
 		return err
 	}

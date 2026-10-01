@@ -14,16 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// newHandlerService builds a service over the badger backend and returns the
-// unexported MQTT message handler, which the external test package cannot
-// reach.
-//
-// Badger rather than the in-memory repos on purpose: the storage backends
-// return different not-found sentinels (badger and sqlite return
-// storage.ErrPropletNotFound, the in-memory one normalises to
-// pkgerrors.ErrNotFound), and a test against the in-memory repos passes even
-// when the handler only recognises the normalised sentinel. Badger is also
-// the default backend in docker/.env.
+// Badger surfaces storage.ErrPropletNotFound while the in-memory repos
+// normalise to pkgerrors.ErrNotFound, so test against badger.
 func newHandlerService(t *testing.T) (*service, storage.PropletRepository) {
 	t.Helper()
 
@@ -56,10 +48,6 @@ func discoveryMsg(id, hostname, version string) map[string]any {
 	}
 }
 
-// A proplet whose discovery message the manager missed gets its record from
-// the first liveness heartbeat, which carries no metadata. The later
-// discovery message must fill that metadata in rather than collide with the
-// existing record.
 func TestCreatePropletHandlerRefreshesExistingProplet(t *testing.T) {
 	t.Parallel()
 
@@ -67,14 +55,12 @@ func TestCreatePropletHandlerRefreshesExistingProplet(t *testing.T) {
 	ctx := context.Background()
 	const id = "proplet-1"
 
-	// First contact arrives as a liveness message: no metadata at all.
 	require.NoError(t, svc.createPropletHandler(ctx, map[string]any{"proplet_id": id}))
 
 	before, err := repo.Get(ctx, id)
 	require.NoError(t, err)
-	require.Empty(t, before.Metadata.Hostname, "precondition: metadata starts empty")
+	require.Empty(t, before.Metadata.Hostname)
 
-	// The discovery message arrives later and must repair the record.
 	require.NoError(t, svc.createPropletHandler(ctx, discoveryMsg(id, "node-a", "0.6.2")))
 
 	after, err := repo.Get(ctx, id)
@@ -85,8 +71,6 @@ func TestCreatePropletHandlerRefreshesExistingProplet(t *testing.T) {
 	require.Equal(t, "172.30.0.8", after.Metadata.IP)
 }
 
-// A proplet that registers for the first time via its discovery message must
-// still be created normally.
 func TestCreatePropletHandlerCreatesNewProplet(t *testing.T) {
 	t.Parallel()
 
@@ -100,10 +84,9 @@ func TestCreatePropletHandlerCreatesNewProplet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, id, got.ID)
 	require.Equal(t, "node-b", got.Metadata.Hostname)
-	require.NotEmpty(t, got.Name, "a generated name is assigned on create")
+	require.NotEmpty(t, got.Name)
 }
 
-// Re-announcing must not clobber the proplet's identity or liveness history.
 func TestCreatePropletHandlerPreservesIdentityOnRefresh(t *testing.T) {
 	t.Parallel()
 
@@ -120,8 +103,8 @@ func TestCreatePropletHandlerPreservesIdentityOnRefresh(t *testing.T) {
 
 	refreshed, err := repo.Get(ctx, id)
 	require.NoError(t, err)
-	require.Equal(t, original.Name, refreshed.Name, "name is stable across refreshes")
-	require.Equal(t, "0.6.3", refreshed.Metadata.PropletVersion, "metadata is refreshed")
+	require.Equal(t, original.Name, refreshed.Name)
+	require.Equal(t, "0.6.3", refreshed.Metadata.PropletVersion)
 }
 
 func TestCreatePropletHandlerRejectsBadID(t *testing.T) {
