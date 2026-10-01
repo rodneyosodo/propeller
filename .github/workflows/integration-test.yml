@@ -1,0 +1,90 @@
+name: Integration Test
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+concurrency:
+  group: integration-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-test:
+    name: Provision, deploy addition example, verify result
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: 1.27
+          cache-dependency-path: go.sum
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Install TinyGo
+        run: |
+          wget -q https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo_0.42.0_amd64.deb
+          sudo dpkg -i tinygo_0.42.0_amd64.deb
+
+      - name: Install wabt
+        run: sudo apt-get install -y wabt
+
+      - name: Add wasm32-wasip2 target
+        run: rustup target add wasm32-wasip2
+
+      - name: Install TPM2 TSS development headers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libtss2-dev libssl-dev pkg-config
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            build
+            proplet/target
+            examples/greet-component/target
+            examples/http-client/target
+            examples/http-server/target
+            examples/filesystem/target
+          key: integration-test-${{ github.sha }}
+          restore-keys: |
+            integration-test-
+
+      - name: Build images under test
+        run: make ci-images
+
+      - name: Run integration test
+        env:
+          PROPELLER_CI_SKIP_BUILD: "1"
+        run: tools/ci/integration-test.sh
+
+      - name: Dump propeller logs
+        if: failure()
+        run: |
+          echo "::group::docker ps -a"
+          docker ps -a || true
+          echo "::endgroup::"
+          for c in propeller-atom propeller-fluxmq-node1 propeller-nginx \
+                   propeller-manager propeller-proplet propeller-proxy; do
+            echo "::group::$c"
+            docker logs --tail 500 "$c" 2>&1 || true
+            echo "::endgroup::"
+          done
+
+      - name: Tear down containers
+        if: always()
+        run: |
+          make stop-propeller-ci || true
+          make stop-base || true

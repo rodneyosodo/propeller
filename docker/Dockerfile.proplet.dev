@@ -25,6 +25,18 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# The x86_64 proplet enables the amd-sev feature and links dynamically
+# against the TPM2 stack, so these shared libraries are required at runtime.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        libtss2-esys-3.0.2-0t64 \
+        libtss2-mu-4.0.1-0t64 \
+        libtss2-sys1t64 \
+        libtss2-tctildr0t64 && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 RUN groupadd -r proplet && \
     useradd -r -g proplet -s /bin/false proplet
 

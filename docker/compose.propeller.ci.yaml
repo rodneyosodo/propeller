@@ -1,0 +1,29 @@
+# Copyright (c) Abstract Machines
+# SPDX-License-Identifier: Apache-2.0
+
+name: "propeller"
+
+services:
+  manager:
+    image: propeller-ci/manager:latest
+    pull_policy: never
+    healthcheck:
+      disable: true
+
+  proplet:
+    image: propeller-ci/proplet:latest
+    pull_policy: never
+    healthcheck:
+      disable: true
+    # The http-server example binds a port inside the proplet container, so it
+    # must be published for the test to reach it. !override replaces the base
+    # list instead of appending to it.
+    ports: !override
+      - ${PROPLET_METRICS_PORT}:${PROPLET_METRICS_PORT}
+      - ${CI_HTTP_SERVER_PORT:-8044}:${CI_HTTP_SERVER_PORT:-8044}
+
+  proxy:
+    image: propeller-ci/proxy:latest
+    pull_policy: never
+    healthcheck:
+      disable: true

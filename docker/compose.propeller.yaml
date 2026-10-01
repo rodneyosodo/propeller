@@ -122,6 +122,10 @@ services:
       PROPLET_HTTP_ENABLED: ${PROPLET_HTTP_ENABLED}
       # Comma-separated boolean WASI features for the external Wasm runtime, e.g. "cli,http".
       PROPLET_WASI_FEATURES: ${PROPLET_WASI_FEATURES:-}
+      # Colon-separated list of host directories preopened read-write into
+      # WASI P1 guests. Required by the filesystem example, which writes to
+      # and reads back from a preopened dir.
+      PROPLET_DIRS: ${PROPLET_DIRS:-}
       PROPLET_EXTERNAL_WASM_RUNTIME: ${PROPLET_EXTERNAL_WASM_RUNTIME}
       PROPLET_METRICS_PORT: ${PROPLET_METRICS_PORT}
       PROPLET_METRICS_ENABLED: ${PROPLET_METRICS_ENABLED:-true}
