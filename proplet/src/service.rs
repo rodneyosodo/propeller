@@ -336,7 +336,7 @@ impl PropletService {
 
             // Re-announce periodically: a discovery message sent before the
             // manager subscribed is lost and liveness carries no metadata.
-            if ticks % Self::DISCOVERY_RENOTIFY_TICKS == 0 {
+            if ticks.is_multiple_of(Self::DISCOVERY_RENOTIFY_TICKS) {
                 if let Err(e) = self.publish_discovery().await {
                     error!("Failed to re-publish discovery: {}", e);
                 }
