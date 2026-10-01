@@ -32,16 +32,7 @@ impl HostRuntime {
         }
     }
 
-    /// The `--dir <host>::<guest>` arguments for every configured preopened
-    /// directory.
-    ///
-    /// Without these the guest sees no preopens at all and writes to a path it
-    /// believes is preopened fail with ENOENT from inside the sandbox, which
-    /// reads like a bug in the workload rather than a missing flag.
-    ///
-    /// The host/guest separator is `::` (wasi-common). Passing `=` instead
-    /// makes wasmtime look for a directory literally named `/tmp=/tmp` and
-    /// fail with "No such file or directory" before the guest even runs.
+    /// `--dir <host>::<guest>` args for every configured preopened directory.
     fn preopened_dir_args(&self) -> Vec<String> {
         self.preopened_dirs
             .iter()
@@ -523,9 +514,6 @@ mod tests {
         assert!(runtime.preopened_dirs.is_empty());
     }
 
-    /// The preopened-dir list has to reach the spawned `wasmtime run`, or
-    /// guests see no preopens and writes fail with ENOENT from inside the
-    /// sandbox.
     #[test]
     fn test_preopened_dirs_become_dir_flags() {
         let runtime = HostRuntime::new(
@@ -540,8 +528,6 @@ mod tests {
         );
     }
 
-    /// Empty entries are skipped so a trailing or doubled separator in
-    /// PROPLET_DIRS (which is colon-separated) cannot produce `--dir =`.
     #[test]
     fn test_empty_preopened_dirs_are_skipped() {
         let runtime = HostRuntime::new(
@@ -552,7 +538,6 @@ mod tests {
 
         let args = runtime.preopened_dir_args();
         assert_eq!(args, vec!["--dir", "/tmp::/tmp"]);
-        assert!(!args.iter().any(|a| a == "="), "got: {args:?}");
     }
 
     #[test]

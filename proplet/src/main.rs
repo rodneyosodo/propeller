@@ -143,10 +143,7 @@ async fn main() -> Result<()> {
         } else {
             info!("Using external Wasm runtime: {}", external_runtime);
 
-            // The external runtime shells out to a wasmtime binary. It can
-            // honour the preopened-directory list, but not the in-process
-            // capabilities, so say so up front rather than letting the
-            // operator believe a setting is active when it is not.
+            // The external runtime only honours preopened dirs, not in-process capabilities.
             if config.hal_enabled {
                 warn!("PROPLET_HAL_ENABLED is set but the external Wasm runtime does not support the HAL; ignoring it");
             }
