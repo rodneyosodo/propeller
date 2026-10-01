@@ -70,6 +70,9 @@ pub struct PropletService {
 }
 
 impl PropletService {
+    /// Re-announce discovery every 6 liveness ticks.
+    const DISCOVERY_RENOTIFY_TICKS: u64 = 6;
+
     pub fn new(
         config: PropletConfig,
         pubsub: PubSub,
@@ -179,9 +182,10 @@ impl PropletService {
     pub async fn run(self: Arc<Self>, mut mqtt_rx: mpsc::Receiver<MqttMessage>) -> Result<()> {
         info!("Starting PropletService");
 
-        self.publish_discovery().await?;
-
+        // Subscribe before announcing so the proplet can receive work once visible.
         self.subscribe_topics().await?;
+
+        self.publish_discovery().await?;
 
         let service = self.clone();
         tokio::spawn(async move {
@@ -320,12 +324,22 @@ impl PropletService {
 
     async fn start_liveliness_updates(&self) {
         let mut interval = tokio::time::interval(self.config.liveliness_interval());
+        let mut ticks: u64 = 0;
 
         loop {
             interval.tick().await;
+            ticks += 1;
 
             if let Err(e) = self.publish_liveliness().await {
                 error!("Failed to publish liveliness: {}", e);
+            }
+
+            // Re-announce periodically: a discovery message sent before the
+            // manager subscribed is lost and liveness carries no metadata.
+            if ticks.is_multiple_of(Self::DISCOVERY_RENOTIFY_TICKS) {
+                if let Err(e) = self.publish_discovery().await {
+                    error!("Failed to re-publish discovery: {}", e);
+                }
             }
         }
     }
@@ -437,6 +451,15 @@ impl PropletService {
             } else {
                 info!("Successfully re-subscribed to topics after reconnection");
             }
+
+            // Re-announce: a discovery message sent while the manager was not
+            // subscribed is lost.
+            if let Err(e) = self.publish_discovery().await {
+                error!("Failed to re-publish discovery after reconnection: {}", e);
+            } else {
+                info!("Re-published discovery message after reconnection");
+            }
+
             return Ok(());
         }
 
