@@ -81,6 +81,19 @@ impl HostRuntime {
             .any(|w| w == b"wasi:http/incoming-handler")
     }
 
+    // Value of a `--port <n>` / `--port=<n>` argument, if the task has one.
+    fn requested_port_arg(cli_args: &[String]) -> Option<String> {
+        cli_args
+            .windows(2)
+            .find(|w| w[0] == "--port")
+            .map(|w| w[1].clone())
+            .or_else(|| {
+                cli_args
+                    .iter()
+                    .find_map(|a| a.strip_prefix("--port=").map(str::to_string))
+            })
+    }
+
     async fn find_available_port(start_port: u16) -> Result<(u16, TcpListener)> {
         let max_attempts = 100u16;
         for port in start_port..start_port.saturating_add(max_attempts) {
@@ -137,6 +150,17 @@ impl Runtime for HostRuntime {
                 .cli_args
                 .iter()
                 .any(|a| a == "--addr" || a.starts_with("--addr="));
+
+            // --port is forwarded to the component and does not choose the listening port.
+            if !has_addr {
+                if let Some(port) = Self::requested_port_arg(&config.cli_args) {
+                    warn!(
+                        "Task {}: --port {port} does not choose the listening port; it is forwarded to the component. Use --addr 0.0.0.0:{port} to bind that port, or leave --port out to use the proplet's configured proxy port {}",
+                        config.id,
+                        self.http_proxy_port
+                    );
+                }
+            }
 
             let mut _port_holder: Option<(u16, TcpListener)> = None;
 
@@ -545,6 +569,34 @@ mod tests {
         let runtime = HostRuntime::new("/usr/bin/wasmtime".to_string(), 8222, Vec::new());
 
         assert!(runtime.preopened_dir_args().is_empty());
+    }
+
+    #[test]
+    fn test_requested_port_arg() {
+        let args = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
+
+        assert_eq!(
+            HostRuntime::requested_port_arg(&args(&["--port", "8044"])),
+            Some("8044".to_string())
+        );
+        assert_eq!(
+            HostRuntime::requested_port_arg(&args(&["--port=8044"])),
+            Some("8044".to_string())
+        );
+        assert_eq!(
+            HostRuntime::requested_port_arg(&args(&[
+                "-Shttp",
+                "--port",
+                "9999",
+                "--addr",
+                "0.0.0.0:1"
+            ])),
+            Some("9999".to_string())
+        );
+
+        assert_eq!(HostRuntime::requested_port_arg(&args(&["-Shttp"])), None);
+        assert_eq!(HostRuntime::requested_port_arg(&[]), None);
+        assert_eq!(HostRuntime::requested_port_arg(&args(&["--addr"])), None);
     }
 
     #[test]
