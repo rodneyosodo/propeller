@@ -16,6 +16,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wasmtime = "48.0.2"
 wasmtime-wasi = "48.0.2"
 wasmtime-wasi-http = "48.0.2"
-elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", rev = "f25abaf2448a4d424061e6355e8a915e4b5c6cf2", default-features = false, features = [
+elastic-tee-hal = { git = "https://github.com/rodneyosodo/wasmhal", branch = "feat/selectable-intel-tdx", default-features = false, features = [
   "amd-sev",
+  "intel-tdx",
 ] }

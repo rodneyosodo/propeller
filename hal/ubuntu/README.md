@@ -129,7 +129,12 @@ curl -k https://10.0.2.2:8082/kbs/v0/resource-policy
 
 A JSON error (rather than a connection refused, timeout, or certificate error) means the guest reached KBS. Trustee only needs to be up before an encrypted workload runs; the Attestation Agent retries.
 
-For the equivalent setup on a cloud CVM (Trustee on a separate VM, guest stack inside an Azure AMD SEV-SNP VM), see [`../azure/README.md`](../azure/README.md) or [propeller.absmach.eu/docs/azure-cvm](https://propeller.absmach.eu/docs/azure-cvm).
+For the equivalent setup on a cloud CVM (Trustee on a separate VM, guest stack inside the CVM), see:
+
+| Cloud CVM                            | Guide                                            |
+| ------------------------------------ | ------------------------------------------------ |
+| Azure AMD SEV-SNP                    | [`../azure/README.md`](../azure/README.md) or [propeller.absmach.eu/docs/azure-cvm](https://propeller.absmach.eu/docs/azure-cvm) |
+| GCP Intel TDX (C3/C4)                | [`../gcp/README.md`](../gcp/README.md)           |
 
 ## Run
 
