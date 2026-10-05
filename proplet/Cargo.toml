@@ -105,22 +105,28 @@ crate-type = ["lib"]
 # sysroot, so these dependencies must not be enabled unconditionally — the
 # arm64/riscv64 proplet builds would fail.
 #
-# Both CPU attesters are compiled in so that a single proplet binary serves
-# every confidential-VM platform we support: `detect_tee_type()` probes TDX
-# first and only then the Azure vTPM, so the running platform decides which one
-# is primary. Note that this cannot be expressed as a `[features]` entry:
-# features are not target-scoped, so enabling `attestation-agent/az-snp-vtpm-attester`
-# from there would pull `tss-esapi-sys` into the arm64 and riscv64 builds.
+# Every CPU attester we support is compiled in, so one proplet binary serves
+# Azure SEV-SNP (evidence from the guest vTPM), GCP/bare-metal Intel TDX
+# (a DCAP quote from the Linux TSM) and GCP/bare-metal AMD SEV-SNP (a report
+# from /dev/sev-guest via the TSM). `detect_tee_type()` probes TDX first, then
+# the Azure vTPM, then SNP, so the running platform decides which is primary.
+#
+# This cannot be expressed as a `[features]` entry: features are not
+# target-scoped, so enabling `attestation-agent/az-snp-vtpm-attester` from there
+# would pull `tss-esapi-sys` into the arm64 and riscv64 builds, which CI builds
+# and which fail without the TPM2 TSS headers.
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "rust-crypto",
   "kbs",
   "az-snp-vtpm-attester",
   "tdx-attester",
+  "snp-attester",
 ] }
 kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", features = [
   "background_check",
   "rust-crypto",
   "az-snp-vtpm-attester",
   "tdx-attester",
+  "snp-attester",
 ], default-features = false }

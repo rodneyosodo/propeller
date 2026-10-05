@@ -950,6 +950,35 @@ The HAL asks the Linux TSM for a DCAP quote, parses `MRTD` and `RTMR0..3` out of
 
 `hal-runner` embeds the HAL directly rather than going through proplet, so it carries its own wasmhal dependency. Keep it on the same rev as [`proplet/Cargo.toml`](../../proplet/Cargo.toml) — a stale pin is the usual reason the two disagree about what is supported.
 
+## Part 7 — Delete the resources
+
+The two instances and the firewall rule are the only billable or security-relevant things this guide creates. Run this from your workstation, in the shell that still has `$PROJECT` and `$ZONE` — **not** from inside either VM, since deleting the VM you are logged into will end the session mid-command.
+
+```bash
+gcloud compute instances delete propeller-intel-tdx-cvm --zone "$ZONE" --quiet
+gcloud compute instances delete propeller-trustee-host   --zone "$ZONE" --quiet
+
+gcloud compute firewall-rules delete allow-kbs-from-propeller \
+  --project "$PROJECT" --quiet
+```
+
+If you skipped the optional firewall rule in [2.1](#21-provision-the-trustee-host), the last command fails with `not found`; that is fine, and the instances are the part that matters.
+
+Both boot disks were created with auto-delete, so they go with their instances. Confirm nothing is left, especially if the instance was created from the console with a different name:
+
+```bash
+gcloud compute instances list --filter="name~propeller"
+gcloud compute disks     list --filter="name~propeller"
+gcloud compute firewall-rules list --filter="name~propeller"
+```
+
+An empty result from each means the project is back to where it started. A surviving disk usually means the console created it without `auto-delete=yes`, and it can be removed with `gcloud compute disks delete`.
+
+Two things this does **not** clean up, because they are deliberately outside the resource group:
+
+- **The KBS signing keys and the uploaded image key** live in `~/trustee` and in the KBS local-FS backend on the Trustee host. Deleting that host discards them. Nothing else can read the encrypted image if you do, which is the point.
+- **The encrypted image in the registry** (`<you>/tee-wasm-addition:encrypted`) is not deleted by any of this. Remove it from the registry separately if you do not want it to stay.
+
 ## References
 
 - [Trustee](https://github.com/confidential-containers/trustee)
