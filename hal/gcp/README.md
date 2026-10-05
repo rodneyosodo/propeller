@@ -73,8 +73,8 @@ PROJECT=<project-id>
 ZONE=us-central1-a
 
 gcloud compute instances create propeller-intel-tdx-cvm \
-  --project=valued-base-354714 \
-  --zone=us-central1-a \
+  --project=$PROJECT \
+  --zone=$ZONE \
   --machine-type=c3-standard-4 \
   --network-interface=network-tier=PREMIUM,nic-type=GVNIC,stack-type=IPV4_ONLY,subnet=default \
   --maintenance-policy=TERMINATE \

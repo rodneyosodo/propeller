@@ -72,7 +72,7 @@ futures-util = { version = "0.3" }
 # `amd-sev` covers Azure SEV-SNP CVMs (evidence from the vTPM) and `intel-tdx`
 # covers TDX guests that expose the Linux TSM (GCE C3/C4 confidential VMs,
 # bare metal). The HAL picks the source from what it detects at runtime.
-elastic-tee-hal = { git = "https://github.com/rodneyosodo/wasmhal", branch = "feat/selectable-intel-tdx", default-features = false, features = [
+elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false, features = [
   "amd-sev",
   "intel-tdx",
 ] }

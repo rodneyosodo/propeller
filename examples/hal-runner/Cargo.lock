@@ -930,7 +930,7 @@ checksum = "252afb9ae5eaa683babdc6a068b3f5726eb19e05070c731f9b2a23a7c3e8ed34"
 [[package]]
 name = "elastic-tee-hal"
 version = "0.1.0"
-source = "git+https://github.com/rodneyosodo/wasmhal?branch=feat%2Fselectable-intel-tdx#dcd543b6d0c9b8639facdefcdcdeba369172c13d"
+source = "git+https://github.com/elasticproject-eu/wasmhal?branch=main#a4dfa53f57cb735a2e52f352cb436b122eebd203"
 dependencies = [
  "aes-gcm",
  "anyhow",
