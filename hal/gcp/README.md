@@ -7,22 +7,22 @@ This is the Intel TDX counterpart of [`../azure/README.md`](../azure/README.md),
 
 ## Architecture
 
-| Component                               | Runs on                | Role                                                         |
-| --------------------------------------- | ---------------------- | ------------------------------------------------------------ |
-| KBS (Key Broker Service)                | Trustee host (outside) | Validates the attestation token, releases decryption keys    |
-| AS (Attestation Service)                | Trustee host (outside) | Verifies TEE evidence (here: `tdx`)                          |
-| RVPS (Reference Value Provider Service) | Trustee host (outside) | Reference values for verification                            |
+| Component                               | Runs on                | Role                                                                 |
+| --------------------------------------- | ---------------------- | -------------------------------------------------------------------- |
+| KBS (Key Broker Service)                | Trustee host (outside) | Validates the attestation token, releases decryption keys            |
+| AS (Attestation Service)                | Trustee host (outside) | Verifies TEE evidence (here: `tdx`)                                  |
+| RVPS (Reference Value Provider Service) | Trustee host (outside) | Reference values for verification                                    |
 | Attestation Agent (AA)                  | CVM (inside)           | Collects a TDX quote from the Linux TSM, performs the RCAR handshake |
-| CoCo Keyprovider                        | CVM (inside)           | Image key-wrap/unwrap keyprovider for `image-rs`             |
-| Proplet                                 | CVM (inside)           | Pulls and runs the encrypted workload                        |
-| Wasmtime                                | CVM (inside)           | Executes the decrypted WASM                                  |
+| CoCo Keyprovider                        | CVM (inside)           | Image key-wrap/unwrap keyprovider for `image-rs`                     |
+| Proplet                                 | CVM (inside)           | Pulls and runs the encrypted workload                                |
+| Wasmtime                                | CVM (inside)           | Executes the decrypted WASM                                          |
 
 ### Where to run Trustee
 
 Trustee runs on a **separate GCE VM you control** — the _Trustee host_ — never inside the CVM and never on the Google host. The whole point of a CVM is that the machine hosting it (and its operator) is untrusted, so the component that verifies evidence and releases decryption keys must be its own trust domain. Put the Trustee host in the same VPC network as the CVM and have the CVM reach KBS over the private network; do not expose KBS publicly.
 
-| Placement                                                | Correct?                                   |
-| -------------------------------------------------------- | ------------------------------------------ |
+| Placement                                                 | Correct?                                   |
+| --------------------------------------------------------- | ------------------------------------------ |
 | A separate GCE VM in the same VPC (internal IP)           | Yes                                        |
 | Any machine or server you control, reachable from the CVM | Yes                                        |
 | Inside the CVM                                            | No — the keys would live with the workload |
@@ -34,21 +34,23 @@ Provisioning is in [Part 2](#part-2--deploy-trustee-outside-the-cvm).
 
 Intel TDX on GCP differs from AMD SEV-SNP on Azure in ways that matter while building the guest stack:
 
-|                          | Azure AMD SEV-SNP CVM                                | GCP Intel TDX CVM                                                     |
-| ------------------------ | ---------------------------------------------------- | --------------------------------------------------------------------- |
-| Attester                 | `az-snp-vtpm-attester`                               | `tdx-attester`                                                        |
-| Evidence source          | Guest vTPM (HCL report + TPM quote)                  | Intel DCAP quote from the Linux TSM (`/dev/tdx_guest`)                |
-| Enable the platform      | `--security-type ConfidentialVM --enable-vtpm true`  | `--confidential-compute-type=TDX`                                     |
-| Machine family           | `DCasv5` / `ECasv5`                                  | `c3-standard-*` (`c4-standard-*` in preview)                          |
-| Image                    | `Canonical:…server-cvm` (a CVM-specific image)        | Any `TDX_CAPABLE` image, e.g. `ubuntu-os-cloud` `ubuntu-2404-lts-amd64` |
-| Secure Boot / vTPM flags | Required                                              | Not required; `--shielded-secure-boot` is optional                    |
-| DCAP dev headers         | Needed for the keyprovider build                      | Not needed inside the guest — `tdx-attester` talks to the TSM directly |
-| Boot chain measured into | PCRs via the vTPM                                     | RTMRs via the TDX quote; GCP boots GRUB, not the TDVF shim            |
-| Guest verification       | `Detected confidential virtualization sev-snp`        | `Memory Encryption Features active: TDX`                             |
+|                          | Azure AMD SEV-SNP CVM                               | GCP Intel TDX CVM                                                            |
+| ------------------------ | --------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Attester                 | `az-snp-vtpm-attester`                              | `tdx-attester`                                                               |
+| Evidence source          | Guest vTPM (HCL report + TPM quote)                 | Intel DCAP quote from the Linux TSM (`/dev/tdx_guest`)                       |
+| Enable the platform      | `--security-type ConfidentialVM --enable-vtpm true` | `--confidential-compute-type=TDX`                                            |
+| Machine family           | `DCasv5` / `ECasv5`                                 | `c3-standard-*` (`c4-standard-*` in preview)                                 |
+| Image                    | `Canonical:…server-cvm` (a CVM-specific image)      | Any `TDX_CAPABLE` image, e.g. Ubuntu Pro `ubuntu-pro-2604-resolute-amd64`    |
+| Secure Boot / vTPM flags | Required                                            | Optional (`--shielded-*`, as the console sets); attestation ignores the vTPM |
+| Boot disk                | Managed by the SKU                                  | `pd-balanced` only (NVMe interface)                                          |
+| DCAP dev headers         | Needed for the keyprovider build                    | Not needed inside the guest — `tdx-attester` talks to the TSM directly       |
+| Boot chain measured into | PCRs via the vTPM                                   | RTMRs via the TDX quote; GCP boots GRUB, not the TDVF shim                   |
+| Guest verification       | `Detected confidential virtualization sev-snp`      | `Memory Encryption Features active: TDX`                                     |
 
 Two of these are easy to get wrong:
 
 - **Do not carry the Azure flags over.** `--enable-vtpm` and the CVM image family do not exist here, and TDX evidence does not come from a vTPM. A TDX CVM with no `/dev/tdx_guest` cannot produce evidence at all.
+- **A `/dev/tpm0` on the guest is not the attestation path.** `--shielded-vtpm` gives this VM a vTPM, and the TDX attester ignores it. The trap is building the AA with `tpm-attester` as well: see [1.3](#13-confirm-the-guest-is-really-in-a-td).
 - **The guest does not need Intel's DCAP headers.** The Azure guest build fails without `libsgx-dcap-quote-verify-dev` because `az-snp-vtpm` links `tss-esapi`. `tdx-attester` uses the kernel TSM ioctls instead, so the guest build has no such dependency. The KBS client build on the Trustee host still needs the DCAP headers — see [2.5](#25-create-and-upload-the-image-key).
 
 ## Prerequisites
@@ -71,28 +73,48 @@ PROJECT=<project-id>
 ZONE=us-central1-a
 
 gcloud compute instances create propeller-intel-tdx-cvm \
-  --project "$PROJECT" \
-  --zone "$ZONE" \
+  --project=valued-base-354714 \
+  --zone=us-central1-a \
   --machine-type=c3-standard-4 \
-  --confidential-compute-type=TDX \
+  --network-interface=network-tier=PREMIUM,nic-type=GVNIC,stack-type=IPV4_ONLY,subnet=default \
   --maintenance-policy=TERMINATE \
-  --image-family=ubuntu-2404-lts-amd64 \
-  --image-project=ubuntu-os-cloud \
-  --boot-disk-size=40G \
-  --tags=propeller \
-  --metadata=enable-oslogin=false
+  --provisioning-model=STANDARD \
+  --tags=propeller,http-server,https-server \
+  --create-disk=auto-delete=yes,boot=yes,mode=rw,size=40,type=pd-balanced,image=projects/ubuntu-os-pro-cloud/global/images/ubuntu-pro-2604-resolute-amd64-v20260918 \
+  --shielded-secure-boot \
+  --shielded-vtpm \
+  --shielded-integrity-monitoring \
+  --confidential-compute-type=TDX
 ```
+
+The image goes **inside** `--create-disk` here, not in a separate `--image` flag. `--image` (and `--image-family`) and `--create-disk` each describe a boot disk, so passing both asks for two and `gcloud` refuses:
+
+```text
+ERROR: (gcloud.compute.instances.create) Invalid value for [--disk]: Each instance can have
+exactly one boot disk. One boot disk was specified through [--disk or --create-disk] and
+another through [--image].
+```
+
+If you would rather keep the image as its own flag, drop `--create-disk` and set the disk with `--boot-disk-size`, `--boot-disk-type=pd-balanced` and `--boot-disk-auto-delete` instead — just not both forms at once.
 
 These flags are what make the CVM work:
 
-| Flag                                | Why it is required                                                                                                                        |
-| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--machine-type=c3-standard-*`      | Intel TDX is only offered on the C3 (Sapphire Rapids) and C4 (Granite Rapids, preview) families. A non-C3/C4 machine type fails at creation. |
-| `--confidential-compute-type=TDX`   | This is what puts the VM in a TD. Without it the same machine type produces a regular VM with no evidence and no `/dev/tdx_guest`.       |
-| `--maintenance-policy=TERMINATE`    | Live migration is not supported for TDX instances; `gcloud` rejects the create without it.                                                  |
-| `--image-family` / `--image-project` | Must be an image tagged `TDX_CAPABLE`. The stock `ubuntu-os-cloud` families are; a random image is not, and its kernel may lack the TDX guest driver. |
+| Flag                                      | Why it is there                                                                                                                                                                     |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--machine-type=c3-standard-*`            | Intel TDX is only offered on the C3 (Sapphire Rapids) and C4 (Granite Rapids, preview) families. A non-C3/C4 machine type fails at creation.                                        |
+| `--confidential-compute-type=TDX`         | This is what puts the VM in a TD. Without it the same machine type produces a regular VM with no evidence and no `/dev/tdx_guest`.                                                  |
+| `--maintenance-policy=TERMINATE`          | Live migration is not supported for TDX instances; `gcloud` rejects the create without it.                                                                                          |
+| `--create-disk=…type=pd-balanced,image=…` | TDX supports only Balanced Persistent Disk on the NVMe interface, so `pd-standard` is not an option. The image belongs in this flag too — see the note below it.                    |
+| `image=…` (in `--create-disk`)            | Must be a `TDX_CAPABLE` image. Any of the Ubuntu Pro or `ubuntu-os-cloud` families work; what matters is the `TDX_CAPABLE` feature and a kernel with the TDX guest driver.          |
+| `--shielded-secure-boot`                  | Optional for TDX, and it is what the console adds. It measures the boot chain, which on TDX lands in the RTMRs.                                                                     |
+| `--shielded-vtpm`                         | Optional, and **not** what attestation uses — see [1.3](#13-confirm-the-guest-is-really-in-a-td). The console adds it for every Shielded VM.                                        |
+| `--shielded-integrity-monitoring`         | Optional. Useful: it is what makes the boot-chain measurements in the quote worth pinning.                                                                                          |
+| `--tags=propeller,…`                      | The `propeller` tag is what the KBS firewall rule in [2.1](#21-provision-the-trustee-host) matches on. `http-server,https-server` are the console defaults and are not needed here. |
+| `--network-interface=…`                   | Premium tier, gVNIC, IPv4 only — the defaults for a confidential instance. Named explicitly so the shape matches what the console produces.                                         |
 
-`--metadata=enable-oslogin=false` keeps OS Login out of the way so you can SSH with the key below. Drop it if you already use OS Login.
+Things the console-generated command also carries, none of which affect attestation: `--service-account` with the default compute SA, the `--scopes` list, `--labels=goog-ec-src=vm_add-gcloud`, and `--reservation-affinity=any`. Keep them if you like; the guide does not depend on them.
+
+Two naming details if you created the instance from the console instead: it is called `instance-<timestamp>` rather than `propeller-intel-tdx-cvm`, and `--create-disk` carries `device-name=instance-<timestamp>`. Either name works as long as you use it consistently below — every later command in this guide refers to `propeller-intel-tdx-cvm`.
 
 ### 1.1 Pick a zone that has TDX
 
@@ -108,14 +130,24 @@ gcloud compute machine-types list \
 
 Being offered in the zone is necessary but not sufficient — a plain (non-TDX) `c3-standard-4` is the same machine type, and the zone table above is the only authoritative answer. If the create in Part 1 fails with a confidential-compute error, that is the reason.
 
-Confirm the image supports TDX isolation:
+Confirm the image you are about to use supports TDX isolation:
 
 ```bash
-gcloud compute images describe ubuntu-2404-lts-amd64 \
-  --project ubuntu-os-cloud \
+gcloud compute images describe ubuntu-pro-2604-resolute-amd64-v20260918 \
+  --project ubuntu-os-pro-cloud \
   --format="value(guestOsFeatures)"
 # expect: type: TDX_CAPABLE  (among others)
 ```
+
+To see every image that qualifies:
+
+```bash
+gcloud compute images list \
+  --filter="guestOsFeatures[].type:(TDX_CAPABLE)" \
+  --format="table(name,family,project)"
+```
+
+An image without `TDX_CAPABLE` may still be created, but its kernel can lack the `tdx_guest` module — which is the failure in [1.3](#13-confirm-the-guest-is-really-in-a-td).
 
 ### 1.2 Connect and record the addresses
 
@@ -125,18 +157,32 @@ A stock GCP image has no `propeller` user, so create one and install your key �
 CVM_IP=$(gcloud compute instances describe propeller-intel-tdx-cvm \
   --zone "$ZONE" --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 
+# from your own machine or an existing admin session on the instance
 sudo adduser --disabled-password --gecos "" propeller
 sudo adduser propeller sudo
 sudo install -d -m 700 -o propeller -g propeller /home/propeller/.ssh
 sudo tee -a /home/propeller/.ssh/authorized_keys < ~/.ssh/cloud.pub
 sudo chown propeller:propeller /home/propeller/.ssh/authorized_keys
 
-ssh -i ~/.ssh/cloud propeller@$CVM_IP
+# passwordless sudo — required, see below
+sudo chown propeller:propeller /home/propeller/.ssh/authorized_keys
+sudo chmod 0440 /etc/sudoers.d/90-propeller
 ```
 
-`gcloud compute ssh propeller-intel-tdx-cvm --zone "$ZONE" -I ~/.ssh/cloud.pub` is the shortcut: it creates the user and installs the key itself, but under your Google account name — use that name in place of `propeller` for the rest of the guide if you take this route.
+The sudoers line is not optional. `--disabled-password` gives the account an **empty** password, and `sudo` will not accept an empty one — so without that line every `sudo` in this guide re-prompts and then fails:
+
+```text
+[sudo] password for propeller:
+sudo: 1 incorrect password attempt
+```
+
+This is exactly how the stock images behave for their own login user, which is why `gcloud compute ssh` needs no password: the guest agent installs a sudoers drop-in. Recreating that one line is all it takes.
+
+`gcloud compute ssh propeller-intel-tdx-cvm --zone "$ZONE"` is the shortcut that skips the whole block: it creates the user, installs the key, and sets up passwordless sudo — under your Google account name, so use that name in place of `propeller` for the rest of the guide if you take this route.
 
 Use the instance's **external** IP for SSH, and its **internal** IP for everything the guest dials (KBS in Part 3). Keeping those two separate is the whole point of the split in the architecture table above.
+
+Already stuck at a `sudo: authenticate` prompt? Press Ctrl-C. `sudo` has no way to authenticate an empty password, so retrying cannot help; you need root by another route — either delete the instance and re-create it with the block above, or start a fresh shell as a user that already has sudo (your Google account via OS Login, or the `gcloud compute ssh` account) and add the sudoers line from there.
 
 ### 1.3 Confirm the guest is really in a TD
 
@@ -154,6 +200,8 @@ ls -d /sys/kernel/config/tsm /sys/kernel/config/tsm/report 2>/dev/null
 grep -o 'tdx_guest' /proc/cpuinfo | head -1
 ```
 
+`/dev/tdx_guest` and the TSM are the two things that must be there. Everything else on this guest can be absent or present without affecting attestation.
+
 If `Memory Encryption Features active: TDX` is missing, the VM is not confidential: delete it and re-create with `--confidential-compute-type=TDX`.
 
 If `/dev/tdx_guest` is missing while TDX is active, the guest kernel lacks the driver module:
@@ -165,7 +213,12 @@ ls -l /dev/tdx_guest
 
 If the module does not exist, the image is not `TDX_CAPABLE` — use a different image family.
 
-Note what is *absent*: unlike the Azure CVM there is no `/dev/tpm0`, and `/dev/sev*` does not exist either. Both are correct. On TDX the evidence is a hardware quote, not a vTPM attestation, so no vTPM is provisioned and none is needed.
+Expect a `/dev/tpm0` on this VM, because `--shielded-vtpm` was requested, and ignore it. That vTPM is a Shielded VM feature, not the attestation path on TDX: the evidence is a quote from `/dev/tdx_guest`, and a vTPM sitting next to it is a trap rather than a help. Two consequences:
+
+- Do **not** build the AA or the keyprovider with `tpm-attester`. A generic TPM attester makes `detect_attestable_devices()` report the TPM as an extra device, and composite evidence then demands a TPM quote that says nothing about the TD.
+- Nothing else in this stack reads `/dev/tpm0`. If a log ever shows the Azure `az-snp-vtpm` attester being selected on a TDX guest, that is the bug this note is about.
+
+`/dev/sev*` is absent, which is correct on an Intel machine.
 
 ## Part 2 — Deploy Trustee outside the CVM
 
@@ -180,14 +233,32 @@ gcloud compute instances create propeller-trustee-host \
   --project "$PROJECT" \
   --zone "$ZONE" \
   --machine-type=e2-standard-2 \
+  --network-interface=network-tier=PREMIUM,nic-type=GVNIC,stack-type=IPV4_ONLY,subnet=default \
+  --provisioning-model=STANDARD \
+  --tags=propeller \
   --image-family=ubuntu-2404-lts-amd64 \
   --image-project=ubuntu-os-cloud \
   --boot-disk-size=40G \
-  --tags=propeller \
-  --metadata=enable-oslogin=false
+  --boot-disk-type=pd-balanced \
+  --boot-disk-auto-delete
 ```
 
-Unlike a CVM this one needs no confidential flags. Record both addresses — the guest dials the **internal** one, you SSH to the **external** one:
+Note the absence of `--maintenance-policy=TERMINATE`, which the CVM in Part 1 needs and this VM must not have. Live migration is unsupported for confidential instances, so a CVM has to terminate on host maintenance; a plain `e2` instance can be live-migrated, and asking it to terminate is rejected:
+
+```text
+ERROR: (gcloud.compute.instances.create) Could not fetch resource:
+ - e2 instances do not support onHostMaintenance=TERMINATE unless they are preemptible.
+```
+
+`TERMINATE` on a non-confidential VM is only legal if the instance is preemptible/spot, which is not what you want for the host holding your keys.
+
+This one uses the `--boot-disk-*` form rather than `--create-disk`, which is the same choice described in Part 1: pick one or the other, never both with `--image`.
+
+Unlike a CVM this one needs no confidential flags, and it does not need the same OS as the CVM. 24.04 LTS is deliberate: [2.5](#25-create-and-upload-the-image-key) installs Intel's DCAP headers from Intel's own apt repository, and that repository is the moving part — it is known to cover 22.04 and 24.04, so the newest LTS you can build `kbs-client` on is the safest host.
+
+`--metadata=enable-oslogin=false` is not set here because OS Login is off by default on GCP; if your project metadata turns it on, add `--metadata=enable-oslogin=false` or drop the manual user creation in [1.2](#12-connect-and-record-the-addresses) and SSH as your Google account name instead.
+
+Record both addresses — the guest dials the **internal** one, you SSH to the **external** one:
 
 ```bash
 TRUSTEE_INTERNAL=$(gcloud compute instances describe propeller-trustee-host \
@@ -199,7 +270,7 @@ echo "TRUSTEE_HOST=$TRUSTEE_INTERNAL   # what the guest dials"
 echo "TRUSTEE_SSH=$TRUSTEE_EXTERNAL"
 ```
 
-In a default VPC network the CVM can already reach `8082`: the built-in `default-allow-internal` rule permits all TCP from `10.128.0.0/9`, and neither instance has an external-IP-restricted egress. Nothing more is needed for the flow below.
+In a default VPC network the CVM can already reach `8082`: the built-in `default-allow-internal` rule permits all TCP from `10.128.0.0/9`, and both instances sit in that range. Nothing more is needed for the flow below.
 
 Add an explicit rule anyway if you want KBS reachable by intent rather than by accident — for instance because you deleted `default-allow-internal`, use a hardened network, or want the permission visible in review:
 
@@ -286,11 +357,11 @@ docker compose ps
 
 Trustee's `setup.sh` generates two independent PKI hierarchies in the same directory:
 
-| File                                                  | Purpose                                                       |
-| ----------------------------------------------------- | ------------------------------------------------------------- |
-| `ca-cert.pem`, `ca.key`                               | **token-signing** CA (`CN=KBS-compose-root`) used by the AS    |
-| `token.key`, `token-cert.pem`, `token-cert-chain.pem` | AS EAR-token signing key/cert                                 |
-| `tls-*.pem`                                           | TLS endpoints, unrelated to attestation                       |
+| File                                                  | Purpose                                                     |
+| ----------------------------------------------------- | ----------------------------------------------------------- |
+| `ca-cert.pem`, `ca.key`                               | **token-signing** CA (`CN=KBS-compose-root`) used by the AS |
+| `token.key`, `token-cert.pem`, `token-cert-chain.pem` | AS EAR-token signing key/cert                               |
+| `tls-*.pem`                                           | TLS endpoints, unrelated to attestation                     |
 
 KBS verifies the AS-issued token against `[attestation_token].trusted_certs_paths`, and it must point at the **token** CA, not the TLS CA. Current Trustee already does — the shipped value is `ca-cert.pem`, which is exactly the token-signing root. Confirm that rather than assuming it:
 
@@ -342,9 +413,18 @@ error: failed to run custom build command for `intel-tee-quote-verification-sys 
 bindings.h:32:10: fatal error: 'sgx_dcap_quoteverify.h' file not found
 ```
 
-Install the toolchain and the SGX DCAP headers:
+Install Intel's package repository **first**, then the toolchain. The two `libsgx-dcap-*` packages live in Intel's repo, not in Ubuntu, so an install that includes them fails on a clean VM until the repo exists:
 
 ```bash
+# 1. Intel's SGX/DCAP repository — provides libsgx-dcap-quote-verify-dev and
+#    libsgx-dcap-default-qpl. $(lsb_release -cs) is the codename (noble on 24.04).
+curl -fsSL https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key \
+  | sudo gpg --dearmor -o /usr/share/keyrings/intel-sgx.gpg
+echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-sgx.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu $(lsb_release -cs) main" \
+  | sudo tee /etc/apt/sources.list.d/intel-sgx.list
+
+# 2. Now the packages resolve: the toolchain and TSS headers from Ubuntu,
+#    the DCAP headers from Intel's repo.
 sudo apt-get update
 sudo apt-get install -y \
   build-essential gcc make pkg-config libssl-dev openssl curl git \
@@ -356,16 +436,20 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --defaul
 . "$HOME/.cargo/env"
 ```
 
-The headers come from Intel's `libsgx-dcap-quote-verify-dev` package. If `apt-get` cannot find it, add Intel's repository:
+Doing it the other way round produces exactly this, and the rest of the packages still install:
+
+```text
+E: Unable to locate package libsgx-dcap-quote-verify-dev
+E: Unable to locate package libsgx-dcap-default-qpl
+```
+
+If Intel's repository does not carry your codename — it lags new Ubuntu releases — `apt-get update` prints a 404 for that suite and the packages stay missing. Check what it published:
 
 ```bash
-curl -fsSL https://download.01.org/intel-sgx/sgx_repo/ubuntu/intel-sgx-deb.key \
-  | sudo gpg --dearmor -o /usr/share/keyrings/intel-sgx.gpg
-echo "deb [arch=amd64 signed-by=/usr/share/keyrings/intel-sgx.gpg] https://download.01.org/intel-sgx/sgx_repo/ubuntu $(lsb_release -cs) main" \
-  | sudo tee /etc/apt/sources.list.d/intel-sgx.list
-sudo apt-get update
-sudo apt-get install -y libsgx-dcap-quote-verify-dev
+curl -s https://download.01.org/intel-sgx/sgx_repo/ubuntu/dists/ | grep -o 'href="[^"]*"'
 ```
+
+Both `jammy` (22.04) and `noble` (24.04) carry `libsgx-dcap-quote-verify-dev` and `libsgx-dcap-default-qpl`, which is why the Trustee host in [2.1](#21-provision-the-trustee-host) stays on 24.04 LTS. If your codename is missing, move the Trustee host to a release that is covered rather than hand-pinning a `.deb` URL, which then has to be redone on every upgrade.
 
 Confirm the header is present before building:
 
@@ -446,7 +530,7 @@ Build with the **`tdx-attester`**, and only that one:
 cd /tmp
 git clone https://github.com/rodneyosodo/guest-components.git
 cd guest-components
-git checkout enable-wasm-workloads
+git checkout upstream-proplet-rebased
 
 # Attestation Agent (gRPC) with the Intel TDX attester only
 cd attestation-agent
@@ -463,12 +547,27 @@ attestation-agent --help >/dev/null && echo "AA OK"
 coco_keyprovider --help >/dev/null && echo "keyprovider OK"
 ```
 
-Two things are easy to get wrong here:
+**Check out `upstream-proplet-rebased`, not `enable-wasm-workloads`.** The two branches are not the same tree, and on the wrong one the keyprovider is encrypt-only: its `Cargo.toml` has no features at all and its `un_wrap_key` returns `Status::unimplemented`. That produces either of these, both of which mean "wrong branch":
 
-- **Do not use `all-attesters`.** That enables the NVIDIA attester, whose build script needs the NVIDIA C++ attestation SDK and fails with `Header file not found at ".../nv-attestation-sdk-cpp/build/include/nvat.h"`. Passing `ATTESTER=tdx-attester` to `make` replaces `all-attesters` rather than adding to it.
-- **`tdx-attester` must not be combined with `tpm-attester`.** With a generic TPM attester compiled in, `detect_attestable_devices()` adds a TPM as an _additional_ device and composite evidence then demands a quote for a TPM that is not bound to the TD. Do not add it.
+```text
+error: the package 'coco_keyprovider' does not contain this feature: tdx-attester
+help: packages with the missing feature: attestation-agent, attester, kbs_protocol, kbc
+```
 
-If the keyprovider's `Cargo.toml` does not expose a `tdx-attester` feature, add it (and make `kbs_protocol` non-default) so the attester set is selectable at build time:
+```text
+UnWrapKey API is unimplemented!
+```
+
+The second one is worse, because the binary builds and installs cleanly and only fails later, at decrypt time. `un_wrap_key` is the path proplet's `image-rs` uses through `ocicrypt-rs/keywrap-keyprovider-grpc`, so an unimplemented one means no workload can ever decrypt a layer no matter what the attestation does.
+
+Note that proplet's own Cargo dependencies point at `enable-wasm-workloads` for the guest-components _libraries_ (`kbs_protocol`, `attestation-agent`, `image-rs`), while the binaries you build here come from `upstream-proplet-rebased`. That split is inherited from the Azure guide and it works, but it is the first place to look if the AA binary and proplet ever disagree about a config key or an evidence format.
+
+Two more things are easy to get wrong in the commands above:
+
+- **Do not use `all-attesters`.** That enables the NVIDIA attester, whose build script needs the NVIDIA C++ attestation SDK and fails with `Header file not found at ".../nv-attestation-sdk-cpp/build/include/nvat.h"`. Passing `ATTESTER=tdx-attester` to `make` replaces `all-attesters` rather than adding to it, and the keyprovider's own default has to be overridden with `--no-default-features`.
+- **`tdx-attester` must not be combined with `tpm-attester`.** With a generic TPM attester compiled in, `detect_attestable_devices()` adds a TPM as an _additional_ device and composite evidence then demands a quote for a TPM that is not bound to the TD. Do not add it — see [1.3](#13-confirm-the-guest-is-really-in-a-td) for why this VM's `/dev/tpm0` makes that tempting.
+
+If you must build the keyprovider from a branch whose `Cargo.toml` has an empty `[features]`, add the dependency and the feature forwarding yourself:
 
 ```toml
 kbs_protocol = { path = "../kbs_protocol", default-features = false, features = [
@@ -482,6 +581,8 @@ all-attesters = ["kbs_protocol/all-attesters"]
 tdx-attester = ["kbs_protocol/tdx-attester"]
 ```
 
+That only makes the build work. The `un_wrap_key` gap on such a branch is a source-level omission and no manifest edit closes it.
+
 ### 3.3 Build Proplet
 
 ```bash
@@ -491,7 +592,18 @@ cargo build --release
 sudo cp target/release/proplet /usr/local/bin/
 ```
 
-No feature flags: one proplet binary serves both platforms. It is compiled with the `tdx-attester` and the `az-snp-vtpm-attester` together, and with both HAL platforms, and picks at runtime — `detect_tee_type()` probes TDX first and falls through to the Azure vTPM, so the running platform decides which one is primary.
+No feature flags: one proplet binary serves both platforms. `proplet/Cargo.toml` compiles the `tdx-attester` and the `az-snp-vtpm-attester` together, and both HAL platforms, and the running platform decides which one is primary — `detect_tee_type()` probes TDX first and falls through to the Azure vTPM.
+
+Both attesters are compiled rather than selected by a cargo feature on purpose. A feature would be the obvious way to express "build for one platform", and it is what the first version of this guide did, but features are not target-scoped: enabling `attestation-agent/az-snp-vtpm-attester` from `[features]` pulls `tss-esapi-sys` into the arm64 and riscv64 builds, which CI builds and which fail without the TPM2 TSS headers. Keeping the choice in the `[target.'cfg(target_arch = "x86_64")'.dependencies]` block is what leaves those builds alone.
+
+This is a property of the tree, not of the build command, so there is nothing to pass on the command line. Confirm it is there before building:
+
+```bash
+cd ~/propeller/proplet
+grep -c tdx-attester Cargo.toml     # expect 2
+```
+
+If it prints `0`, your clone predates the TDX support and a build from it will start fine on a TDX guest while quietly using the sample attester ([3.7](#37-what-a-healthy-proplet-start-looks-like)). Pull a tree that contains it rather than reinstating the workaround; the attester has to be compiled in, and no environment variable adds it.
 
 ### 3.4 Write the Attestation Agent config
 
@@ -546,13 +658,27 @@ PROPLET_CHANNEL_ID=${PROPLET_CHANNEL_ID}
 PROPLET_MQTT_ADDRESS=${PROPLET_MQTT_ADDRESS}
 PROPLET_MQTT_TIMEOUT=30
 PROPLET_MQTT_QOS=2
-PROPLET_EXTERNAL_WASM_RUNTIME=/usr/local/bin/wasmtime
 PROPLET_HAL_ENABLED=true
 PROPLET_KBS_URI=http://${TRUSTEE_HOST}:8082
 PROPLET_AA_CONFIG_PATH=/etc/attestation-agent.toml
 PROPLET_LAYER_STORE_PATH=/tmp/proplet/layers
 EOF
 ```
+
+**`PROPLET_HAL_ENABLED=true` and `PROPLET_EXTERNAL_WASM_RUNTIME` are mutually exclusive.** The external runtime is a separate `wasmtime` process that proplet drives over a socket; the HAL is an in-process host implementation, so setting both makes proplet log this at startup and then carry on with the HAL switched off:
+
+```text
+WARN PROPLET_HAL_ENABLED is set but the external Wasm runtime does not support the HAL; ignoring it
+```
+
+Pick the one your workload needs:
+
+| Workload                                                                         | Setting                                                                                                             |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| Plain WASM tasks, or anything using Wasmtime features the external runtime lacks | `PROPLET_EXTERNAL_WASM_RUNTIME=/usr/local/bin/wasmtime`, and leave `PROPLET_HAL_ENABLED` unset                      |
+| A WASM component calling `elastic:hal/*`                                         | `PROPLET_HAL_ENABLED=true`, and **do not** set `PROPLET_EXTERNAL_WASM_RUNTIME` — proplet uses its embedded Wasmtime |
+
+The guide's template assumes the second row, because [Part 6](#part-6--test-the-hal-interfaces-directly) and any HAL-bearing workload need the in-process host. If you only run plain WASM tasks, swap the two: set the external runtime and delete the `PROPLET_HAL_ENABLED` line.
 
 The three unit files are the same shape as the ones cloud-init writes in [`hal/ubuntu/qemu.sh`](../ubuntu/qemu.sh): AA on `127.0.0.1:50010`, CoCo Keyprovider on `127.0.0.1:50011`, then Proplet. Install them:
 
@@ -577,7 +703,7 @@ Environment=RUST_LOG=info
 WantedBy=multi-user.target
 EOF
 
-sudo tee /etc/systemd/system/coco-keyprovider.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/coco-keyprovider.service >/dev/null <<EOF
 [Unit]
 Description=CoCo Keyprovider for Confidential Containers
 After=network-online.target
@@ -586,7 +712,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 ExecStartPre=/bin/mkdir -p /run/coco-keyprovider
-ExecStart=/usr/local/bin/coco_keyprovider --socket 127.0.0.1:50011 --kbs http://<TRUSTEE_HOST>:8082
+ExecStart=/usr/local/bin/coco_keyprovider --socket 127.0.0.1:50011 --kbs http://${TRUSTEE_HOST}:8082
 Restart=on-failure
 RestartSec=5s
 Environment=RUST_LOG=info
@@ -622,7 +748,14 @@ sudo systemctl enable --now attestation-agent coco-keyprovider proplet
 sudo systemctl status attestation-agent coco-keyprovider proplet --no-pager
 ```
 
-Substitute `<TRUSTEE_HOST>` in the `coco-keyprovider` unit with the Trustee host's private IP before enabling the services.
+The `coco-keyprovider` unit above is the only one written with an **unquoted** heredoc (`<<EOF`), because it is the only one that needs `$TRUSTEE_HOST` expanded into it. The other two units use `<<'EOF'` and contain no variables. Check the address landed before moving on:
+
+```bash
+systemctl cat coco-keyprovider | grep ExecStart
+# expect: ExecStart=/usr/local/bin/coco_keyprovider --socket 127.0.0.1:50011 --kbs http://10.x.x.x:8082
+```
+
+A literal `$TRUSTEE_HOST` or `<TRUSTEE_HOST>` here is not a cosmetic problem: `un_wrap_key` reads that argument and nothing else, so the keyprovider starts, accepts the gRPC call, and fails every decryption with `KBS URL not configured` — see [Reading failures](#reading-failures).
 
 ### 3.6 Watch the services
 
@@ -635,6 +768,37 @@ sudo journalctl -u proplet -f
 A successful proplet start logs `TEE runtime initialized successfully`. When a task runs, the keyprovider logs an RCAR handshake and the AS logs an endorsement check for the TDX verifier.
 
 Note `proplet.service` has `Requires=coco-keyprovider.service`, so stopping the keyprovider also stops proplet — restart both together.
+
+### 3.7 What a healthy proplet start looks like
+
+A TDX guest produces these lines, in this order:
+
+```text
+ELASTIC TEE HAL initialized for platform: IntelTdx
+  - TDX guest device: /dev/tdx_guest
+  - TSM support: available
+Detected system limits: 13811MB RAM, 4 CPU cores (TEE: TDX=true, SEV=false)
+TEE runtime initialized successfully
+```
+
+`Detected system limits: … (TEE: TDX=true, SEV=false)` is proplet's own platform detection, and it is independent of the attester: seeing `TDX=true` here does **not** mean the attester is right. Check that instead with a filtered restart:
+
+```bash
+sudo systemctl restart proplet
+sudo journalctl -u proplet --since "1 min ago" | grep -E "TEE|TPM|Attester"
+```
+
+On a correct build the output is just `ELASTIC TEE HAL initialized for platform: IntelTdx` and `TEE runtime initialized successfully` — nothing about TPMs or an attester. If you also see this, the binary was built without `tdx-attester` ([3.3](#33-build-proplet)) and every evidence request it makes locally falls back to the sample attester:
+
+```text
+WARNING:esys:src/tss2-esys/api/Esys_NV_ReadPublic.c:309:Esys_NV_ReadPublic_Finish() Received TPM Error
+ERROR:esys:src/tss2-esys/esys_tr.c:243:Esys_TR_FromTPMPublic_Finish() Error NV_ReadPublic ErrorCode (0x0000018b)
+WARN No TEE platform detected. Sample Attester will be used.
+```
+
+The `esys` errors are the cause, not a separate problem: with only `az-snp-vtpm-attester` compiled in, proplet asks the **GCP** vTPM for Azure HCL data, gets nothing back, and falls through every attester to the sample one. `/dev/tpm0` exists on this VM because `--shielded-vtpm` was requested, which is what makes the Azure attester try at all.
+
+This does not break the encrypted-workload path on its own. proplet pulls and decrypts through `image-rs` → the keyprovider gRPC socket on `127.0.0.1:50011` → the `coco-keyprovider` binary from [3.2](#32-build-attestation-agent-and-coco-keyprovider-with-the-tdx-attester), and the RCAR handshake runs there, against the AA daemon. The sample-attester fallback in proplet is only reached by `start_app` when the HAL attestation returns nothing. Rebuild proplet from a tree with `tdx-attester` anyway — see [3.3](#33-build-proplet) — because the fallback would collect meaningless evidence the moment the HAL path is not taken.
 
 ## Part 4 — Encrypt and publish a WASM image
 
@@ -657,7 +821,7 @@ GOOS=js GOARCH=wasm tinygo build -buildmode=c-shared -o build/addition.wasm -tar
 docker login docker.io
 
 # Push the plaintext image
-wasm-to-oci push build/addition.wasm docker.io/<you>/tee-wasm-addition:latest --server docker.io
+wasm-to-oci push build/addition.wasm docker.io/rodneydav/gcp-tee-wasm-addition:latest --server docker.io
 
 # Encrypt it with the key stored in KBS
 mkdir -p output
@@ -667,7 +831,7 @@ docker run \
   /encrypt.sh \
   -k "$(cat ./private_key)" \
   -i kbs:///default/key/propeller-addition \
-  -s docker://docker.io/<you>/tee-wasm-addition:latest \
+  -s docker://docker.io/rodneydav/gcp-tee-wasm-addition:latest \
   -d dir:/output
 
 # Install skopeo
@@ -675,7 +839,7 @@ sudo apt install -y skopeo
 
 # Push the encrypted image
 skopeo login docker.io
-skopeo copy dir:$(pwd)/output docker://<you>/tee-wasm-addition:encrypted
+skopeo copy dir:$(pwd)/output docker://rodneydav/gcp-tee-wasm-addition:encrypted
 ```
 
 `skopeo copy` pushes directly to the registry — **do not** follow it with `docker push docker://...`. `docker push` does not accept the `docker://` scheme and fails with `invalid reference format`.
@@ -705,7 +869,7 @@ curl -s -X POST http://localhost:7070/tasks \
   -H 'Content-Type: application/json' \
   -d '{
     "name": "add",
-    "image_url": "<you>/tee-wasm-addition:encrypted",
+    "image_url": "rodneydav/gcp-tee-wasm-addition:encrypted",
     "encrypted": true,
     "kbs_resource_path": "default/key/propeller-addition",
     "cli_args": ["--invoke", "add"],
@@ -727,22 +891,6 @@ curl -s "http://localhost:7070/tasks/$TID" \
 
 A successful run means the whole chain worked: the AA produced a TDX quote, the AS verified it, KBS released the key, CoCo Keyprovider unwrapped it, and `image-rs` decrypted the layer inside the CVM.
 
-### Reading failures
-
-| Error                               | Stage              | Meaning                                                                                       |
-| ----------------------------------- | ------------------ | --------------------------------------------------------------------------------------------- |
-| `Failed to parse image reference`   | task validation    | `docker://` in `image_url`                                                                    |
-| `Failed to pull and decrypt layers` | image pull         | see the keyprovider log for the real cause                                                    |
-| `Failed to get KEK from KBS`        | key release        | KBS refused; check the keyprovider log for `UnknownIssuer`, `PolicyDeny`, or `TokenVerifierError` |
-| `TokenVerifierError`                | token verification | KBS is trusting the wrong CA — see [2.3](#23-check-that-kbs-trusts-the-attestation-services-token-ca) |
-| `no attestable device` / `get device measurement failed` | attestation | the guest has no `/dev/tdx_guest`, or the AA was built with the wrong attester — see [1.3](#13-confirm-the-guest-is-really-in-a-td) and [3.2](#32-build-attestation-agent-and-coco-keyprovider-with-the-tdx-attester) |
-
-The keyprovider log is where the real error lives; proplet's message is a summary:
-
-```bash
-sudo journalctl -u coco-keyprovider --since "2 min ago" --no-pager | tail -20
-```
-
 ### Tightening the attestation policy
 
 `allow_all` was used above so that policy is not what blocks the first run. It releases the key to any guest that can reach KBS, which defeats the point of attesting.
@@ -758,6 +906,15 @@ Collect the values from a quote on your own guest first — the AS log or a `tru
 
 This is independent of Trustee and only exercises the WASM-facing HAL providers. It is useful to confirm the non-TEE interfaces work inside the CVM.
 
+**Run it in the CVM.** `hal-runner` embeds the HAL and detects the platform itself, so on any host without a TEE — the Trustee host included — it reports the stub and the attestation call fails by design:
+
+```text
+platform-info: type=None version=0.0.0
+attestation: failed (no TEE platform available for attestation)
+```
+
+That is the correct answer for a plain VM, not a symptom to chase.
+
 ```bash
 cd ~/propeller
 rustup target add wasm32-wasip2
@@ -771,10 +928,10 @@ Expected:
 ```text
 platform-info: type=IntelTdx version=0.1.0
 list-capabilities: 5 entries
-random(32): <64 hex chars>
-system-time: <seconds>s <nanoseconds>ns
+random(32): 1e892d47fbc8242cee4ba72c1f16a4d6db1883048aba16576ca1760132258fb8
+system-time: 1791206962s 599790953ns
 sha256(hello)=2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824
-generate-keypair: ok (pub=<n>B priv=<n>B)
+generate-keypair: ok (pub=32B priv=32B)
 ```
 
 ```bash
@@ -785,8 +942,8 @@ Expected:
 
 ```text
 platform-info: type=IntelTdx version=0.1.0
-attestation: ok (evidence len=<n>)
-evidence: 7b226d6561737572656d656e7473223a...
+attestation: ok (evidence len=625)
+evidence: 7b226d6561737572656d656e7473223a7b2268616c223a2261616632323436616238373865303964633233653738363635366633663565643635383039376335646535396139666564386361303035316639636337303433222c226d727464223a22633165653963313665336166633530366366653034326335623834366133363835323866336233373631386561666232373436396263313134636639313465393232326339313631383437306537663262323861633336303936383237306135222c2272746d7230223a22343939663530303463623236303464366139623835386236663138376335386461663539323263363331376431356230323166613931396664623132666237366366386366666137633331313565653932383132643965316563373835666263222c2272746d7231223a22326637653537633863643464623433363336646161633337626662366236633932643736356437356133396534326461396136633238386533313235663634326538396335366134323362303763346430333737336664656261343539346362222c2272746d7232223a22393432333461633030386661303364626136623962303863346137666136623965313230366633653963346161303563393764303139653332396565353032663531626362333436613035613661663263316630376130616439323961633661222c2272746d7233223a22303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030227d7d
 ```
 
 The HAL asks the Linux TSM for a DCAP quote, parses `MRTD` and `RTMR0..3` out of it, and returns them as the measurements JSON the WASM side expects — which is why the hex evidence starts with `{"measurements":`. If `attestation` fails while `platform-info` reports `IntelTdx`, the platform was detected but no quote could be produced: check that `/dev/tdx_guest` is present, and that `hal-runner` was built against a wasmhal with the `intel-tdx` feature. If it reports `type=AmdSev` on a TDX VM, the binary predates TDX support — rebuild it.
