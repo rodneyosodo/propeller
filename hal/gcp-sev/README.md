@@ -1,5 +1,7 @@
 # Propeller on an AMD SEV-SNP GCP Confidential VM with Trustee
 
+For the rendered version of this guide, see [propeller.absmach.eu/docs/gcp-sev-cvm](https://propeller.absmach.eu/docs/gcp-sev-cvm).
+
 Deploy [Trustee](https://github.com/confidential-containers/trustee) **outside** the confidential VM and run the Propeller stack with the CoCo **guest
 components** **inside** a GCP AMD SEV-SNP confidential VM. This is the production-shaped topology: the relying party (Trustee) verifies evidence and releases keys, and it must not share the trust boundary with the workload it is attesting.
 
