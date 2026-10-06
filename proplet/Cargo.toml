@@ -68,8 +68,14 @@ hex = { version = "0.4" }
 futures-util = { version = "0.3" }
 
 # ELASTIC TEE HAL — hardware abstraction layer for TEE workloads.
-# The `amd-sev` feature is enabled per-target below (x86_64 only).
-elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false }
+# Both evidence sources are compiled in, mirroring the attester setup below:
+# `amd-sev` covers Azure SEV-SNP CVMs (evidence from the vTPM) and `intel-tdx`
+# covers TDX guests that expose the Linux TSM (GCE C3/C4 confidential VMs,
+# bare metal). The HAL picks the source from what it detects at runtime.
+elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false, features = [
+  "amd-sev",
+  "intel-tdx",
+] }
 wasm-wave = "0.254.0"
 
 # ELASTIC WasmHAL-Hardware: wasi-usb
@@ -94,22 +100,33 @@ strip = "symbols"
 path = "src/wasi_security.rs"
 crate-type = ["lib"]
 
-# Azure SEV-SNP attestation via the vTPM, x86_64 only. SEV-SNP and TDX are
-# x86_64-only technologies, and `tss-esapi-sys` (pulled in by az-snp-vtpm)
-# neither supports riscv64 nor cross-compiles without a target sysroot, so
-# these features must not be enabled unconditionally — the arm64/riscv64
-# proplet builds would fail.
+# SEV-SNP and TDX are x86_64-only technologies, and `tss-esapi-sys` (pulled in
+# by az-snp-vtpm) neither supports riscv64 nor cross-compiles without a target
+# sysroot, so these dependencies must not be enabled unconditionally — the
+# arm64/riscv64 proplet builds would fail.
+#
+# Every CPU attester we support is compiled in, so one proplet binary serves
+# Azure SEV-SNP (evidence from the guest vTPM), GCP/bare-metal Intel TDX
+# (a DCAP quote from the Linux TSM) and GCP/bare-metal AMD SEV-SNP (a report
+# from /dev/sev-guest via the TSM). `detect_tee_type()` probes TDX first, then
+# the Azure vTPM, then SNP, so the running platform decides which is primary.
+#
+# This cannot be expressed as a `[features]` entry: features are not
+# target-scoped, so enabling `attestation-agent/az-snp-vtpm-attester` from there
+# would pull `tss-esapi-sys` into the arm64 and riscv64 builds, which CI builds
+# and which fail without the TPM2 TSS headers.
 [target.'cfg(target_arch = "x86_64")'.dependencies]
 attestation-agent = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", default-features = false, features = [
   "rust-crypto",
   "kbs",
   "az-snp-vtpm-attester",
+  "tdx-attester",
+  "snp-attester",
 ] }
 kbs_protocol = { git = "https://github.com/rodneyosodo/guest-components", branch = "enable-wasm-workloads", features = [
   "background_check",
   "rust-crypto",
   "az-snp-vtpm-attester",
+  "tdx-attester",
+  "snp-attester",
 ], default-features = false }
-elastic-tee-hal = { git = "https://github.com/elasticproject-eu/wasmhal", branch = "main", default-features = false, features = [
-  "amd-sev",
-] }
