@@ -135,6 +135,7 @@ For the equivalent setup on a cloud CVM (Trustee on a separate VM, guest stack i
 | ------------------------------------ | ------------------------------------------------ |
 | Azure AMD SEV-SNP                    | [`../azure/README.md`](../azure/README.md) or [propeller.absmach.eu/docs/azure-cvm](https://propeller.absmach.eu/docs/azure-cvm) |
 | GCP Intel TDX (C3/C4)                | [`../gcp/README.md`](../gcp/README.md)           |
+| GCP AMD SEV-SNP (N2D/C4D)            | [`../gcp-sev/README.md`](../gcp-sev/README.md)   |
 
 ## Run
 

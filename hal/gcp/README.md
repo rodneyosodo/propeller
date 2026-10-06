@@ -3,7 +3,7 @@
 Deploy [Trustee](https://github.com/confidential-containers/trustee) **outside** the confidential VM and run the Propeller stack with the CoCo **guest
 components** **inside** a GCP Intel TDX confidential VM. This is the production-shaped topology: the relying party (Trustee) verifies evidence and releases keys, and it must not share the trust boundary with the workload it is attesting.
 
-This is the Intel TDX counterpart of [`../azure/README.md`](../azure/README.md), which covers AMD SEV-SNP on Azure. Everything in Parts 4–6 (publishing an encrypted image, running a workload, exercising the HAL) is identical between the two; Parts 1–3 are where the platforms differ, and those differences are called out as they come up.
+This is the Intel TDX counterpart of [`../azure/README.md`](../azure/README.md), which covers AMD SEV-SNP on Azure. There is also [`../gcp-sev/README.md`](../gcp-sev/README.md) for AMD SEV-SNP on GCP — same provider, different TEE, and not the same as the Azure guide because GCP exposes the firmware device directly instead of a vTPM. Everything in Parts 4–6 (publishing an encrypted image, running a workload, exercising the HAL) is identical across all three; Parts 1–3 are where the platforms differ, and those differences are called out as they come up.
 
 ## Architecture
 
@@ -988,3 +988,4 @@ Two things this does **not** clean up, because they are deliberately outside the
 - [Creating a GCP Confidential VM instance](https://cloud.google.com/confidential-computing/confidential-vm/docs/create-a-confidential-vm-instance)
 - [Trustee attestation policies](https://github.com/confidential-containers/trustee/blob/main/attestation-service/docs/policy.md)
 - [Azure SEV-SNP CVM guide](../azure/README.md)
+- [GCP AMD SEV-SNP CVM guide](../gcp-sev/README.md)
