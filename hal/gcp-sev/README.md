@@ -3,7 +3,7 @@
 Deploy [Trustee](https://github.com/confidential-containers/trustee) **outside** the confidential VM and run the Propeller stack with the CoCo **guest
 components** **inside** a GCP AMD SEV-SNP confidential VM. This is the production-shaped topology: the relying party (Trustee) verifies evidence and releases keys, and it must not share the trust boundary with the workload it is attesting.
 
-This is the AMD SEV-SNP counterpart of [`../gcp/README.md`](../gcp/README.md), which covers Intel TDX on GCP. The two guides share their shape; the platform-specific parts are called out, and the [differences table](#what-is-different-from-the-gcp-intel-tdx-guide) is the place to start if you have already done the TDX one. There is also an [`../azure/README.md`](../azure/README.md) for AMD SEV-SNP on Azure, which is _not_ the same as this: Azure's paravisor hides the hardware and surfaces a vTPM, while GCP exposes the firmware attestation device directly.
+This is the AMD SEV-SNP counterpart of [`../gcp-tdx/README.md`](../gcp-tdx/README.md), which covers Intel TDX on GCP. The two guides share their shape; the platform-specific parts are called out, and the [differences table](#what-is-different-from-the-gcp-intel-tdx-guide) is the place to start if you have already done the TDX one. There is also an [`../azure-sev/README.md`](../azure-sev/README.md) for AMD SEV-SNP on Azure, which is _not_ the same as this: Azure's paravisor hides the hardware and surfaces a vTPM, while GCP exposes the firmware attestation device directly.
 
 ## Architecture
 
@@ -32,7 +32,7 @@ Provisioning is in [Part 2](#part-2--deploy-trustee-outside-the-cvm).
 
 ## What is different from the GCP Intel TDX guide
 
-|                          | GCP Intel TDX ([`../gcp`](../gcp/README.md))     | GCP AMD SEV-SNP (this guide)                                 |
+|                          | GCP Intel TDX ([`../gcp`](../gcp-tdx/README.md)) | GCP AMD SEV-SNP (this guide)                                 |
 | ------------------------ | ------------------------------------------------ | ------------------------------------------------------------ |
 | Enable the platform      | `--confidential-compute-type=TDX`                | `--confidential-compute-type=SEV_SNP`                        |
 | Machine family           | `c3-standard-*` (`c4-standard-*` preview)        | `n2d-standard-*` (`c4d-standard-*` preview)                  |
@@ -171,7 +171,7 @@ If `/dev/sev-guest` is missing while the kernel reports SEV-SNP, the guest kerne
 
 ## Part 2 — Deploy Trustee outside the CVM
 
-All of this runs on `TRUSTEE_HOST`, never inside the CVM. It is identical to the Intel TDX guide; the commands are repeated here so this document stands alone, and the reasoning (why HTTP, why the token CA, why the client build avoids Intel's repo) is in [`../gcp/README.md` Part 2](../gcp/README.md#part-2--deploy-trustee-outside-the-cvm).
+All of this runs on `TRUSTEE_HOST`, never inside the CVM. It is identical to the Intel TDX guide; the commands are repeated here so this document stands alone, and the reasoning (why HTTP, why the token CA, why the client build avoids Intel's repo) is in [`../gcp-tdx/README.md` Part 2](../gcp-tdx/README.md#part-2--deploy-trustee-outside-the-cvm).
 
 ### 2.1 Provision the Trustee host
 
@@ -254,7 +254,7 @@ docker compose up -d
 docker compose ps
 ```
 
-KBS runs over plain HTTP inside the VPC. `/etc/attestation-agent.toml` on the guest trusts no certificate, and `coco_keyprovider` cannot be pointed at a private CA through `SSL_CERT_FILE`; the full reasoning is in [`../gcp/README.md` §2.2](../gcp/README.md#22-start-the-trustee-stack).
+KBS runs over plain HTTP inside the VPC. `/etc/attestation-agent.toml` on the guest trusts no certificate, and `coco_keyprovider` cannot be pointed at a private CA through `SSL_CERT_FILE`; the full reasoning is in [`../gcp-tdx/README.md` §2.2](../gcp-tdx/README.md#22-start-the-trustee-stack).
 
 ### 2.3 Check that KBS trusts the Attestation Service's token CA
 
@@ -594,7 +594,7 @@ A `WARNING:esys:…Esys_NV_ReadPublic…` line can still appear here if the gues
 
 ## Part 4 — Encrypt and publish a WASM image
 
-These commands run on the **Trustee host** and are identical to [`../gcp/README.md` Part 4](../gcp/README.md#part-4--encrypt-and-publish-a-wasm-image).
+These commands run on the **Trustee host** and are identical to [`../gcp-tdx/README.md` Part 4](../gcp-tdx/README.md#part-4--encrypt-and-publish-a-wasm-image).
 
 ```bash
 wget https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo_0.42.0_amd64.deb
@@ -723,5 +723,5 @@ Both boot disks were created with auto-delete, so they go with their instances; 
 - [GCP Confidential VM supported configurations](https://cloud.google.com/confidential-computing/confidential-vm/docs/supported-configurations)
 - [Creating a GCP Confidential VM instance](https://cloud.google.com/confidential-computing/confidential-vm/docs/create-a-confidential-vm-instance)
 - [Trustee attestation policies](https://github.com/confidential-containers/trustee/blob/main/attestation-service/docs/policy.md)
-- [GCP Intel TDX CVM guide](../gcp/README.md)
-- [Azure SEV-SNP CVM guide](../azure/README.md)
+- [GCP Intel TDX CVM guide](../gcp-tdx/README.md)
+- [Azure SEV-SNP CVM guide](../azure-sev/README.md)
